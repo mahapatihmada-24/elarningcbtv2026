@@ -1,8 +1,91 @@
 import { Materi, Ujian, Question } from '../types';
+import katex from 'katex';
 
 const SCHOOL_NAME = 'SD NEGERI HARJOSARI KIDUL 01';
 const SCHOOL_SUBTITLE = 'DINAS PENDIDIKAN DAN KEBUDAYAAN KABUPATEN TEGAL';
 const SCHOOL_ADDRESS = 'Jl. Raya Harjosari Kidul No. 01, Kec. Adiwerna, Kab. Tegal, Jawa Tengah 52194';
+
+/**
+ * Formats mathematical formulas (LaTeX e.g. \frac{2}{4}, $\frac{3}{5}$, \sqrt, powers, symbols, etc.)
+ * into clean, properly rendered visual representations for Word documents (.doc) and Printable views.
+ */
+export function formatMathForExport(raw: string, mode: 'word' | 'print' = 'word'): string {
+  if (!raw) return '';
+
+  let text = raw;
+
+  if (mode === 'print') {
+    // For print mode, browser has full CSS/DOM support. Render with KaTeX!
+    let processed = text;
+    if (processed.includes('\\frac') && !processed.includes('$')) {
+      processed = processed.replace(/\\frac\{[^{}]+\}\{[^{}]+\}/g, (m) => `$${m}$`);
+    }
+    if (processed.includes('\\sqrt') && !processed.includes('$')) {
+      processed = processed.replace(/\\sqrt(?:\[[^{}]+\])?\{[^{}]+\}/g, (m) => `$${m}$`);
+    }
+
+    return processed.replace(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^\$\n]+?\$)/g, (match) => {
+      let code = match;
+      const isDisplay = match.startsWith('$$') || match.startsWith('\\[');
+      if (match.startsWith('$$') && match.endsWith('$$')) code = match.slice(2, -2);
+      else if (match.startsWith('\\[') && match.endsWith('\\]')) code = match.slice(2, -2);
+      else if (match.startsWith('\\(') && match.endsWith('\\)')) code = match.slice(2, -2);
+      else if (match.startsWith('$') && match.endsWith('$')) code = match.slice(1, -1);
+
+      try {
+        return katex.renderToString(code.trim(), {
+          displayMode: isDisplay,
+          throwOnError: false,
+        });
+      } catch {
+        return match;
+      }
+    });
+  }
+
+  // Word Document (.doc) mode
+  // A. Fractions: \frac{num}{den} with or without $
+  // Add space if immediately followed by words (e.g. $\frac{3}{5}$karung -> fraction + " karung")
+  text = text.replace(/\$?(\\frac\{([^{}]+)\}\{([^{}]+)\})\$?(?=[a-zA-Z0-9])/g, (_, __, num, den) => {
+    return `<span class="math-frac" style="display:inline-block; vertical-align:middle; text-align:center; font-family:'Calibri','Times New Roman',serif; margin:0 2pt; font-size:95%; line-height:1.1;"><span class="math-num" style="display:block; border-bottom:1pt solid windowtext; padding:0 2pt;">${num}</span><span class="math-den" style="display:block; padding:0 2pt;">${den}</span></span> `;
+  });
+  text = text.replace(/\$?(\\frac\{([^{}]+)\}\{([^{}]+)\})\$?(\s*)/g, (_, __, num, den, space) => {
+    return `<span class="math-frac" style="display:inline-block; vertical-align:middle; text-align:center; font-family:'Calibri','Times New Roman',serif; margin:0 2pt; font-size:95%; line-height:1.1;"><span class="math-num" style="display:block; border-bottom:1pt solid windowtext; padding:0 2pt;">${num}</span><span class="math-den" style="display:block; padding:0 2pt;">${den}</span></span>${space || ''}`;
+  });
+
+  // B. Roots: \sqrt[n]{x} and \sqrt{x}
+  text = text.replace(/\$?(\\sqrt\[([^{}]+)\]\{([^{}]+)\})\$?(\s*)/g, (_, __, n, x, space) => {
+    return `<sup>${n}</sup>√<span style="text-decoration:overline; font-family:'Calibri','Times New Roman',serif;">${x}</span>${space || ''}`;
+  });
+  text = text.replace(/\$?(\\sqrt\{([^{}]+)\})\$?(\s*)/g, (_, __, x, space) => {
+    return `√<span style="text-decoration:overline; font-family:'Calibri','Times New Roman',serif;">${x}</span>${space || ''}`;
+  });
+
+  // C. Math symbols
+  text = text.replace(/\\times\b/g, '×');
+  text = text.replace(/\\div\b/g, '÷');
+  text = text.replace(/\\neq\b/g, '≠');
+  text = text.replace(/\\leq\b|\\le\b/g, '≤');
+  text = text.replace(/\\geq\b|\\ge\b/g, '≥');
+  text = text.replace(/\\approx\b/g, '≈');
+  text = text.replace(/\\infty\b/g, '∞');
+  text = text.replace(/\\pm\b/g, '±');
+  text = text.replace(/\\mp\b/g, '∓');
+  text = text.replace(/\\cdot\b/g, '·');
+  text = text.replace(/\\pi\b/g, 'π');
+  text = text.replace(/\\degree\b/g, '°');
+
+  // D. Powers & Subscripts
+  text = text.replace(/\^\{([^{}]+)\}/g, '<sup>$1</sup>');
+  text = text.replace(/\^([0-9a-zA-Z]+)/g, '<sup>$1</sup>');
+  text = text.replace(/_\{([^{}]+)\}/g, '<sub>$1</sub>');
+  text = text.replace(/_([0-9a-zA-Z]+)/g, '<sub>$1</sub>');
+
+  // E. Clean leftover $ signs
+  text = text.replace(/\$/g, '');
+
+  return text;
+}
 
 /**
  * Clean HTML for Word document or printable view, preserving newlines and paragraph structure
@@ -37,7 +120,8 @@ function sanitizeContentForWord(raw: string): string {
  * Downloads Materi as Microsoft Word (.doc) document
  */
 export function downloadMateriWord(materi: Materi): void {
-  const sanitizedBody = sanitizeContentForWord(materi.Konten_Link);
+  const rawContent = (materi as any).Konten || materi.Konten_Link || '';
+  const sanitizedBody = formatMathForExport(sanitizeContentForWord(rawContent), 'word');
   const imageHtml = materi.Gambar_URL
     ? `<div style="text-align: center; margin: 15pt 0;">
         <img src="${materi.Gambar_URL}" alt="${materi.Judul}" style="max-width: 500px; height: auto; border: 1px solid #ddd; border-radius: 6px;" />
@@ -71,6 +155,24 @@ export function downloadMateriWord(materi: Materi): void {
       font-size: 11pt;
       line-height: 1.6;
       color: #222;
+    }
+    .math-frac {
+      display: inline-block;
+      vertical-align: middle;
+      text-align: center;
+      font-family: 'Calibri', 'Times New Roman', serif;
+      margin: 0 2pt;
+      font-size: 95%;
+      line-height: 1.1;
+    }
+    .math-num {
+      display: block;
+      border-bottom: 1pt solid windowtext;
+      padding: 0 2pt;
+    }
+    .math-den {
+      display: block;
+      padding: 0 2pt;
     }
     .kop-surat {
       text-align: center;
@@ -202,7 +304,8 @@ export function downloadMateriWord(materi: Materi): void {
  * Prints Materi or opens printable PDF dialog
  */
 export function printMateri(materi: Materi): void {
-  const sanitizedBody = sanitizeContentForWord(materi.Konten_Link);
+  const rawContent = (materi as any).Konten || materi.Konten_Link || '';
+  const sanitizedBody = formatMathForExport(sanitizeContentForWord(rawContent), 'print');
   const imageHtml = materi.Gambar_URL
     ? `<div style="text-align: center; margin: 15px 0;">
         <img src="${materi.Gambar_URL}" alt="${materi.Judul}" style="max-height: 380px; max-width: 100%; border: 1px solid #e2e8f0; border-radius: 8px;" />
@@ -219,6 +322,7 @@ export function printMateri(materi: Materi): void {
 <head>
   <meta charset="utf-8">
   <title>${materi.Judul} - ${SCHOOL_NAME}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
   <style>
     @media print {
       body { margin: 0; padding: 15mm; font-size: 12pt; }
@@ -367,7 +471,7 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
           choicesHtml += `
             <tr>
               <td width="30pt" valign="top" style="border: none; padding: 3pt 4pt;"${marker}>${k.toUpperCase()}.</td>
-              <td valign="top" style="border: none; padding: 3pt 4pt;"${marker}>${optText}</td>
+              <td valign="top" style="border: none; padding: 3pt 4pt;"${marker}>${formatMathForExport(optText, 'word')}</td>
             </tr>
           `;
         }
@@ -385,7 +489,7 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
         choicesHtml += `
           <tr>
             <td width="30pt" valign="top" style="border: none; padding: 3pt 4pt;"${marker}>[ &nbsp; ]</td>
-            <td valign="top" style="border: none; padding: 3pt 4pt;"${marker}>${opt.text} ${isCorrect ? '<strong>(BENAR)</strong>' : ''}</td>
+            <td valign="top" style="border: none; padding: 3pt 4pt;"${marker}>${formatMathForExport(opt.text, 'word')} ${isCorrect ? '<strong>(BENAR)</strong>' : ''}</td>
           </tr>
         `;
       });
@@ -397,8 +501,8 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
           <thead>
             <tr style="background-color: #f1f5f9;">
               <th style="border: 1px solid #94a3b8; padding: 4pt 8pt; text-align: left;">Pernyataan</th>
-              <th style="border: 1px solid #94a3b8; padding: 4pt 8pt; width: 80pt; text-align: center;">${q.col1}</th>
-              <th style="border: 1px solid #94a3b8; padding: 4pt 8pt; width: 80pt; text-align: center;">${q.col2}</th>
+              <th style="border: 1px solid #94a3b8; padding: 4pt 8pt; width: 80pt; text-align: center;">${formatMathForExport(q.col1, 'word')}</th>
+              <th style="border: 1px solid #94a3b8; padding: 4pt 8pt; width: 80pt; text-align: center;">${formatMathForExport(q.col2, 'word')}</th>
             </tr>
           </thead>
           <tbody>
@@ -408,7 +512,7 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
         const isCol2 = options.includeAnswers && r.key === 'col2';
         choicesHtml += `
           <tr>
-            <td style="border: 1px solid #94a3b8; padding: 4pt 8pt;">${r.text}</td>
+            <td style="border: 1px solid #94a3b8; padding: 4pt 8pt;">${formatMathForExport(r.text, 'word')}</td>
             <td style="border: 1px solid #94a3b8; padding: 4pt 8pt; text-align: center;">${isCol1 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
             <td style="border: 1px solid #94a3b8; padding: 4pt 8pt; text-align: center;">${isCol2 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
           </tr>
@@ -423,7 +527,7 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
           <tr>
             <td width="24pt" valign="top" style="border: none; padding: 0; font-weight: bold;">${qNum}.</td>
             <td valign="top" style="border: none; padding: 0; text-align: justify;">
-              ${q.soal}
+              ${formatMathForExport(q.soal, 'word')}
               ${imgHtml}
               ${choicesHtml}
             </td>
@@ -459,6 +563,24 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
       font-size: 11pt;
       line-height: 1.5;
       color: #111;
+    }
+    .math-frac {
+      display: inline-block;
+      vertical-align: middle;
+      text-align: center;
+      font-family: 'Calibri', 'Times New Roman', serif;
+      margin: 0 2pt;
+      font-size: 95%;
+      line-height: 1.1;
+    }
+    .math-num {
+      display: block;
+      border-bottom: 1pt solid windowtext;
+      padding: 0 2pt;
+    }
+    .math-den {
+      display: block;
+      padding: 0 2pt;
     }
     .kop-surat {
       text-align: center;
@@ -615,7 +737,7 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
           const badge = isCorrect ? ' background-color: #dcfce7; font-weight: bold; border: 1px solid #86efac;' : '';
           choicesHtml += `
             <div style="padding: 4px 8px; border-radius: 4px; font-size: 13px;${badge}">
-              <strong>${k.toUpperCase()}.</strong> ${optText}
+              <strong>${k.toUpperCase()}.</strong> ${formatMathForExport(optText, 'print')}
             </div>
           `;
         }
@@ -632,7 +754,7 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
         const badge = isCorrect ? ' color: #15803d; font-weight: bold;' : '';
         choicesHtml += `
           <div style="padding: 3px 0; font-size: 13px;${badge}">
-            [ &nbsp; ] ${opt.text} ${isCorrect ? '<strong>✓ (KUNCI BENAR)</strong>' : ''}
+            [ &nbsp; ] ${formatMathForExport(opt.text, 'print')} ${isCorrect ? '<strong>✓ (KUNCI BENAR)</strong>' : ''}
           </div>
         `;
       });
@@ -643,8 +765,8 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
           <thead>
             <tr style="background: #f8fafc;">
               <th style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: left;">Pernyataan</th>
-              <th style="border: 1px solid #cbd5e1; padding: 6px 10px; width: 90px; text-align: center;">${q.col1}</th>
-              <th style="border: 1px solid #cbd5e1; padding: 6px 10px; width: 90px; text-align: center;">${q.col2}</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6px 10px; width: 90px; text-align: center;">${formatMathForExport(q.col1, 'print')}</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6px 10px; width: 90px; text-align: center;">${formatMathForExport(q.col2, 'print')}</th>
             </tr>
           </thead>
           <tbody>
@@ -654,7 +776,7 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
         const isCol2 = options.includeAnswers && r.key === 'col2';
         choicesHtml += `
           <tr>
-            <td style="border: 1px solid #cbd5e1; padding: 6px 10px;">${r.text}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px 10px;">${formatMathForExport(r.text, 'print')}</td>
             <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center;">${isCol1 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
             <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center;">${isCol2 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
           </tr>
@@ -668,7 +790,7 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
         <div style="display: flex; gap: 8px; align-items: flex-start;">
           <div style="font-weight: bold; width: 22px;">${qNum}.</div>
           <div style="flex: 1;">
-            <div style="font-size: 13.5px; line-height: 1.6;">${q.soal}</div>
+            <div style="font-size: 13.5px; line-height: 1.6;">${formatMathForExport(q.soal, 'print')}</div>
             ${imgHtml}
             ${choicesHtml}
           </div>
@@ -686,6 +808,7 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
 <head>
   <meta charset="utf-8">
   <title>Naskah Soal - ${ujian.Judul_Ujian}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
   <style>
     @media print {
       body { margin: 0; padding: 12mm; font-size: 11pt; }
