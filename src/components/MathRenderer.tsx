@@ -9,6 +9,12 @@ interface MathRendererProps {
 export const MathRenderer: React.FC<MathRendererProps> = ({ content, className = '' }) => {
   if (!content) return null;
 
+  // Pre-process content: if content has \frac{a}{b} not enclosed in $, auto-wrap it for convenience
+  let processedContent = content;
+  if (processedContent.includes('\\frac') && !processedContent.includes('$')) {
+    processedContent = processedContent.replace(/\\frac\{[^{}]+\}\{[^{}]+\}/g, (m) => `$${m}$`);
+  }
+
   // Split by inline math ($...$, \(...\)) and display math ($$...$$, \[...\])
   const parts: React.ReactNode[] = [];
   const regex = /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^\$\n]+?\$)/g;
@@ -18,10 +24,10 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, className =
 
   let keyIndex = 0;
 
-  while ((match = regex.exec(content)) !== null) {
+  while ((match = regex.exec(processedContent)) !== null) {
     // Text before math
     if (match.index > lastIndex) {
-      const textPart = content.substring(lastIndex, match.index);
+      const textPart = processedContent.substring(lastIndex, match.index);
       parts.push(renderFormattedText(textPart, `text-${keyIndex++}`));
     }
 

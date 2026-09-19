@@ -616,17 +616,28 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
 
                   {/* Question Text */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      Teks Pertanyaan (Mendukung Formula Math LaTeX $...$)
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[11px] font-bold text-slate-700">
+                        Teks Pertanyaan (Mendukung Formula Math LaTeX $...$)
+                      </label>
+                      <span className="text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded font-mono">
+                        {'Pecahan: $\\frac{pembilang}{penyebut}$'}
+                      </span>
+                    </div>
                     <textarea
                       value={q.soal}
                       onChange={(e) => updateQuestionField(qIdx, 'soal', e.target.value)}
                       rows={3}
-                      placeholder="Tuliskan soal atau studi kasus di sini..."
+                      placeholder="Tuliskan soal di sini. Contoh pecahan: Nilai dari $\frac{2}{4}$ adalah..."
                       required
                       className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                     />
+                    {q.soal && (q.soal.includes('$') || q.soal.includes('\\frac')) && (
+                      <div className="mt-1.5 p-2.5 bg-indigo-50/60 border border-indigo-100 rounded-xl text-xs">
+                        <span className="text-[10px] text-indigo-600 font-semibold uppercase block mb-1">Pratinjau Rumus Matematika:</span>
+                        <MathRenderer content={q.soal} className="text-slate-800" />
+                      </div>
+                    )}
                   </div>
 
                   {/* Question Image */}
@@ -677,9 +688,15 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                   {/* Type 1: PG */}
                   {q.type === 'pg' && (
                     <div className="space-y-2 pt-2 border-t border-slate-200">
-                      <label className="block text-xs font-bold text-slate-700">
-                        Opsi Pilihan Jawaban & Kunci:
-                      </label>
+                      <div className="flex flex-wrap items-center justify-between gap-1.5">
+                        <label className="block text-xs font-bold text-slate-700">
+                          Opsi Pilihan Jawaban & Kunci:
+                        </label>
+                        <div className="flex items-center gap-1 text-[11px] text-slate-500 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-md">
+                          <span className="font-semibold text-amber-800">💡 Tips Pecahan:</span>
+                          <span>Tulis <code className="font-mono font-bold text-indigo-700">{'$\\frac{2}{4}$'}</code> atau <code className="font-mono text-slate-700">2/4</code></span>
+                        </div>
+                      </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         {(['a', 'b', 'c', 'd'] as const).map((opt) => (
                           <div
@@ -719,9 +736,15 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                               type="text"
                               value={q[opt] || ''}
                               onChange={(e) => updateQuestionField(qIdx, opt, e.target.value)}
-                              placeholder={`Teks opsi ${opt.toUpperCase()}...`}
+                              placeholder={`Teks opsi ${opt.toUpperCase()}... (misal: $\\frac{2}{4}$ atau 2/4)`}
                               className="w-full text-xs p-1.5 rounded-lg border border-slate-300 bg-white"
                             />
+                            {q[opt] && (q[opt].includes('$') || q[opt].includes('\\frac')) && (
+                              <div className="mt-1 px-2 py-1 bg-indigo-50 border border-indigo-100 rounded text-xs flex items-center gap-2">
+                                <span className="text-[10px] text-indigo-600 font-semibold uppercase">Tampilan:</span>
+                                <MathRenderer content={q[opt]} className="inline-block font-semibold text-indigo-950" />
+                              </div>
+                            )}
                             {/* Option image */}
                             <div className="mt-1.5 flex items-center gap-1.5">
                               <label className="text-[10px] text-slate-500 font-semibold cursor-pointer hover:text-indigo-600 flex items-center gap-1">
