@@ -1,0 +1,864 @@
+import { Materi, Ujian, Question } from '../types';
+
+const SCHOOL_NAME = 'SD NEGERI HARJOSARI KIDUL 01';
+const SCHOOL_SUBTITLE = 'DINAS PENDIDIKAN DAN KEBUDAYAAN KABUPATEN TEGAL';
+const SCHOOL_ADDRESS = 'Jl. Raya Harjosari Kidul No. 01, Kec. Adiwerna, Kab. Tegal, Jawa Tengah 52194';
+
+/**
+ * Clean HTML for Word document or printable view, preserving newlines and paragraph structure
+ */
+function sanitizeContentForWord(raw: string): string {
+  if (!raw) return '';
+
+  let clean = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // Convert markdown images to HTML img for Word/Print
+  clean = clean.replace(
+    /!\[(.*?)\]\((.*?)\)/g,
+    '<div style="text-align: center; margin: 15pt 0;"><img src="$2" alt="$1" style="max-width: 500px; height: auto; border: 1px solid #ddd; border-radius: 6px;" /><p style="font-size: 9pt; color: #666; font-style: italic; margin-top: 4pt;">$1</p></div>'
+  );
+
+  const blockTags = 'div|p|table|thead|tbody|tfoot|tr|th|td|ul|ol|li|h[1-6]|blockquote|pre|hr|section|article|header|footer|figure|figcaption';
+
+  // Strip newlines directly attached to block tags
+  clean = clean.replace(new RegExp(`(<(?:\\/)?(?:${blockTags})[^>]*>)\\s*\\n+`, 'gi'), '$1');
+  clean = clean.replace(new RegExp(`\\n+\\s*(<(?:\\/)?(?:${blockTags})[^>]*>)`, 'gi'), '$1');
+
+  // Convert double newlines into a clean paragraph spacer for Word
+  clean = clean.replace(/\n\s*\n+/g, '<div style="height: 12pt; margin: 0; padding: 0;"></div>');
+
+  // Convert remaining single newlines into <br/>
+  clean = clean.replace(/\n/g, '<br/>');
+
+  return clean;
+}
+
+/**
+ * Downloads Materi as Microsoft Word (.doc) document
+ */
+export function downloadMateriWord(materi: Materi): void {
+  const sanitizedBody = sanitizeContentForWord(materi.Konten_Link);
+  const imageHtml = materi.Gambar_URL
+    ? `<div style="text-align: center; margin: 15pt 0;">
+        <img src="${materi.Gambar_URL}" alt="${materi.Judul}" style="max-width: 500px; height: auto; border: 1px solid #ddd; border-radius: 6px;" />
+        <p style="font-size: 9pt; color: #666; font-style: italic; margin-top: 4pt;">Ilustrasi Materi: ${materi.Judul}</p>
+      </div>`
+    : '';
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+  <meta charset="utf-8">
+  <title>${materi.Judul}</title>
+  <!--[if gte mso 9]>
+  <xml>
+    <w:WordDocument>
+      <w:View>Print</w:View>
+      <w:Zoom>100</w:Zoom>
+      <w:DoNotOptimizeForBrowser/>
+    </w:WordDocument>
+  </xml>
+  <![endif]-->
+  <style>
+    @page {
+      size: A4;
+      margin: 2.5cm 2.5cm 2.5cm 2.5cm;
+      mso-page-orientation: portrait;
+    }
+    body {
+      font-family: 'Calibri', 'Times New Roman', serif;
+      font-size: 11pt;
+      line-height: 1.6;
+      color: #222;
+    }
+    .kop-surat {
+      text-align: center;
+      border-bottom: 3px double #111;
+      padding-bottom: 8pt;
+      margin-bottom: 18pt;
+    }
+    .kop-sub {
+      font-size: 11pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.5pt;
+      color: #333;
+    }
+    .kop-main {
+      font-size: 15pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin: 3pt 0;
+      color: #0b2559;
+    }
+    .kop-addr {
+      font-size: 9pt;
+      color: #555;
+      font-style: italic;
+    }
+    .doc-meta {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 14pt;
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+    }
+    .doc-meta td {
+      padding: 6pt 10pt;
+      font-size: 10pt;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .materi-title {
+      font-size: 16pt;
+      font-weight: bold;
+      color: #1e293b;
+      margin: 10pt 0 6pt 0;
+      text-align: center;
+      text-transform: uppercase;
+    }
+    .content-body {
+      text-align: justify;
+      text-justify: inter-word;
+      line-height: 1.7;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12pt 0;
+    }
+    table, th, td {
+      border: 1px solid #94a3b8;
+      padding: 6pt 8pt;
+    }
+    th {
+      background-color: #f1f5f9;
+      font-weight: bold;
+    }
+    .doc-footer {
+      margin-top: 30pt;
+      padding-top: 10pt;
+      border-top: 1px solid #cbd5e1;
+      font-size: 9pt;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+  <div class="kop-surat">
+    <div class="kop-sub">${SCHOOL_SUBTITLE}</div>
+    <div class="kop-main">${SCHOOL_NAME}</div>
+    <div class="kop-addr">${SCHOOL_ADDRESS}</div>
+  </div>
+
+  <table class="doc-meta">
+    <tr>
+      <td width="20%"><strong>Mata Pelajaran</strong></td>
+      <td width="30%">: ${materi.Mapel}</td>
+      <td width="20%"><strong>Target Kelas</strong></td>
+      <td width="30%">: ${materi.Kelas}</td>
+    </tr>
+    <tr>
+      <td><strong>Penyusun / Guru</strong></td>
+      <td>: ${materi.Nama_Guru}</td>
+      <td><strong>Sumber Rujukan</strong></td>
+      <td>: ${materi.Sumber || 'Materi Guru'}</td>
+    </tr>
+  </table>
+
+  <h2 class="materi-title">${materi.Judul}</h2>
+
+  ${imageHtml}
+
+  <div class="content-body">
+    ${sanitizedBody}
+  </div>
+
+  <div class="doc-footer">
+    <p><em>Dicetak melalui Sistem Pembelajaran Digital & CBT ${SCHOOL_NAME}</em></p>
+    <p>Tanggal: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+  </div>
+</body>
+</html>
+  `;
+
+  const blob = new Blob(['\ufeff' + htmlContent], {
+    type: 'application/msword;charset=utf-8',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const safeTitle = materi.Judul.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim() || 'Materi';
+  a.download = `[Materi] ${safeTitle}.doc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Prints Materi or opens printable PDF dialog
+ */
+export function printMateri(materi: Materi): void {
+  const sanitizedBody = sanitizeContentForWord(materi.Konten_Link);
+  const imageHtml = materi.Gambar_URL
+    ? `<div style="text-align: center; margin: 15px 0;">
+        <img src="${materi.Gambar_URL}" alt="${materi.Judul}" style="max-height: 380px; max-width: 100%; border: 1px solid #e2e8f0; border-radius: 8px;" />
+        <p style="font-size: 11px; color: #64748b; font-style: italic; margin-top: 4px;">Ilustrasi Materi</p>
+      </div>`
+    : '';
+
+  const printWindow = window.open('', '_blank', 'width=900,height=800');
+  if (!printWindow) return;
+
+  printWindow.document.write(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${materi.Judul} - ${SCHOOL_NAME}</title>
+  <style>
+    @media print {
+      body { margin: 0; padding: 15mm; font-size: 12pt; }
+      .no-print { display: none !important; }
+      @page { size: A4; margin: 15mm; }
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #1e293b;
+      line-height: 1.7;
+      padding: 30px;
+      max-width: 800px;
+      margin: 0 auto;
+      background-color: #fff;
+    }
+    .kop {
+      text-align: center;
+      border-bottom: 3px double #0f172a;
+      padding-bottom: 12px;
+      margin-bottom: 20px;
+    }
+    .kop h4 { margin: 0; font-size: 13px; text-transform: uppercase; color: #475569; letter-spacing: 0.5px; }
+    .kop h2 { margin: 4px 0; font-size: 20px; font-weight: 800; color: #1e3a8a; text-transform: uppercase; }
+    .kop p { margin: 0; font-size: 11px; color: #64748b; font-style: italic; }
+    .meta-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 16px;
+      font-size: 12px;
+    }
+    .title {
+      text-align: center;
+      font-size: 20px;
+      font-weight: 800;
+      margin: 16px 0;
+      color: #0f172a;
+      text-transform: uppercase;
+    }
+    .content {
+      text-align: justify;
+      line-height: 1.8;
+      font-size: 13px;
+    }
+    .content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+    }
+    .content table, .content th, .content td {
+      border: 1px solid #cbd5e1;
+      padding: 8px 10px;
+    }
+    .content th { background-color: #f1f5f9; font-weight: 700; text-align: left; }
+    .btn-print {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #4f46e5;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 8px;
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+  <button class="btn-print no-print" onclick="window.print()">Cetak / Simpan PDF</button>
+
+  <div class="kop">
+    <h4>${SCHOOL_SUBTITLE}</h4>
+    <h2>${SCHOOL_NAME}</h2>
+    <p>${SCHOOL_ADDRESS}</p>
+  </div>
+
+  <div class="meta-box">
+    <div><strong>Mata Pelajaran:</strong> ${materi.Mapel}</div>
+    <div><strong>Kelas:</strong> ${materi.Kelas}</div>
+    <div><strong>Guru Pengajar:</strong> ${materi.Nama_Guru}</div>
+    <div><strong>Sumber Buku:</strong> ${materi.Sumber || 'Materi Pembelajaran Guru'}</div>
+  </div>
+
+  <div class="title">${materi.Judul}</div>
+
+  ${imageHtml}
+
+  <div class="content">
+    ${sanitizedBody}
+  </div>
+
+  <div style="margin-top: 40px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; text-align: center;">
+    Lembar Bahan Ajar Siswa • ${SCHOOL_NAME}
+  </div>
+
+  <script>
+    window.onload = function() {
+      // automatically prompt print on load
+      setTimeout(function() { window.print(); }, 500);
+    };
+  </script>
+</body>
+</html>
+  `);
+  printWindow.document.close();
+}
+
+/**
+ * Formats and downloads Ujian CBT as an official student worksheet (LKS / Naskah Soal)
+ */
+export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boolean } = {}): void {
+  let questions: Question[] = [];
+  try {
+    const parsed = JSON.parse(ujian.Soal_JSON || '{}');
+    if (parsed.questions && Array.isArray(parsed.questions)) {
+      questions = parsed.questions;
+    } else if (Array.isArray(parsed)) {
+      questions = parsed;
+    }
+  } catch {
+    questions = [];
+  }
+
+  let questionsHtml = '';
+  questions.forEach((q, idx) => {
+    const qNum = idx + 1;
+    const imgHtml = q.gambar
+      ? `<div style="margin: 6pt 0;"><img src="${q.gambar}" style="max-height: 200px; max-width: 400px; border: 1px solid #ccc;" /></div>`
+      : '';
+
+    let choicesHtml = '';
+    if (q.type === 'pg') {
+      const keys: ('a' | 'b' | 'c' | 'd')[] = ['a', 'b', 'c', 'd'];
+      choicesHtml = `<table style="width: 100%; border: none; margin-top: 4pt; border-collapse: collapse;">`;
+      keys.forEach((k) => {
+        const optText = q[k];
+        if (optText) {
+          const isCorrect = options.includeAnswers && q.kunci === k.toUpperCase();
+          const marker = isCorrect ? ' style="font-weight: bold; color: #15803d; background-color: #dcfce7;"' : '';
+          choicesHtml += `
+            <tr>
+              <td width="30pt" valign="top" style="border: none; padding: 3pt 4pt;"${marker}>${k.toUpperCase()}.</td>
+              <td valign="top" style="border: none; padding: 3pt 4pt;"${marker}>${optText}</td>
+            </tr>
+          `;
+        }
+      });
+      choicesHtml += `</table>`;
+      if (options.includeAnswers) {
+        choicesHtml += `<p style="font-size: 9pt; color: #15803d; font-weight: bold; margin-top: 4pt;">[Kunci Jawaban: ${q.kunci}]</p>`;
+      }
+    } else if (q.type === 'pgk_mcma') {
+      choicesHtml = `<p style="font-size: 9pt; font-style: italic; color: #555; margin: 3pt 0;">(Berikan tanda centang [✓] pada semua pilihan yang benar)</p>`;
+      choicesHtml += `<table style="width: 100%; border: none; margin-top: 4pt; border-collapse: collapse;">`;
+      q.options.forEach((opt, oIdx) => {
+        const isCorrect = options.includeAnswers && opt.isKey;
+        const marker = isCorrect ? ' style="font-weight: bold; color: #15803d; background-color: #dcfce7;"' : '';
+        choicesHtml += `
+          <tr>
+            <td width="30pt" valign="top" style="border: none; padding: 3pt 4pt;"${marker}>[ &nbsp; ]</td>
+            <td valign="top" style="border: none; padding: 3pt 4pt;"${marker}>${opt.text} ${isCorrect ? '<strong>(BENAR)</strong>' : ''}</td>
+          </tr>
+        `;
+      });
+      choicesHtml += `</table>`;
+    } else if (q.type === 'pgk_kategori') {
+      choicesHtml = `<p style="font-size: 9pt; font-style: italic; color: #555; margin: 3pt 0;">(Berikan tanda centang [✓] pada kolom yang sesuai)</p>`;
+      choicesHtml += `
+        <table style="width: 100%; border-collapse: collapse; margin-top: 6pt; border: 1px solid #94a3b8;">
+          <thead>
+            <tr style="background-color: #f1f5f9;">
+              <th style="border: 1px solid #94a3b8; padding: 4pt 8pt; text-align: left;">Pernyataan</th>
+              <th style="border: 1px solid #94a3b8; padding: 4pt 8pt; width: 80pt; text-align: center;">${q.col1}</th>
+              <th style="border: 1px solid #94a3b8; padding: 4pt 8pt; width: 80pt; text-align: center;">${q.col2}</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      q.rows.forEach((r) => {
+        const isCol1 = options.includeAnswers && r.key === 'col1';
+        const isCol2 = options.includeAnswers && r.key === 'col2';
+        choicesHtml += `
+          <tr>
+            <td style="border: 1px solid #94a3b8; padding: 4pt 8pt;">${r.text}</td>
+            <td style="border: 1px solid #94a3b8; padding: 4pt 8pt; text-align: center;">${isCol1 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
+            <td style="border: 1px solid #94a3b8; padding: 4pt 8pt; text-align: center;">${isCol2 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
+          </tr>
+        `;
+      });
+      choicesHtml += `</tbody></table>`;
+    }
+
+    questionsHtml += `
+      <div style="margin-bottom: 14pt; page-break-inside: avoid;">
+        <table style="width: 100%; border: none; border-collapse: collapse;">
+          <tr>
+            <td width="24pt" valign="top" style="border: none; padding: 0; font-weight: bold;">${qNum}.</td>
+            <td valign="top" style="border: none; padding: 0; text-align: justify;">
+              ${q.soal}
+              ${imgHtml}
+              ${choicesHtml}
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+  });
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+  <meta charset="utf-8">
+  <title>${ujian.Judul_Ujian}</title>
+  <!--[if gte mso 9]>
+  <xml>
+    <w:WordDocument>
+      <w:View>Print</w:View>
+      <w:Zoom>100</w:Zoom>
+      <w:DoNotOptimizeForBrowser/>
+    </w:WordDocument>
+  </xml>
+  <![endif]-->
+  <style>
+    @page {
+      size: A4;
+      margin: 2cm 2cm 2cm 2cm;
+      mso-page-orientation: portrait;
+    }
+    body {
+      font-family: 'Calibri', 'Times New Roman', serif;
+      font-size: 11pt;
+      line-height: 1.5;
+      color: #111;
+    }
+    .kop-surat {
+      text-align: center;
+      border-bottom: 3px double #111;
+      padding-bottom: 6pt;
+      margin-bottom: 12pt;
+    }
+    .kop-sub {
+      font-size: 10pt;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    .kop-main {
+      font-size: 14pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      margin: 2pt 0;
+      color: #0b2559;
+    }
+    .kop-addr {
+      font-size: 8.5pt;
+      color: #444;
+      font-style: italic;
+    }
+    .identitas-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 12pt;
+      border: 1px solid #64748b;
+    }
+    .identitas-table td {
+      padding: 4pt 8pt;
+      font-size: 10pt;
+      border: 1px solid #94a3b8;
+    }
+    .petunjuk {
+      background-color: #f8fafc;
+      border: 1px dashed #94a3b8;
+      padding: 6pt 10pt;
+      font-size: 9pt;
+      margin-bottom: 14pt;
+    }
+    .petunjuk ol {
+      margin: 2pt 0 2pt 14pt;
+      padding: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="kop-surat">
+    <div class="kop-sub">${SCHOOL_SUBTITLE}</div>
+    <div class="kop-main">${SCHOOL_NAME}</div>
+    <div class="kop-addr">${SCHOOL_ADDRESS}</div>
+  </div>
+
+  <div style="text-align: center; font-weight: bold; font-size: 13pt; margin-bottom: 10pt; text-transform: uppercase;">
+    LEMBAR NASKAH SOAL / LATIHAN CBT SISWA
+    <br/>
+    <span style="font-size: 11pt; font-weight: normal;">${ujian.Judul_Ujian}</span>
+  </div>
+
+  <table class="identitas-table">
+    <tr>
+      <td width="18%"><strong>Nama Siswa</strong></td>
+      <td width="32%">: .....................................................</td>
+      <td width="18%"><strong>Hari / Tanggal</strong></td>
+      <td width="32%">: .....................................................</td>
+    </tr>
+    <tr>
+      <td><strong>Mata Pelajaran</strong></td>
+      <td>: ${ujian.Mapel}</td>
+      <td><strong>Target Kelas</strong></td>
+      <td>: ${ujian.Kelas}</td>
+    </tr>
+    <tr>
+      <td><strong>No. Absen</strong></td>
+      <td>: .....................................................</td>
+      <td><strong>Alokasi Waktu</strong></td>
+      <td>: ${ujian.Durasi_Menit} Menit</td>
+    </tr>
+  </table>
+
+  <div class="petunjuk">
+    <strong>PETUNJUK PENGERJAAN:</strong>
+    <ol>
+      <li>Berdoalah sebelum memulai mengerjakan soal.</li>
+      <li>Tuliskan identitas nama, kelas, dan nomor absen pada lembar naskah soal.</li>
+      <li>Bacalah setiap butir pertanyaan dengan cermat dan teliti.</li>
+      <li>Pilihlah salah satu jawaban yang paling tepat dengan menyilang atau mencentang opsi yang tersedia.</li>
+      <li>Periksa kembali seluruh lembar jawaban sebelum dikumpulkan.</li>
+    </ol>
+  </div>
+
+  <div style="font-weight: bold; margin-bottom: 10pt; border-bottom: 1px solid #111; padding-bottom: 2pt;">
+    I. JAWABLAH PERTANYAAN-PERTANYAAN DI BAWAH INI DENGAN TEPAT!
+  </div>
+
+  ${questionsHtml}
+
+  <div style="margin-top: 30pt; border-top: 1px dashed #64748b; padding-top: 8pt; font-size: 9pt; text-align: center; color: #64748b;">
+    --- Selamat Mengerjakan & Tetap Percaya Diri ---<br/>
+    <em>Dicetak dari Bank Soal CBT ${SCHOOL_NAME}</em>
+  </div>
+</body>
+</html>
+  `;
+
+  const blob = new Blob(['\ufeff' + htmlContent], {
+    type: 'application/msword;charset=utf-8',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const safeTitle = ujian.Judul_Ujian.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim() || 'Soal';
+  const tag = options.includeAnswers ? '[Kunci_Jawaban_Guru]' : '[Naskah_Soal_Siswa]';
+  a.download = `${tag} ${safeTitle}.doc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Prints Ujian CBT or opens Printable dialog
+ */
+export function printExamDocument(ujian: Ujian, options: { includeAnswers?: boolean } = {}): void {
+  let questions: Question[] = [];
+  try {
+    const parsed = JSON.parse(ujian.Soal_JSON || '{}');
+    if (parsed.questions && Array.isArray(parsed.questions)) {
+      questions = parsed.questions;
+    } else if (Array.isArray(parsed)) {
+      questions = parsed;
+    }
+  } catch {
+    questions = [];
+  }
+
+  let questionsHtml = '';
+  questions.forEach((q, idx) => {
+    const qNum = idx + 1;
+    const imgHtml = q.gambar
+      ? `<div style="margin: 8px 0;"><img src="${q.gambar}" style="max-height: 220px; max-width: 100%; border: 1px solid #e2e8f0; border-radius: 6px;" /></div>`
+      : '';
+
+    let choicesHtml = '';
+    if (q.type === 'pg') {
+      const keys: ('a' | 'b' | 'c' | 'd')[] = ['a', 'b', 'c', 'd'];
+      choicesHtml = `<div style="margin-top: 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">`;
+      keys.forEach((k) => {
+        const optText = q[k];
+        if (optText) {
+          const isCorrect = options.includeAnswers && q.kunci === k.toUpperCase();
+          const badge = isCorrect ? ' background-color: #dcfce7; font-weight: bold; border: 1px solid #86efac;' : '';
+          choicesHtml += `
+            <div style="padding: 4px 8px; border-radius: 4px; font-size: 13px;${badge}">
+              <strong>${k.toUpperCase()}.</strong> ${optText}
+            </div>
+          `;
+        }
+      });
+      choicesHtml += `</div>`;
+      if (options.includeAnswers) {
+        choicesHtml += `<div style="font-size: 11px; color: #15803d; font-weight: bold; margin-top: 4px;">Kunci Jawaban: ${q.kunci}</div>`;
+      }
+    } else if (q.type === 'pgk_mcma') {
+      choicesHtml = `<div style="font-size: 11px; color: #64748b; font-style: italic; margin-top: 4px;">Pilihan Ganda Kompleks (Centang pilihan yang benar):</div>`;
+      choicesHtml += `<div style="margin-top: 4px;">`;
+      q.options.forEach((opt) => {
+        const isCorrect = options.includeAnswers && opt.isKey;
+        const badge = isCorrect ? ' color: #15803d; font-weight: bold;' : '';
+        choicesHtml += `
+          <div style="padding: 3px 0; font-size: 13px;${badge}">
+            [ &nbsp; ] ${opt.text} ${isCorrect ? '<strong>✓ (KUNCI BENAR)</strong>' : ''}
+          </div>
+        `;
+      });
+      choicesHtml += `</div>`;
+    } else if (q.type === 'pgk_kategori') {
+      choicesHtml = `
+        <table style="width: 100%; border-collapse: collapse; margin-top: 8px; border: 1px solid #cbd5e1; font-size: 12px;">
+          <thead>
+            <tr style="background: #f8fafc;">
+              <th style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: left;">Pernyataan</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6px 10px; width: 90px; text-align: center;">${q.col1}</th>
+              <th style="border: 1px solid #cbd5e1; padding: 6px 10px; width: 90px; text-align: center;">${q.col2}</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      q.rows.forEach((r) => {
+        const isCol1 = options.includeAnswers && r.key === 'col1';
+        const isCol2 = options.includeAnswers && r.key === 'col2';
+        choicesHtml += `
+          <tr>
+            <td style="border: 1px solid #cbd5e1; padding: 6px 10px;">${r.text}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center;">${isCol1 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center;">${isCol2 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
+          </tr>
+        `;
+      });
+      choicesHtml += `</tbody></table>`;
+    }
+
+    questionsHtml += `
+      <div style="margin-bottom: 16px; page-break-inside: avoid;">
+        <div style="display: flex; gap: 8px; align-items: flex-start;">
+          <div style="font-weight: bold; width: 22px;">${qNum}.</div>
+          <div style="flex: 1;">
+            <div style="font-size: 13.5px; line-height: 1.6;">${q.soal}</div>
+            ${imgHtml}
+            ${choicesHtml}
+          </div>
+        </div>
+      </div>
+    `;
+  });
+
+  const printWindow = window.open('', '_blank', 'width=900,height=800');
+  if (!printWindow) return;
+
+  printWindow.document.write(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Naskah Soal - ${ujian.Judul_Ujian}</title>
+  <style>
+    @media print {
+      body { margin: 0; padding: 12mm; font-size: 11pt; }
+      .no-print { display: none !important; }
+      @page { size: A4; margin: 12mm; }
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #0f172a;
+      line-height: 1.5;
+      padding: 24px;
+      max-width: 820px;
+      margin: 0 auto;
+      background: #fff;
+    }
+    .kop {
+      text-align: center;
+      border-bottom: 3px double #0f172a;
+      padding-bottom: 10px;
+      margin-bottom: 16px;
+    }
+    .kop h4 { margin: 0; font-size: 12px; text-transform: uppercase; color: #475569; }
+    .kop h2 { margin: 3px 0; font-size: 18px; font-weight: 800; color: #1e3a8a; text-transform: uppercase; }
+    .kop p { margin: 0; font-size: 10px; color: #64748b; font-style: italic; }
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid #cbd5e1;
+      margin-bottom: 14px;
+      font-size: 11px;
+    }
+    .meta-table td {
+      border: 1px solid #cbd5e1;
+      padding: 5px 8px;
+    }
+    .btn-print {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #4f46e5;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 8px;
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+  <button class="btn-print no-print" onclick="window.print()">Cetak / Simpan PDF</button>
+
+  <div class="kop">
+    <h4>${SCHOOL_SUBTITLE}</h4>
+    <h2>${SCHOOL_NAME}</h2>
+    <p>${SCHOOL_ADDRESS}</p>
+  </div>
+
+  <div style="text-align: center; font-weight: 800; font-size: 15px; margin-bottom: 12px; text-transform: uppercase;">
+    LEMBAR NASKAH SOAL CBT SISWA
+    <div style="font-size: 13px; font-weight: 600; color: #4338ca;">${ujian.Judul_Ujian}</div>
+  </div>
+
+  <table class="meta-table">
+    <tr>
+      <td width="18%"><strong>Nama Siswa</strong></td>
+      <td width="32%">: .....................................................</td>
+      <td width="18%"><strong>Hari / Tanggal</strong></td>
+      <td width="32%">: .....................................................</td>
+    </tr>
+    <tr>
+      <td><strong>Mata Pelajaran</strong></td>
+      <td>: ${ujian.Mapel}</td>
+      <td><strong>Target Kelas</strong></td>
+      <td>: ${ujian.Kelas}</td>
+    </tr>
+    <tr>
+      <td><strong>No. Absen</strong></td>
+      <td>: .....................................................</td>
+      <td><strong>Alokasi Waktu</strong></td>
+      <td>: ${ujian.Durasi_Menit} Menit</td>
+    </tr>
+  </table>
+
+  <div style="margin-top: 16px;">
+    ${questionsHtml}
+  </div>
+
+  <script>
+    window.onload = function() {
+      setTimeout(function() { window.print(); }, 500);
+    };
+  </script>
+</body>
+</html>
+  `);
+  printWindow.document.close();
+}
+
+/**
+ * Downloads a sample template CSV file for bulk questions upload
+ */
+export function downloadSampleQuestionCsv(): void {
+  const csvHeaders = 'No,Jenis_Soal,Soal,Pilihan_A,Pilihan_B,Pilihan_C,Pilihan_D,Kunci_Jawaban,Bobot,Gambar_URL\n';
+  const sampleRows = [
+    '1,PG,"Ibu kota negara Indonesia yang baru sesuai dengan UU IKN adalah...","Bandung","Nusantara","Jakarta","Surabaya","B",1,""',
+    '2,PG,"Organ tubuh manusia yang berfungsi memompa darah ke seluruh tubuh adalah...","Paru-paru","Lambung","Jantung","Ginjal","C",1,""',
+    '3,PGK_CENTANG,"Manakah di antara hewan berikut yang bernapas dengan insang? (Pilih semua yang benar)","Ikan Mas;Ikan Nila;Kucing;Lumba-lumba","","","","A;B",2,""',
+    '4,PGK_TABEL,"Tentukan apakah pernyataan berikut Benar atau Salah mengenai fotosintesis!","Fotosintesis menghasilkan oksigen (O2):col1;Fotosintesis terjadi pada malam hari tanpa cahaya:col2;Klorofil adalah zat hijau daun:col1","Benar","Salah","","",2,""',
+    '5,PG,"Hasil dari 125 + 75 x 2 adalah...","400","275","325","350","B",1,""',
+  ].join('\n');
+
+  const content = csvHeaders + sampleRows;
+  const blob = new Blob(['\ufeff' + content], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Template_Soal_CBT_SDN_Harjosari_Kidul_01.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Downloads sample JSON template for bulk questions
+ */
+export function downloadSampleQuestionJson(): void {
+  const sampleData: Question[] = [
+    {
+      type: 'pg',
+      bobot: 1,
+      soal: 'Ibu kota negara Indonesia yang baru sesuai undang-undang adalah...',
+      a: 'Bandung',
+      b: 'Nusantara',
+      c: 'Jakarta',
+      d: 'Surabaya',
+      kunci: 'B',
+    },
+    {
+      type: 'pgk_mcma',
+      bobot: 2,
+      soal: 'Pilihlah hewan-hewan yang berkembang biak dengan cara ovipar (bertelur)!',
+      options: [
+        { text: 'Ayam', isKey: true },
+        { text: 'Bebek', isKey: true },
+        { text: 'Sapi', isKey: false },
+        { text: 'Kucing', isKey: false },
+      ],
+    },
+    {
+      type: 'pgk_kategori',
+      bobot: 2,
+      soal: 'Tentukan Benar atau Salah pernyataan mengenai siklus air berikut:',
+      col1: 'Benar',
+      col2: 'Salah',
+      rows: [
+        { text: 'Evaporasi adalah proses penguapan air laut ke udara.', key: 'col1' },
+        { text: 'Hujan terjadi sebelum terbentuknya awan mendung.', key: 'col2' },
+        { text: 'Air bersih sangat dibutuhkan untuk kelangsungan hidup makhluk hidup.', key: 'col1' },
+      ],
+    },
+  ];
+
+  const content = JSON.stringify(sampleData, null, 2);
+  const blob = new Blob([content], { type: 'application/json;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Template_Soal_CBT.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

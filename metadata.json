@@ -1,0 +1,8 @@
+{
+  "name": "E-Learning dan CBT SDN Harjosari Kidul 01",
+  "description": "Aplikasi E-Learning dan Computer Based Test (CBT) SDN Harjosari Kidul 01 dengan sistem anti-contek, manajemen materi & ujian, serta kompatibilitas penuh PC, Android, dan iOS.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,111 @@
+export type Role = 'admin' | 'guru' | 'murid';
+
+export interface User {
+  nama: string;
+  username: string;
+  password?: string;
+  role: Role;
+  kelas: string;
+}
+
+export interface Materi {
+  ID: string;
+  Judul: string;
+  Mapel: string;
+  Kelas: string;
+  Konten_Link: string;
+  Gambar_URL?: string;
+  Sumber?: string;
+  Nama_Guru: string;
+  CreatedAt?: string;
+}
+
+export type QuestionType = 'pg' | 'pgk_mcma' | 'pgk_kategori';
+
+export interface QuestionPG {
+  type: 'pg';
+  bobot: number;
+  soal: string;
+  gambar?: string;
+  a: string;
+  a_img?: string;
+  b: string;
+  b_img?: string;
+  c: string;
+  c_img?: string;
+  d: string;
+  d_img?: string;
+  kunci: 'A' | 'B' | 'C' | 'D';
+}
+
+export interface McmaOption {
+  text: string;
+  img?: string;
+  isKey: boolean;
+}
+
+export interface QuestionPGKMCMA {
+  type: 'pgk_mcma';
+  bobot: number;
+  soal: string;
+  gambar?: string;
+  options: McmaOption[];
+}
+
+export interface KategoriRow {
+  text: string;
+  img?: string;
+  key: 'col1' | 'col2';
+}
+
+export interface QuestionPGKKategori {
+  type: 'pgk_kategori';
+  bobot: number;
+  soal: string;
+  gambar?: string;
+  col1: string; // e.g. "Benar" or "Sebelum"
+  col2: string; // e.g. "Salah" or "Sesudah"
+  rows: KategoriRow[];
+}
+
+export type Question = QuestionPG | QuestionPGKMCMA | QuestionPGKKategori;
+
+export interface ExamConfig {
+  sesi: string;
+  max_attempts: number;
+  acak_soal: boolean;
+  acak_opsi: boolean;
+}
+
+export interface ExamPayload {
+  config: ExamConfig;
+  questions: Question[];
+}
+
+export interface Ujian {
+  ID: string;
+  Judul_Ujian: string;
+  Mapel: string;
+  Kelas: string;
+  Durasi_Menit: number;
+  Soal_JSON: string; // stringified ExamPayload or Question[]
+  Status: 'Aktif' | 'Non-Aktif';
+}
+
+export interface Nilai {
+  ID: string;
+  ID_Ujian: string;
+  Judul_Ujian: string;
+  Nama_Murid: string;
+  Kelas: string;
+  Nilai: number;
+  Pelanggaran: number;
+  Waktu_Submit: string;
+}
+
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  message?: string;
+  data?: T;
+  user?: User;
+}
