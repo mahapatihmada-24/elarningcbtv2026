@@ -8,6 +8,7 @@ import {
   getDoc,
   setDoc,
   deleteDoc,
+  writeBatch,
   query,
   where,
   deleteField,
@@ -161,6 +162,29 @@ export const firebaseService = {
     const docRef = doc(db, COLLECTIONS.USERS, normalized.username.toLowerCase());
     await withTimeout(setDoc(docRef, normalized), 7000);
     return { success: true, message: 'Pengguna berhasil disimpan ke Firebase!', user: normalized };
+  },
+
+  async addUsersBatch(userList: User[]): Promise<{ success: boolean; message: string; count: number }> {
+    if (!userList || userList.length === 0) {
+      return { success: true, message: 'Tidak ada pengguna untuk disimpan.', count: 0 };
+    }
+    const normalizedList = userList.map((u) => normalizeUser(u));
+    // Chunk in 400s to respect Firestore batch limit of 500
+    const chunkSize = 400;
+    for (let i = 0; i < normalizedList.length; i += chunkSize) {
+      const chunk = normalizedList.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach((u) => {
+        const docRef = doc(db, COLLECTIONS.USERS, u.username.toLowerCase());
+        batch.set(docRef, u);
+      });
+      await withTimeout(batch.commit(), 10000);
+    }
+    return {
+      success: true,
+      message: `Berhasil mengimpor ${normalizedList.length} pengguna ke Firebase!`,
+      count: normalizedList.length,
+    };
   },
 
   async updateUser(user: User): Promise<ApiResponse> {

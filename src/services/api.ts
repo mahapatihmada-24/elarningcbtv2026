@@ -367,6 +367,46 @@ export const api = {
     return { success: true, message: 'Pengguna baru berhasil ditambahkan!' };
   },
 
+  async addUsersBatch(userList: User[]): Promise<{ success: boolean; message: string; count: number }> {
+    if (!userList || userList.length === 0) {
+      return { success: true, message: 'Tidak ada data pengguna yang dipilih.', count: 0 };
+    }
+
+    const cleanUsers = userList.map((u) => normalizeUser(u));
+
+    // 1. Sync to Firebase
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        const res = await firebaseService.addUsersBatch(cleanUsers);
+        // Sync local cache
+        const local = getLocalUsers();
+        cleanUsers.forEach((nu) => {
+          const idx = local.findIndex((l) => (l.username || '').toLowerCase() === nu.username.toLowerCase());
+          if (idx >= 0) local[idx] = nu;
+          else local.push(nu);
+        });
+        saveLocalUsers(local);
+        return res;
+      } catch (err) {
+        console.warn('Firebase addUsersBatch error:', err);
+      }
+    }
+
+    // 2. Fallback local
+    const local = getLocalUsers();
+    cleanUsers.forEach((nu) => {
+      const idx = local.findIndex((l) => (l.username || '').toLowerCase() === nu.username.toLowerCase());
+      if (idx >= 0) local[idx] = nu;
+      else local.push(nu);
+    });
+    saveLocalUsers(local);
+    return {
+      success: true,
+      message: `Berhasil menyimpan ${cleanUsers.length} akun pengguna!`,
+      count: cleanUsers.length,
+    };
+  },
+
   async deleteUser(username: string): Promise<ApiResponse> {
     const cleanU = (username || '').trim();
 
