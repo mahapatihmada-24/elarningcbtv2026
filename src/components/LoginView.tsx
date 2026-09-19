@@ -61,14 +61,24 @@ export const LoginView: React.FC<LoginViewProps> = ({
         <button
           onClick={onOpenSettings}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-semibold border border-slate-200 shadow-2xs transition"
-          title="Pengaturan Koneksi Spreadsheet / Google Apps Script"
+          title="Pengaturan Koneksi Database Cloud (Firebase / GAS)"
         >
           <span
             className={`w-2 h-2 rounded-full ${
-              dataSource === 'GAS' ? 'bg-emerald-500' : 'bg-amber-500'
+              dataSource === 'FIREBASE'
+                ? 'bg-emerald-500'
+                : dataSource === 'GAS'
+                ? 'bg-sky-500'
+                : 'bg-amber-500'
             }`}
           />
-          <span>{dataSource === 'GAS' ? 'Cloud GAS' : 'Mode Lokal'}</span>
+          <span>
+            {dataSource === 'FIREBASE'
+              ? 'Firebase Cloud'
+              : dataSource === 'GAS'
+              ? 'Cloud GAS'
+              : 'Mode Lokal'}
+          </span>
           <Settings className="w-3 h-3 text-slate-400" />
         </button>
       </div>

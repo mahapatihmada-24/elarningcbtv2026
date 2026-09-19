@@ -1,0 +1,79 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "type": "object",
+      "properties": {
+        "nama": { "type": "string" },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "guru", "murid"] },
+        "kelas": { "type": "string" }
+      },
+      "required": ["nama", "username", "role"]
+    },
+    "Materi": {
+      "title": "Materi",
+      "type": "object",
+      "properties": {
+        "ID": { "type": "string" },
+        "Judul": { "type": "string" },
+        "Mapel": { "type": "string" },
+        "Kelas": { "type": "string" },
+        "Konten_Link": { "type": "string" },
+        "Gambar_URL": { "type": "string" },
+        "Sumber": { "type": "string" },
+        "Nama_Guru": { "type": "string" },
+        "CreatedAt": { "type": "string" }
+      },
+      "required": ["ID", "Judul", "Mapel", "Kelas"]
+    },
+    "Ujian": {
+      "title": "Ujian",
+      "type": "object",
+      "properties": {
+        "ID": { "type": "string" },
+        "Judul_Ujian": { "type": "string" },
+        "Mapel": { "type": "string" },
+        "Kelas": { "type": "string" },
+        "Durasi_Menit": { "type": "number" },
+        "Soal_JSON": { "type": "string" },
+        "Status": { "type": "string", "enum": ["Aktif", "Non-Aktif"] }
+      },
+      "required": ["ID", "Judul_Ujian", "Mapel", "Kelas", "Durasi_Menit", "Soal_JSON", "Status"]
+    },
+    "Nilai": {
+      "title": "Nilai",
+      "type": "object",
+      "properties": {
+        "ID": { "type": "string" },
+        "ID_Ujian": { "type": "string" },
+        "Judul_Ujian": { "type": "string" },
+        "Nama_Murid": { "type": "string" },
+        "Kelas": { "type": "string" },
+        "Nilai": { "type": "number" },
+        "Pelanggaran": { "type": "number" },
+        "Waktu_Submit": { "type": "string" }
+      },
+      "required": ["ID", "ID_Ujian", "Nama_Murid", "Nilai"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Akun pengguna sistem (Admin, Guru, Siswa)"
+    },
+    "/materi/{materiId}": {
+      "schema": { "$ref": "#/entities/Materi" },
+      "description": "Materi pembelajaran siswa"
+    },
+    "/ujian/{ujianId}": {
+      "schema": { "$ref": "#/entities/Ujian" },
+      "description": "Daftar paket ujian dan butir soal CBT"
+    },
+    "/nilai/{nilaiId}": {
+      "schema": { "$ref": "#/entities/Nilai" },
+      "description": "Hasil dan rekapitulasi nilai ujian CBT siswa"
+    }
+  }
+}

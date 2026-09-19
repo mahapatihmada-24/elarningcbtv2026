@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Izinkan akses baca dan tulis penuh untuk database E-Learning & CBT
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

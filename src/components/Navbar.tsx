@@ -45,16 +45,24 @@ export const Navbar: React.FC<NavbarProps> = ({
           {(user.role === 'admin' || user.role === 'guru') && (
             <button
               onClick={onOpenSettings}
-              title="Klik untuk Pengaturan Koneksi Database / GAS"
+              title="Klik untuk Pengaturan Koneksi Database Cloud / Firebase"
               className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-indigo-800/60 hover:bg-indigo-800 border border-indigo-500/30 text-[11px] transition"
             >
               <span
                 className={`w-2 h-2 rounded-full shrink-0 ${
-                  dataSource === 'GAS' ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
+                  dataSource === 'FIREBASE'
+                    ? 'bg-emerald-400 animate-pulse'
+                    : dataSource === 'GAS'
+                    ? 'bg-sky-400 animate-pulse'
+                    : 'bg-amber-400'
                 }`}
               />
-              <span className="hidden md:inline text-indigo-100">
-                {dataSource === 'GAS' ? 'Cloud GAS' : 'Penyimpanan Lokal'}
+              <span className="hidden md:inline text-indigo-100 font-medium">
+                {dataSource === 'FIREBASE'
+                  ? 'Firebase Cloud'
+                  : dataSource === 'GAS'
+                  ? 'Cloud GAS'
+                  : 'Penyimpanan Lokal'}
               </span>
               <Settings className="w-3.5 h-3.5 text-indigo-200" />
             </button>
