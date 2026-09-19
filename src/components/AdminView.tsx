@@ -44,6 +44,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
         message: 'Mohon isi semua kolom pengguna termasuk password.',
         type: 'warning',
         isConfirm: false,
+        okText: 'Mengerti',
       });
       return;
     }
@@ -65,6 +66,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
         message: res.message || 'Pengguna baru berhasil ditambahkan.',
         type: 'success',
         isConfirm: false,
+        okText: 'OK',
       });
       setNama('');
       setUsername('');
@@ -78,6 +80,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
         message: res.message || 'Terjadi kesalahan.',
         type: 'error',
         isConfirm: false,
+        okText: 'Tutup',
       });
     }
   };
@@ -90,6 +93,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
       type: 'danger',
       isConfirm: true,
       okText: 'Hapus Pengguna',
+      cancelText: 'Batal',
       onConfirm: async () => {
         const res = await api.deleteUser(u.username);
         if (res.success) {
@@ -99,6 +103,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
             message: res.message || 'Pengguna berhasil dihapus.',
             type: 'success',
             isConfirm: false,
+            okText: 'OK',
           });
           fetchUsers();
         } else {
@@ -108,6 +113,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
             message: res.message || 'Gagal menghapus user.',
             type: 'error',
             isConfirm: false,
+            okText: 'Tutup',
           });
         }
       },

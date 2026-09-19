@@ -89,7 +89,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({ modal, onClose }) =>
                 : 'bg-indigo-600 hover:bg-indigo-700'
             }`}
           >
-            {modal.okText || 'OK'}
+            {modal.okText || (modal.isConfirm ? 'Konfirmasi' : 'OK')}
           </button>
         </div>
       </div>

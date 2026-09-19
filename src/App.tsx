@@ -39,13 +39,37 @@ export default function App() {
   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; title?: string } | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [modalState, setModalState] = useState<ModalState>({
+  const initialModalState: ModalState = {
     isOpen: false,
     title: '',
     message: '',
     type: 'info',
     isConfirm: false,
-  });
+    okText: 'OK',
+    cancelText: 'Batal',
+    onConfirm: undefined,
+    onCancel: undefined,
+  };
+
+  const [modalState, setModalState] = useState<ModalState>(initialModalState);
+
+  const handleCloseModal = () => {
+    setModalState(initialModalState);
+  };
+
+  const handleShowModal = (modal: Partial<ModalState>) => {
+    setModalState({
+      isOpen: true,
+      title: modal.title || '',
+      message: modal.message || '',
+      type: modal.type || 'info',
+      isConfirm: modal.isConfirm ?? false,
+      okText: modal.okText || (modal.isConfirm ? 'Konfirmasi' : 'OK'),
+      cancelText: modal.cancelText || 'Batal',
+      onConfirm: modal.onConfirm,
+      onCancel: modal.onCancel,
+    });
+  };
 
   // Check connectivity
   useEffect(() => {
@@ -94,8 +118,7 @@ export default function App() {
 
   const handleLogout = () => {
     if (activeExam) {
-      setModalState({
-        isOpen: true,
+      handleShowModal({
         title: 'Konfirmasi Keluar',
         message: 'Ujian sedang berlangsung! Jika Anda keluar sekarang, sesi ujian akan terhenti.',
         type: 'danger',
@@ -111,13 +134,13 @@ export default function App() {
       return;
     }
 
-    setModalState({
-      isOpen: true,
+    handleShowModal({
       title: 'Konfirmasi Keluar',
       message: 'Apakah Anda yakin ingin keluar dari sistem E-Learning & CBT?',
       type: 'question',
       isConfirm: true,
       okText: 'Ya, Keluar',
+      cancelText: 'Batal',
       onConfirm: () => {
         setCurrentUser(null);
         setActiveExam(null);
@@ -176,16 +199,14 @@ export default function App() {
             currentUser={currentUser}
             onFinishExam={() => setActiveExam(null)}
             onViewImage={(url, title) => setPreviewImage({ url, title })}
-            onShowModal={(modal) => setModalState((prev) => ({ ...prev, ...modal, isOpen: true }))}
+            onShowModal={handleShowModal}
           />
         ) : (
           <div className="space-y-6">
             {/* ROLE: ADMIN */}
             {currentUser.role === 'admin' && (
               <AdminView
-                onShowModal={(modal) =>
-                  setModalState((prev) => ({ ...prev, ...modal, isOpen: true }))
-                }
+                onShowModal={handleShowModal}
               />
             )}
 
@@ -234,26 +255,20 @@ export default function App() {
                     currentUser={currentUser}
                     onPlayYoutube={(id) => setYoutubeVideoId(id)}
                     onViewImage={(url, title) => setPreviewImage({ url, title })}
-                    onShowModal={(modal) =>
-                      setModalState((prev) => ({ ...prev, ...modal, isOpen: true }))
-                    }
+                    onShowModal={handleShowModal}
                   />
                 )}
 
                 {activeTab === 'cbt' && (
                   <GuruCBT
-                    onShowModal={(modal) =>
-                      setModalState((prev) => ({ ...prev, ...modal, isOpen: true }))
-                    }
+                    onShowModal={handleShowModal}
                     onViewImage={(url, title) => setPreviewImage({ url, title })}
                   />
                 )}
 
                 {activeTab === 'nilai' && (
                   <GuruNilai
-                    onShowModal={(modal) =>
-                      setModalState((prev) => ({ ...prev, ...modal, isOpen: true }))
-                    }
+                    onShowModal={handleShowModal}
                   />
                 )}
               </div>
@@ -390,7 +405,7 @@ export default function App() {
 
       <ConfirmModal
         modal={modalState}
-        onClose={() => setModalState((prev) => ({ ...prev, isOpen: false }))}
+        onClose={handleCloseModal}
       />
     </div>
   );
