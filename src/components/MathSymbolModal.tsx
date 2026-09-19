@@ -1103,18 +1103,22 @@ export const MathSymbolModal: React.FC<MathSymbolModalProps> = ({
                   <tbody className="divide-y divide-slate-200 text-slate-700">
                     <tr className="hover:bg-slate-50">
                       <td className="p-2.5 border border-slate-200 text-center font-bold text-base text-indigo-700">
-                        √ / \(\sqrt{}\)
+                        <MathRenderer content="√ / \(\sqrt{x}\)" />
                       </td>
                       <td className="p-2.5 border border-slate-200 font-bold">Akar Kuadrat</td>
                       <td className="p-2.5 border border-slate-200">Mencari akar pangkat dua dari suatu bilangan positif.</td>
-                      <td className="p-2.5 border border-slate-200 font-mono bg-slate-50">\(\sqrt{16} = 4\)</td>
+                      <td className="p-2.5 border border-slate-200 font-mono bg-slate-50">
+                        <MathRenderer content="\(\sqrt{16} = 4\)" />
+                      </td>
                     </tr>
                     <tr className="hover:bg-slate-50">
                       <td className="p-2.5 border border-slate-200 text-center font-bold text-base font-serif text-indigo-700">
                         π
                       </td>
                       <td className="p-2.5 border border-slate-200 font-bold">Pi (Konstanta Lingkaran)</td>
-                      <td className="p-2.5 border border-slate-200">Rasio keliling lingkaran terhadap diameternya, bernilai sekitar 3.14 atau \(\frac{22}{7}\).</td>
+                      <td className="p-2.5 border border-slate-200">
+                        <MathRenderer content="Rasio keliling lingkaran terhadap diameternya, bernilai sekitar 3.14 atau \(\frac{22}{7}\)." />
+                      </td>
                       <td className="p-2.5 border border-slate-200 font-mono bg-slate-50">K = 2 × π × r</td>
                     </tr>
                     <tr className="hover:bg-slate-50">
@@ -1131,15 +1135,19 @@ export const MathSymbolModal: React.FC<MathSymbolModalProps> = ({
                       </td>
                       <td className="p-2.5 border border-slate-200 font-bold">Persen</td>
                       <td className="p-2.5 border border-slate-200">Per seratus; pecahan dengan penyebut 100.</td>
-                      <td className="p-2.5 border border-slate-200 font-mono bg-slate-50">50% = \(\frac{50}{100} = 0.5\)</td>
+                      <td className="p-2.5 border border-slate-200 font-mono bg-slate-50">
+                        <MathRenderer content="50% = \(\frac{50}{100} = 0.5\)" />
+                      </td>
                     </tr>
                     <tr className="hover:bg-slate-50">
                       <td className="p-2.5 border border-slate-200 text-center font-bold text-base text-indigo-700">
-                        \(\frac{a}{b}\)
+                        <MathRenderer content="\(\frac{a}{b}\)" />
                       </td>
                       <td className="p-2.5 border border-slate-200 font-bold">Pecahan Biasa</td>
                       <td className="p-2.5 border border-slate-200">Pembagian nilai pembilang (a) dengan penyebut (b).</td>
-                      <td className="p-2.5 border border-slate-200 font-mono bg-slate-50">\(\frac{1}{2} + \frac{1}{2} = 1\)</td>
+                      <td className="p-2.5 border border-slate-200 font-mono bg-slate-50">
+                        <MathRenderer content="\(\frac{1}{2} + \frac{1}{2} = 1\)" />
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -1202,7 +1210,7 @@ export const MathSymbolModal: React.FC<MathSymbolModalProps> = ({
                 </li>
                 <li>
                   <strong>Format Rumus Matematika (KaTeX / LaTeX):</strong> Gunakan tanda kurung matematika{' '}
-                  <code>\(\sqrt{x}\)</code> atau <code>\(\frac{a}{b}\)</code> atau <code>$rumus$</code> untuk tampilan
+                  <code>{'\(\\sqrt{x}\\)'}</code> atau <code>{'\(\\frac{a}{b}\\)'}</code> atau <code>{'$rumus$'}</code> untuk tampilan
                   rumus pecahan bertingkat yang rapi.
                 </li>
               </ul>

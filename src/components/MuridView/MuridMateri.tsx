@@ -9,14 +9,12 @@ import {
   Download,
   Printer,
   FileText,
-  Calculator,
 } from 'lucide-react';
 import { Materi, User } from '../../types';
 import { api } from '../../services/api';
 import { MathRenderer } from '../MathRenderer';
 import { extractYoutubeId } from '../YouTubeModal';
 import { WordDocumentModal } from '../WordDocumentModal';
-import { MathSymbolModal } from '../MathSymbolModal';
 import { downloadMateriWord, printMateri } from '../../utils/documentExport';
 
 interface MuridMateriProps {
@@ -35,7 +33,6 @@ export const MuridMateri: React.FC<MuridMateriProps> = ({
   const [search, setSearch] = useState('');
   const [filterMapel, setFilterMapel] = useState('ALL');
   const [selectedWordMateri, setSelectedWordMateri] = useState<Materi | null>(null);
-  const [isMathModalOpen, setIsMathModalOpen] = useState(false);
 
   const fetchMateri = async () => {
     setIsLoading(true);
@@ -78,7 +75,7 @@ export const MuridMateri: React.FC<MuridMateriProps> = ({
               Materi Belajar Siswa (Kelas {currentUser.kelas || '6A'})
             </h3>
             <p className="text-xs text-slate-500">
-              Pelajari materi pelajaran, rumus matematika, dan video panduan dari Guru
+              Pelajari materi pelajaran dan video panduan dari Guru
             </p>
           </div>
         </div>
@@ -107,15 +104,6 @@ export const MuridMateri: React.FC<MuridMateriProps> = ({
               </option>
             ))}
           </select>
-
-          <button
-            onClick={() => setIsMathModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition shadow-2xs active:scale-95 whitespace-nowrap"
-            title="Buka Kamus & Rangkuman Simbol Matematika Lengkap"
-          >
-            <Calculator className="w-3.5 h-3.5 text-amber-600" />
-            <span>Kamus Simbol MTK</span>
-          </button>
         </div>
       </div>
 
@@ -233,13 +221,6 @@ export const MuridMateri: React.FC<MuridMateriProps> = ({
         isOpen={!!selectedWordMateri}
         onClose={() => setSelectedWordMateri(null)}
         materi={selectedWordMateri}
-      />
-
-      {/* Kamus & Rangkuman Simbol Matematika Siswa */}
-      <MathSymbolModal
-        isOpen={isMathModalOpen}
-        onClose={() => setIsMathModalOpen(false)}
-        initialTab="rangkuman"
       />
     </div>
   );

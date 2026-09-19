@@ -14,6 +14,7 @@ import {
   LayoutGrid,
   ListFilter,
   X,
+  User as UserIcon,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Ujian, Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, User } from '../../types';
@@ -388,6 +389,13 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
             <span className="hidden md:inline text-xs text-slate-400">•</span>
             <span className="hidden md:inline text-xs text-slate-500 font-medium">
               Soal {currentQuestionIndex + 1} dari {activeQuestions.length}
+            </span>
+            <span
+              className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md truncate max-w-[130px] border border-slate-200 shrink-0"
+              title={`Nama Siswa: ${currentUser.nama} (${currentUser.kelas})`}
+            >
+              <UserIcon className="w-3 h-3 text-indigo-600 shrink-0" />
+              <span className="truncate">{currentUser.nama}</span>
             </span>
           </div>
 
