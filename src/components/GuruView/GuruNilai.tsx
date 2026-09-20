@@ -19,6 +19,7 @@ import { Nilai, SchoolProfile } from '../../types';
 import { api } from '../../services/api';
 import { ModalState } from '../ConfirmModal';
 import { exportNilaiToExcel } from '../../utils/excelExamHelper';
+import { RekapNilaiPrintModal } from '../RekapNilaiPrintModal';
 
 interface GuruNilaiProps {
   onShowModal: (modal: Partial<ModalState>) => void;
@@ -44,6 +45,9 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
     phone: string;
     message: string;
   } | null>(null);
+
+  // Print PDF Preview Modal
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   const fetchNilaiAndProfile = async () => {
     setIsLoading(true);
@@ -173,9 +177,18 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
     exportNilaiToExcel(filterTitle, filteredNilai, schoolProfile || undefined);
   };
 
-  // Print PDF
+  // Print PDF Laporan Rekap Nilai & Anti-Contek
   const handlePrintPDF = () => {
-    window.print();
+    if (filteredNilai.length === 0) {
+      onShowModal({
+        isOpen: true,
+        title: 'Data Masih Kosong',
+        message: 'Tidak ada data rekap nilai yang sesuai dengan filter pencarian untuk dicetak.',
+        type: 'warning',
+      });
+      return;
+    }
+    setIsPrintModalOpen(true);
   };
 
   // Extract unique bank soal & classes for filter options
@@ -597,6 +610,16 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
           </div>
         </div>
       )}
+      {/* Modal Rekap Nilai & Log Anti-Contek Resmi A4 Landscape */}
+      <RekapNilaiPrintModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        judulUjian={filterBankSoal !== 'ALL' ? filterBankSoal : 'Semua Bank Soal (Gabungan)'}
+        kelas={filterKelas !== 'ALL' ? filterKelas : 'ALL'}
+        nilaiList={filteredNilai}
+        schoolProfile={schoolProfile}
+        kkm={kkm}
+      />
     </div>
   );
 };

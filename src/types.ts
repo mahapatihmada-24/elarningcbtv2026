@@ -153,6 +153,8 @@ export interface Announcement {
   tanggal: string;
   penulis: string;
   target: 'semua' | 'guru' | 'murid';
+  kategori?: 'penting' | 'ujian' | 'libur' | 'info';
+  pinned?: boolean;
 }
 
 export interface ApiResponse<T = unknown> {

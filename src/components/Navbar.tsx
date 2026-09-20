@@ -1,5 +1,5 @@
 import React from 'react';
-import { GraduationCap, LogOut, Settings, User as UserIcon } from 'lucide-react';
+import { GraduationCap, LogOut, Settings, User as UserIcon, Bell } from 'lucide-react';
 import { User } from '../types';
 import { DataSource } from '../services/api';
 
@@ -8,6 +8,8 @@ interface NavbarProps {
   dataSource: DataSource;
   onOpenSettings: () => void;
   onLogout: () => void;
+  unreadNotificationsCount?: number;
+  onOpenNotifications?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -15,6 +17,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   dataSource,
   onOpenSettings,
   onLogout,
+  unreadNotificationsCount = 0,
+  onOpenNotifications,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-indigo-700 text-white shadow-md">
@@ -65,6 +69,23 @@ export const Navbar: React.FC<NavbarProps> = ({
                   : 'Penyimpanan Lokal'}
               </span>
               <Settings className="w-3.5 h-3.5 text-indigo-200" />
+            </button>
+          )}
+
+          {/* School Notification & Announcement Bell */}
+          {onOpenNotifications && (
+            <button
+              type="button"
+              onClick={onOpenNotifications}
+              title="Papan Pengumuman & Notifikasi Sekolah"
+              className="relative p-1.5 sm:p-2 rounded-lg bg-indigo-800/60 hover:bg-indigo-800 border border-indigo-500/30 text-indigo-100 transition active:scale-95 cursor-pointer"
+            >
+              <Bell className="w-4 h-4 text-indigo-200 hover:text-white" />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 bg-rose-500 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-indigo-700 animate-pulse">
+                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                </span>
+              )}
             </button>
           )}
 

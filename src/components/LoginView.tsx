@@ -133,7 +133,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
         onLoginSuccess(pendingAdminUser);
       } else {
         setIsVerifyingPin(false);
-        setPinError('Kode PIN Keamanan tidak sesuai. Silakan periksa kembali atau gunakan PIN master default (240101).');
+        setPinError('Kode PIN Keamanan tidak sesuai. Silakan periksa kembali kode PIN Anda.');
         setPinDigits(['', '', '', '', '', '']);
         inputRefs.current[0]?.focus();
       }
@@ -439,14 +439,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
               </div>
             )}
 
-            {/* Hint message */}
-            <div className="p-3 rounded-xl bg-indigo-50/60 border border-indigo-100 text-[11px] text-indigo-900 leading-relaxed">
-              <span className="font-semibold">Informasi:</span> PIN Master default adalah{' '}
-              <strong className="font-mono bg-indigo-100 px-1 py-0.5 rounded text-indigo-800">
-                {schoolProfile?.adminOTPSecret || '240101'}
-              </strong>
-              . Anda dapat mengubah kode PIN ini kapan saja di menu{' '}
-              <strong>Pengaturan Sekolah & Keamanan</strong>.
+            {/* Security notice (PIN hidden to prevent data leakage) */}
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 leading-relaxed flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>
+                Masukkan 6 digit kode PIN keamanan yang sah untuk mengonfirmasi akses Administrator.
+              </span>
             </div>
 
             {/* Submit button */}
