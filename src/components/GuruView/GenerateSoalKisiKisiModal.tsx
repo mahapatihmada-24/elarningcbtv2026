@@ -428,11 +428,14 @@ export const GenerateSoalKisiKisiModal: React.FC<GenerateSoalKisiKisiModalProps>
                     <thead>
                       <tr className="bg-slate-100/80 text-slate-600 font-bold border-b border-slate-200 text-[11px]">
                         <th className="py-2.5 px-3 w-10 text-center">Pilih</th>
-                        <th className="py-2.5 px-3 w-12 text-center">No</th>
-                        <th className="py-2.5 px-4 w-40">Materi Pokok</th>
-                        <th className="py-2.5 px-4">Indikator Soal & Capaian</th>
-                        <th className="py-2.5 px-3 w-28 text-center">Kognitif</th>
-                        <th className="py-2.5 px-3 w-32 text-center">Bentuk Soal</th>
+                        <th className="py-2.5 px-2.5 w-10 text-center">No</th>
+                        <th className="py-2.5 px-3 w-28">Elemen</th>
+                        <th className="py-2.5 px-3 w-32">Sub Elemen</th>
+                        <th className="py-2.5 px-3 w-48">Kompetensi</th>
+                        <th className="py-2.5 px-2.5 w-24 text-center">Level Kognitif</th>
+                        <th className="py-2.5 px-2.5 w-24 text-center">Konteks</th>
+                        <th className="py-2.5 px-3">Indikator</th>
+                        <th className="py-2.5 px-3 w-28 text-center">Tipe Soal</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -454,21 +457,19 @@ export const GenerateSoalKisiKisiModal: React.FC<GenerateSoalKisiKisiModalProps>
                                 className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                               />
                             </td>
-                            <td className="py-2.5 px-3 text-center font-bold text-slate-600">
+                            <td className="py-2.5 px-2.5 text-center font-bold text-slate-600">
                               {it.nomorSoal || idx + 1}
                             </td>
-                            <td className="py-2.5 px-4 font-semibold text-slate-800">
-                              {it.materi || 'Materi Pokok'}
+                            <td className="py-2.5 px-3 font-semibold text-slate-800">
+                              {it.elemen || it.materi || '-'}
                             </td>
-                            <td className="py-2.5 px-4">
-                              <p className="text-slate-800 font-medium leading-relaxed">{it.indikator}</p>
-                              {it.cp_kd && (
-                                <p className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">
-                                  CP: {it.cp_kd}
-                                </p>
-                              )}
+                            <td className="py-2.5 px-3 text-slate-700">
+                              {it.subElemen || it.materi || '-'}
                             </td>
-                            <td className="py-2.5 px-3 text-center">
+                            <td className="py-2.5 px-3 text-slate-700 leading-relaxed text-[11px]">
+                              {it.kompetensi || it.cp_kd || '-'}
+                            </td>
+                            <td className="py-2.5 px-2.5 text-center">
                               <span
                                 className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                   it.levelKognitif === 'L3'
@@ -478,17 +479,20 @@ export const GenerateSoalKisiKisiModal: React.FC<GenerateSoalKisiKisiModalProps>
                                     : 'bg-blue-100 text-blue-700 border border-blue-200'
                                 }`}
                               >
-                                {it.levelKognitif} -{' '}
-                                {it.levelKognitif === 'L3'
-                                  ? 'Penalaran'
-                                  : it.levelKognitif === 'L1'
-                                  ? 'Pemahaman'
-                                  : 'Penerapan'}
+                                {it.levelKognitif || 'L2'}
                               </span>
+                            </td>
+                            <td className="py-2.5 px-2.5 text-center">
+                              <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                                {it.konteks || 'Personal'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <p className="text-slate-800 font-medium leading-relaxed">{it.indikator || '-'}</p>
                             </td>
                             <td className="py-2.5 px-3 text-center">
                               <span className="text-[11px] font-medium text-slate-600">
-                                {it.bentukSoal || 'Pilihan Ganda'}
+                                {it.tipeSoal || it.bentukSoal || 'Pilihan Ganda'}
                               </span>
                             </td>
                           </tr>

@@ -221,9 +221,48 @@ export default function App() {
     });
   };
 
+  const normalizeTab = (rawTab: string): string => {
+    switch (rawTab) {
+      case 'murid-mode':
+      case 'murid':
+      case 'murid-cbt':
+      case 'murid_cbt':
+        return 'murid_cbt';
+      case 'murid-materi':
+      case 'murid_materi':
+        return 'murid_materi';
+      case 'admin-school':
+      case 'admin_school':
+      case 'admin-settings':
+      case 'admin_settings':
+        return 'admin_settings';
+      case 'admin-users':
+      case 'admin_users':
+        return 'admin_users';
+      case 'admin-master':
+      case 'admin_master':
+        return 'admin_master';
+      case 'admin-dashboard':
+      case 'admin_dashboard':
+        return 'admin_dashboard';
+      case 'guru-materi':
+      case 'guru_materi':
+        return 'guru_materi';
+      case 'guru-cbt':
+      case 'guru_cbt':
+        return 'guru_cbt';
+      case 'guru-nilai':
+      case 'guru_nilai':
+        return 'guru_nilai';
+      default:
+        return rawTab;
+    }
+  };
+
   const handleSwitchTab = (tab: string) => {
-    setActiveTab(tab);
-    localStorage.setItem(TAB_KEY, tab);
+    const normalized = normalizeTab(tab);
+    setActiveTab(normalized);
+    localStorage.setItem(TAB_KEY, normalized);
   };
 
   // If user is not logged in, render the login page
@@ -435,7 +474,10 @@ export default function App() {
                 )}
 
                 {activeTab === 'admin_master' && (
-                  <AdminMasterData onShowModal={handleShowModal} />
+                  <AdminMasterData
+                    currentUser={currentUser}
+                    onShowModal={handleShowModal}
+                  />
                 )}
 
                 {activeTab === 'admin_settings' && (
@@ -464,9 +506,26 @@ export default function App() {
                 )}
 
                 {/* Admin direct access to Murid modules */}
+                {(activeTab === 'murid_materi' || activeTab === 'murid_cbt') && (
+                  <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-2 shadow-xs">
+                    <div className="flex items-center gap-2 text-emerald-900 text-xs font-semibold">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>
+                        <strong>Mode Akses Murid (Admin):</strong> Sedang menjalankan simulasi tampilan siswa SDN Harjosari Kidul 01.
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleSwitchTab('admin_dashboard')}
+                      className="text-xs px-3 py-1 rounded-xl bg-white hover:bg-emerald-100 text-emerald-800 font-bold border border-emerald-300 transition"
+                    >
+                      ← Kembali ke Dashboard Admin
+                    </button>
+                  </div>
+                )}
+
                 {activeTab === 'murid_materi' && (
                   <MuridMateri
-                    currentUser={{ ...currentUser, kelas: 'Semua' }}
+                    currentUser={{ ...currentUser, role: 'admin', kelas: currentUser.kelas || 'Semua' }}
                     onPlayYoutube={(id) => setYoutubeVideoId(id)}
                     onViewImage={(url, title) => setPreviewImage({ url, title })}
                   />
@@ -474,7 +533,7 @@ export default function App() {
 
                 {activeTab === 'murid_cbt' && (
                   <MuridCBTList
-                    currentUser={{ ...currentUser, kelas: 'Semua' }}
+                    currentUser={{ ...currentUser, role: 'admin', kelas: currentUser.kelas || 'Semua' }}
                     onStartExam={(exam) => setActiveExam(exam)}
                   />
                 )}

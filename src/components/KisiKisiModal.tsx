@@ -74,6 +74,7 @@ export const KisiKisiModal: React.FC<KisiKisiModalProps> = ({
     let l1Count = 0;
     let l2Count = 0;
     let l3Count = 0;
+    const materiMap = new Map<string, number>();
     const elemenMap = new Map<string, number>();
     const konteksMap = new Map<string, number>();
     const bentukMap = new Map<string, number>();
@@ -82,6 +83,9 @@ export const KisiKisiModal: React.FC<KisiKisiModalProps> = ({
       if (it.levelKognitif === 'L1') l1Count++;
       else if (it.levelKognitif === 'L3') l3Count++;
       else l2Count++;
+
+      const mat = (it.materi || it.elemen || 'Umum').trim();
+      materiMap.set(mat, (materiMap.get(mat) || 0) + 1);
 
       const el = (it.elemen || it.materi || 'Umum').trim();
       elemenMap.set(el, (elemenMap.get(el) || 0) + 1);
@@ -101,6 +105,7 @@ export const KisiKisiModal: React.FC<KisiKisiModalProps> = ({
       l1Pct: total > 0 ? Math.round((l1Count / total) * 100) : 0,
       l2Pct: total > 0 ? Math.round((l2Count / total) * 100) : 0,
       l3Pct: total > 0 ? Math.round((l3Count / total) * 100) : 0,
+      materiList: Array.from(materiMap.entries()),
       elemenList: Array.from(elemenMap.entries()),
       konteksList: Array.from(konteksMap.entries()),
       bentukList: Array.from(bentukMap.entries()),
@@ -118,9 +123,9 @@ export const KisiKisiModal: React.FC<KisiKisiModalProps> = ({
         (it.kompetensi || '').toLowerCase().includes(term) ||
         (it.konteks || '').toLowerCase().includes(term) ||
         (it.tipeSoal || '').toLowerCase().includes(term) ||
-        it.materi.toLowerCase().includes(term) ||
-        it.indikator.toLowerCase().includes(term) ||
-        it.cp_kd.toLowerCase().includes(term) ||
+        (it.materi || '').toLowerCase().includes(term) ||
+        (it.indikator || '').toLowerCase().includes(term) ||
+        (it.cp_kd || '').toLowerCase().includes(term) ||
         String(it.nomorSoal).includes(term)
     );
   }, [items, searchTerm]);
@@ -470,30 +475,22 @@ export const KisiKisiModal: React.FC<KisiKisiModalProps> = ({
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-bold">
-                        <th className="py-2.5 px-3 text-center w-12 border-r border-slate-200">No</th>
-                        <th className="py-2.5 px-3 w-56 border-r border-slate-200">
-                          Capaian Pembelajaran (CP) / KD
-                        </th>
-                        <th className="py-2.5 px-3 w-44 border-r border-slate-200">
-                          Lingkup Materi Pokok
-                        </th>
-                        <th className="py-2.5 px-3 border-r border-slate-200">Indikator Soal</th>
-                        <th className="py-2.5 px-2.5 text-center w-20 border-r border-slate-200">
-                          Level
-                        </th>
-                        <th className="py-2.5 px-3 text-center w-28 border-r border-slate-200">
-                          Bentuk Soal
-                        </th>
-                        <th className="py-2.5 px-2.5 text-center w-16 border-r border-slate-200">
-                          No. Soal
-                        </th>
-                        <th className="py-2.5 px-2 text-center w-14">Skor</th>
+                        <th className="py-2.5 px-3 text-center w-10 border-r border-slate-200">No</th>
+                        <th className="py-2.5 px-3 w-36 border-r border-slate-200">Elemen</th>
+                        <th className="py-2.5 px-3 w-40 border-r border-slate-200">Sub Elemen</th>
+                        <th className="py-2.5 px-3 w-56 border-r border-slate-200">Kompetensi</th>
+                        <th className="py-2.5 px-2.5 text-center w-24 border-r border-slate-200">Level Kognitif</th>
+                        <th className="py-2.5 px-2.5 text-center w-24 border-r border-slate-200">Konteks</th>
+                        <th className="py-2.5 px-3 border-r border-slate-200">Indikator</th>
+                        <th className="py-2.5 px-3 text-center w-32 border-r border-slate-200">Tipe Soal</th>
+                        <th className="py-2.5 px-2.5 text-center w-16 border-r border-slate-200">Nomor Soal</th>
+                        <th className="py-2.5 px-2 text-center w-12">Skor</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
                       {filteredItems.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="py-8 text-center text-slate-400">
+                          <td colSpan={10} className="py-8 text-center text-slate-400">
                             Tidak ada butir kisi-kisi yang cocok dengan pencarian.
                           </td>
                         </tr>
@@ -506,14 +503,14 @@ export const KisiKisiModal: React.FC<KisiKisiModalProps> = ({
                             <td className="py-2.5 px-3 text-center font-medium text-slate-500 border-r border-slate-200">
                               {it.no || idx + 1}
                             </td>
-                            <td className="py-2.5 px-3 text-slate-700 text-justify leading-relaxed border-r border-slate-200">
-                              {it.cp_kd}
-                            </td>
                             <td className="py-2.5 px-3 font-semibold text-slate-800 border-r border-slate-200">
-                              {it.materi}
+                              {it.elemen || it.materi || '-'}
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-700 border-r border-slate-200">
+                              {it.subElemen || it.materi || '-'}
                             </td>
                             <td className="py-2.5 px-3 text-slate-700 text-justify leading-relaxed border-r border-slate-200">
-                              {it.indikator}
+                              {it.kompetensi || it.cp_kd || '-'}
                             </td>
                             <td className="py-2.5 px-2.5 text-center border-r border-slate-200">
                               <span
@@ -528,8 +525,24 @@ export const KisiKisiModal: React.FC<KisiKisiModalProps> = ({
                                 {it.levelKognitif || 'L2'}
                               </span>
                             </td>
-                            <td className="py-2.5 px-3 text-center text-slate-600 border-r border-slate-200">
-                              {it.bentukSoal || 'Pilihan Ganda'}
+                            <td className="py-2.5 px-2.5 text-center border-r border-slate-200">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                  it.konteks === 'Saintifik'
+                                    ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                    : it.konteks === 'Sosial Budaya'
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                    : 'bg-slate-100 text-slate-800 border border-slate-200'
+                                }`}
+                              >
+                                {it.konteks || 'Personal'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-700 text-justify leading-relaxed border-r border-slate-200">
+                              {it.indikator || '-'}
+                            </td>
+                            <td className="py-2.5 px-3 text-center text-slate-600 border-r border-slate-200 font-medium">
+                              {it.tipeSoal || it.bentukSoal || 'Pilihan Ganda'}
                             </td>
                             <td className="py-2.5 px-2.5 text-center font-bold text-slate-900 border-r border-slate-200">
                               {it.nomorSoal || idx + 1}
@@ -600,18 +613,27 @@ export const KisiKisiModal: React.FC<KisiKisiModalProps> = ({
                     key={idx}
                     className="p-3.5 rounded-xl border border-slate-200 bg-white shadow-xs hover:border-indigo-300 transition-all space-y-3"
                   >
-                    <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-2.5">
                       <div className="flex items-center gap-2">
                         <span className="w-6 h-6 rounded-full bg-indigo-600 text-white font-bold text-xs flex items-center justify-center">
                           {idx + 1}
                         </span>
-                        <span className="text-xs font-bold text-slate-800">
-                          Butir Soal Nomor {it.nomorSoal || idx + 1}
-                        </span>
+                        <div className="flex items-center gap-1 text-xs font-bold text-slate-800">
+                          <span>Nomor Soal:</span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={it.nomorSoal || idx + 1}
+                            onChange={(e) =>
+                              handleUpdateItem(idx, 'nomorSoal', Number(e.target.value) || idx + 1)
+                            }
+                            className="w-14 px-2 py-0.5 rounded-md border border-slate-300 text-xs text-center font-bold focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1.5 text-xs">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <div className="flex items-center gap-1">
                           <label className="text-slate-500 font-medium">Level Kognitif:</label>
                           <select
                             value={it.levelKognitif || 'L2'}
@@ -626,32 +648,46 @@ export const KisiKisiModal: React.FC<KisiKisiModalProps> = ({
                           </select>
                         </div>
 
-                        <div className="flex items-center gap-1.5 text-xs">
-                          <label className="text-slate-500 font-medium">Bentuk:</label>
+                        <div className="flex items-center gap-1">
+                          <label className="text-slate-500 font-medium">Konteks:</label>
+                          <select
+                            value={it.konteks || 'Personal'}
+                            onChange={(e) => handleUpdateItem(idx, 'konteks', e.target.value)}
+                            className="px-2 py-1 rounded-md border border-slate-300 text-xs font-semibold focus:ring-1 focus:ring-indigo-500"
+                          >
+                            <option value="Personal">Personal</option>
+                            <option value="Sosial Budaya">Sosial Budaya</option>
+                            <option value="Saintifik">Saintifik</option>
+                          </select>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <label className="text-slate-500 font-medium">Tipe Soal:</label>
                           <input
                             type="text"
-                            value={it.bentukSoal || 'Pilihan Ganda'}
-                            onChange={(e) => handleUpdateItem(idx, 'bentukSoal', e.target.value)}
-                            className="w-32 px-2 py-1 rounded-md border border-slate-300 text-xs focus:ring-1 focus:ring-indigo-500"
+                            value={it.tipeSoal || it.bentukSoal || 'Pilihan Ganda'}
+                            onChange={(e) => handleUpdateItem(idx, 'tipeSoal', e.target.value)}
+                            className="w-28 px-2 py-1 rounded-md border border-slate-300 text-xs focus:ring-1 focus:ring-indigo-500"
+                            placeholder="Pilihan Ganda"
                           />
                         </div>
 
-                        <div className="flex items-center gap-1.5 text-xs">
-                          <label className="text-slate-500 font-medium">Bobot:</label>
+                        <div className="flex items-center gap-1">
+                          <label className="text-slate-500 font-medium">Skor:</label>
                           <input
                             type="number"
                             min="1"
                             max="10"
                             value={it.bobot || 1}
                             onChange={(e) => handleUpdateItem(idx, 'bobot', Number(e.target.value) || 1)}
-                            className="w-14 px-2 py-1 rounded-md border border-slate-300 text-xs text-center focus:ring-1 focus:ring-indigo-500"
+                            className="w-12 px-2 py-1 rounded-md border border-slate-300 text-xs text-center focus:ring-1 focus:ring-indigo-500"
                           />
                         </div>
 
                         <button
                           type="button"
                           onClick={() => handleRemoveItem(idx)}
-                          className="p-1 text-rose-500 hover:bg-rose-50 rounded-md transition"
+                          className="p-1 text-rose-500 hover:bg-rose-50 rounded-md transition ml-1"
                           title="Hapus baris ini"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -659,40 +695,53 @@ export const KisiKisiModal: React.FC<KisiKisiModalProps> = ({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
                       <div>
                         <label className="block text-slate-500 font-medium mb-1">
-                          Lingkup Materi Pokok:
+                          Elemen:
                         </label>
                         <input
                           type="text"
-                          value={it.materi}
-                          onChange={(e) => handleUpdateItem(idx, 'materi', e.target.value)}
+                          value={it.elemen || ''}
+                          onChange={(e) => handleUpdateItem(idx, 'elemen', e.target.value)}
                           className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 focus:ring-1 focus:ring-indigo-500 font-medium text-slate-800"
-                          placeholder="e.g. Geometri Bangun Ruang"
+                          placeholder="e.g. Bilangan / Geometri / Pemahaman IPAS"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-500 font-medium mb-1">
+                          Sub Elemen:
+                        </label>
+                        <input
+                          type="text"
+                          value={it.subElemen || it.materi || ''}
+                          onChange={(e) => handleUpdateItem(idx, 'subElemen', e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 focus:ring-1 focus:ring-indigo-500 font-medium text-slate-800"
+                          placeholder="e.g. Pecahan & Desimal / Bangun Ruang"
                         />
                       </div>
 
                       <div className="md:col-span-2">
                         <label className="block text-slate-500 font-medium mb-1">
-                          Capaian Pembelajaran (CP) / Kompetensi Dasar (KD):
+                          Kompetensi:
                         </label>
                         <textarea
                           rows={2}
-                          value={it.cp_kd}
-                          onChange={(e) => handleUpdateItem(idx, 'cp_kd', e.target.value)}
+                          value={it.kompetensi || it.cp_kd || ''}
+                          onChange={(e) => handleUpdateItem(idx, 'kompetensi', e.target.value)}
                           className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 focus:ring-1 focus:ring-indigo-500 text-slate-800 resize-none"
-                          placeholder="Deskripsi Capaian Pembelajaran..."
+                          placeholder="Deskripsi Kompetensi / Capaian Pembelajaran..."
                         />
                       </div>
 
-                      <div className="md:col-span-3">
+                      <div className="md:col-span-2">
                         <label className="block text-slate-500 font-medium mb-1">
-                          Indikator Soal:
+                          Indikator:
                         </label>
                         <textarea
                           rows={2}
-                          value={it.indikator}
+                          value={it.indikator || ''}
                           onChange={(e) => handleUpdateItem(idx, 'indikator', e.target.value)}
                           className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 focus:ring-1 focus:ring-indigo-500 text-slate-800 resize-none"
                           placeholder="Disajikan stimulus berupa ..., peserta didik dapat menentukan ..."

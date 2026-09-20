@@ -1028,12 +1028,12 @@ export function exportKisiKisiToWord({
         <th style="width:3%;">No</th>
         <th style="width:11%;">Elemen</th>
         <th style="width:12%;">Sub Elemen</th>
-        <th style="width:21%;">Kompetensi</th>
-        <th style="width:6%;">Level</th>
+        <th style="width:20%;">Kompetensi</th>
+        <th style="width:8%;">Level Kognitif</th>
         <th style="width:8%;">Konteks</th>
-        <th style="width:23%;">Indikator Soal</th>
-        <th style="width:9%;">Tipe Soal</th>
-        <th style="width:4%;">No.</th>
+        <th style="width:22%;">Indikator</th>
+        <th style="width:8%;">Tipe Soal</th>
+        <th style="width:5%;">Nomor Soal</th>
         <th style="width:3%;">Skor</th>
       </tr>
     </thead>
@@ -1335,12 +1335,12 @@ export function printKisiKisiDocument({
         <th style="width:3%;">No</th>
         <th style="width:11%;">Elemen</th>
         <th style="width:12%;">Sub Elemen</th>
-        <th style="width:21%;">Kompetensi</th>
-        <th style="width:6%;">Level</th>
+        <th style="width:20%;">Kompetensi</th>
+        <th style="width:8%;">Level Kognitif</th>
         <th style="width:8%;">Konteks</th>
-        <th style="width:23%;">Indikator Soal</th>
-        <th style="width:9%;">Tipe Soal</th>
-        <th style="width:4%;">No.</th>
+        <th style="width:22%;">Indikator</th>
+        <th style="width:8%;">Tipe Soal</th>
+        <th style="width:5%;">Nomor Soal</th>
         <th style="width:3%;">Skor</th>
       </tr>
     </thead>

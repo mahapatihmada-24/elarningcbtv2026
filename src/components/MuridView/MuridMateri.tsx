@@ -32,12 +32,16 @@ export const MuridMateri: React.FC<MuridMateriProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [filterMapel, setFilterMapel] = useState('ALL');
+  const [filterKelas, setFilterKelas] = useState<string>(currentUser.kelas || 'Semua');
   const [selectedWordMateri, setSelectedWordMateri] = useState<Materi | null>(null);
+
+  const isAdmin = currentUser.role === 'admin';
 
   const fetchMateri = async () => {
     setIsLoading(true);
     try {
-      const data = await api.getMateriList(currentUser?.kelas || '6A');
+      const activeClass = isAdmin ? filterKelas : (currentUser?.kelas || '6A');
+      const data = await api.getMateriList(activeClass);
       setMateriList(data || []);
     } finally {
       setIsLoading(false);
@@ -46,7 +50,7 @@ export const MuridMateri: React.FC<MuridMateriProps> = ({
 
   useEffect(() => {
     fetchMateri();
-  }, [currentUser?.kelas]);
+  }, [currentUser?.kelas, currentUser?.role, filterKelas]);
 
   // Unique subjects
   const subjects = Array.from(new Set(materiList.map((m) => m.Mapel)));
@@ -71,9 +75,16 @@ export const MuridMateri: React.FC<MuridMateriProps> = ({
             <BookOpen className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-extrabold text-base text-slate-800">
-              Materi Belajar Siswa (Kelas {currentUser.kelas || '6A'})
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-extrabold text-base text-slate-800">
+                Materi Belajar Siswa ({isAdmin ? `Filter: ${filterKelas}` : `Kelas ${currentUser.kelas || '6A'}`})
+              </h3>
+              {isAdmin && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                  Mode Akses Admin
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-500">
               Pelajari materi pelajaran dan video panduan dari Guru
             </p>
@@ -81,6 +92,28 @@ export const MuridMateri: React.FC<MuridMateriProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
+            <select
+              value={filterKelas}
+              onChange={(e) => setFilterKelas(e.target.value)}
+              className="text-xs py-2 px-3 rounded-xl border border-slate-300 bg-white font-bold text-slate-700 focus:outline-indigo-600"
+            >
+              <option value="Semua">Semua Kelas</option>
+              <option value="1A">Kelas 1A</option>
+              <option value="1B">Kelas 1B</option>
+              <option value="2A">Kelas 2A</option>
+              <option value="2B">Kelas 2B</option>
+              <option value="3A">Kelas 3A</option>
+              <option value="3B">Kelas 3B</option>
+              <option value="4A">Kelas 4A</option>
+              <option value="4B">Kelas 4B</option>
+              <option value="5A">Kelas 5A</option>
+              <option value="5B">Kelas 5B</option>
+              <option value="6A">Kelas 6A</option>
+              <option value="6B">Kelas 6B</option>
+            </select>
+          )}
+
           <div className="relative flex-1 sm:w-56">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
             <input

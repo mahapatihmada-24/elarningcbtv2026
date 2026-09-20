@@ -74,6 +74,12 @@
     "/nilai/{nilaiId}": {
       "schema": { "$ref": "#/entities/Nilai" },
       "description": "Hasil dan rekapitulasi nilai ujian CBT siswa"
+    },
+    "/settings/{settingId}": {
+      "description": "Pengaturan master sekolah, master kelas, dan master mata pelajaran"
+    },
+    "/announcements/{announcementId}": {
+      "description": "Papan pengumuman dan notifikasi sekolah untuk guru dan murid"
     }
   }
 }

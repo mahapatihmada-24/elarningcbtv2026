@@ -25,7 +25,21 @@ export const DEFAULT_SCHOOL_PROFILE: SchoolProfile = {
   sessionTimeoutMinutes: 30,
 };
 
-export const DEFAULT_MASTER_KELAS: string[] = ['6A', '6B', '5A', '5B', '4A', '4B', 'Semua'];
+export const DEFAULT_MASTER_KELAS: string[] = [
+  '1A',
+  '1B',
+  '2A',
+  '2B',
+  '3A',
+  '3B',
+  '4A',
+  '4B',
+  '5A',
+  '5B',
+  '6A',
+  '6B',
+  'Semua',
+];
 export const DEFAULT_MASTER_MAPEL: string[] = [
   'Matematika',
   'Bahasa Indonesia',
@@ -620,14 +634,15 @@ export const api = {
 
   // 3. MATERI
   async getMateriList(targetKelas: string): Promise<Materi[]> {
-    const cleanTarget = (targetKelas || '').toLowerCase();
+    const cleanTarget = (targetKelas || '').trim().toLowerCase();
+    const isAllClasses = !cleanTarget || cleanTarget === 'all' || cleanTarget === 'semua';
 
     if (currentDataSource === 'FIREBASE') {
       try {
         const allMateri = await firebaseService.getMateriList();
         if (Array.isArray(allMateri)) {
           saveLocalMateri(allMateri);
-          if (!targetKelas || targetKelas === 'ALL') return [...allMateri].reverse();
+          if (isAllClasses) return [...allMateri].reverse();
           return allMateri
             .filter(
               (m) =>
@@ -647,7 +662,12 @@ export const api = {
         if (Array.isArray(res)) {
           const normalized = res.map(normalizeMateri);
           saveLocalMateri(normalized);
-          return normalized;
+          if (isAllClasses) return normalized;
+          return normalized.filter(
+            (m) =>
+              m.Kelas === 'Semua' ||
+              (m.Kelas || '').toLowerCase() === cleanTarget
+          );
         }
       } catch (err) {
         console.warn('GAS getMateriList error, fallback to local:', err);
@@ -655,7 +675,7 @@ export const api = {
     }
 
     const list = getLocalMateri();
-    if (!targetKelas || targetKelas === 'ALL') return [...list].reverse();
+    if (isAllClasses) return [...list].reverse();
     return list
       .filter(
         (m) =>
@@ -764,21 +784,34 @@ export const api = {
 
   // 4. UJIAN & CBT
   async getUjianList(targetKelas: string, role: string): Promise<Ujian[]> {
-    const cleanTarget = (targetKelas || '').toLowerCase();
+    const cleanTarget = (targetKelas || '').trim().toLowerCase();
+    const isAllClasses = !cleanTarget || cleanTarget === 'all' || cleanTarget === 'semua';
+    const isPrivileged = role === 'guru' || role === 'admin';
 
     if (currentDataSource === 'FIREBASE') {
       try {
         const allUjian = await firebaseService.getUjianList();
         if (Array.isArray(allUjian)) {
           saveLocalUjian(allUjian);
-          if (role === 'guru') return [...allUjian].reverse();
+          if (isPrivileged) {
+            if (isAllClasses) return [...allUjian].reverse();
+            return allUjian
+              .filter(
+                (u) =>
+                  u.Kelas === 'Semua' ||
+                  (u.Kelas || '').toLowerCase() === cleanTarget
+              )
+              .reverse();
+          }
+          // Murid role: only active tests
+          if (isAllClasses) {
+            return allUjian.filter((u) => u.Status === 'Aktif').reverse();
+          }
           return allUjian
             .filter(
               (u) =>
                 u.Status === 'Aktif' &&
-                (!targetKelas ||
-                  targetKelas === 'ALL' ||
-                  u.Kelas === 'Semua' ||
+                (u.Kelas === 'Semua' ||
                   (u.Kelas || '').toLowerCase() === cleanTarget)
             )
             .reverse();
@@ -794,7 +827,23 @@ export const api = {
         if (Array.isArray(res)) {
           const normalized = res.map(normalizeUjian);
           saveLocalUjian(normalized);
-          return normalized;
+          if (isPrivileged) {
+            if (isAllClasses) return normalized;
+            return normalized.filter(
+              (u) =>
+                u.Kelas === 'Semua' ||
+                (u.Kelas || '').toLowerCase() === cleanTarget
+            );
+          }
+          if (isAllClasses) {
+            return normalized.filter((u) => u.Status === 'Aktif');
+          }
+          return normalized.filter(
+            (u) =>
+              u.Status === 'Aktif' &&
+              (u.Kelas === 'Semua' ||
+                (u.Kelas || '').toLowerCase() === cleanTarget)
+          );
         }
       } catch (err) {
         console.warn('GAS getUjianList error, fallback to local:', err);
@@ -802,14 +851,24 @@ export const api = {
     }
 
     const list = getLocalUjian();
-    if (role === 'guru') return [...list].reverse();
+    if (isPrivileged) {
+      if (isAllClasses) return [...list].reverse();
+      return list
+        .filter(
+          (u) =>
+            u.Kelas === 'Semua' ||
+            (u.Kelas || '').toLowerCase() === cleanTarget
+        )
+        .reverse();
+    }
+    if (isAllClasses) {
+      return list.filter((u) => u.Status === 'Aktif').reverse();
+    }
     return list
       .filter(
         (u) =>
           u.Status === 'Aktif' &&
-          (!targetKelas ||
-            targetKelas === 'ALL' ||
-            u.Kelas === 'Semua' ||
+          (u.Kelas === 'Semua' ||
             (u.Kelas || '').toLowerCase() === cleanTarget)
       )
       .reverse();

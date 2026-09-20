@@ -32,6 +32,7 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
   const [hasilList, setHasilList] = useState<Nilai[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [schoolProfile, setSchoolProfile] = useState<SchoolProfile | null>(null);
+  const [filterKelas, setFilterKelas] = useState<string>(currentUser.kelas || 'Semua');
 
   // Kisi-Kisi Modal
   const [kisiModalExam, setKisiModalExam] = useState<Ujian | null>(null);
@@ -41,11 +42,14 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
   const [tokenInput, setTokenInput] = useState('');
   const [tokenError, setTokenError] = useState('');
 
+  const isAdmin = currentUser.role === 'admin';
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
+      const activeClass = isAdmin ? filterKelas : (currentUser.kelas || '6A');
       const [uData, hData, sProfile] = await Promise.all([
-        api.getUjianList(currentUser.kelas || '6A', 'murid'),
+        api.getUjianList(activeClass, currentUser.role || 'murid'),
         api.getHasilMurid(currentUser.nama),
         api.getSchoolProfile().catch(() => null),
       ]);
@@ -59,12 +63,12 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
 
   useEffect(() => {
     fetchData();
-  }, [currentUser.kelas, currentUser.nama]);
+  }, [currentUser.kelas, currentUser.nama, currentUser.role, filterKelas]);
 
   const handleInitiateExam = (u: Ujian) => {
-    // Schedule check
+    // Schedule check (bypassed for admin simulation test)
     const now = new Date();
-    if (u.Jadwal_Mulai) {
+    if (!isAdmin && u.Jadwal_Mulai) {
       const start = new Date(u.Jadwal_Mulai);
       if (now < start) {
         alert(
@@ -77,7 +81,7 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
       }
     }
 
-    if (u.Jadwal_Selesai) {
+    if (!isAdmin && u.Jadwal_Selesai) {
       const end = new Date(u.Jadwal_Selesai);
       if (now > end) {
         alert(
@@ -93,7 +97,7 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
     // Token check
     if (u.Token_Ujian && u.Token_Ujian.trim() !== '') {
       setTokenModalExam(u);
-      setTokenInput('');
+      setTokenInput(isAdmin ? (u.Token_Ujian || '') : '');
       setTokenError('');
       return;
     }
@@ -108,7 +112,7 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
     const required = (tokenModalExam.Token_Ujian || '').trim().toUpperCase();
     const entered = tokenInput.trim().toUpperCase();
 
-    if (entered !== required) {
+    if (!isAdmin && entered !== required) {
       setTokenError('Token Ujian tidak sesuai. Silakan hubungi Guru / Pengawas.');
       return;
     }
@@ -129,21 +133,51 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
             <FileText className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-extrabold text-base text-slate-800">
-              Daftar Ujian CBT Aktif (Kelas {currentUser.kelas || '6A'})
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-extrabold text-base text-slate-800">
+                Daftar Ujian CBT ({isAdmin ? `Filter: ${filterKelas}` : `Kelas ${currentUser.kelas || '6A'}`})
+              </h3>
+              {isAdmin && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                  Mode Akses Admin
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-500">
               Ujian berbasis komputer dengan proteksi acak soal dan sistem anti-contek
             </p>
           </div>
         </div>
 
-        <button
-          onClick={fetchData}
-          className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
-        >
-          Perbarui Daftar
-        </button>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <select
+              value={filterKelas}
+              onChange={(e) => setFilterKelas(e.target.value)}
+              className="text-xs py-1.5 px-3 rounded-xl border border-slate-300 bg-white font-bold text-slate-700 focus:outline-indigo-600"
+            >
+              <option value="Semua">Semua Kelas</option>
+              <option value="1A">Kelas 1A</option>
+              <option value="1B">Kelas 1B</option>
+              <option value="2A">Kelas 2A</option>
+              <option value="2B">Kelas 2B</option>
+              <option value="3A">Kelas 3A</option>
+              <option value="3B">Kelas 3B</option>
+              <option value="4A">Kelas 4A</option>
+              <option value="4B">Kelas 4B</option>
+              <option value="5A">Kelas 5A</option>
+              <option value="5B">Kelas 5B</option>
+              <option value="6A">Kelas 6A</option>
+              <option value="6B">Kelas 6B</option>
+            </select>
+          )}
+          <button
+            onClick={fetchData}
+            className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+          >
+            Perbarui Daftar
+          </button>
+        </div>
       </div>
 
       {isLoading ? (

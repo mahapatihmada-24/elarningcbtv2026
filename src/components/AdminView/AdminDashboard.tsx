@@ -197,7 +197,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
-              onClick={() => onNavigateTab('murid-mode')}
+              onClick={() => onNavigateTab('murid_cbt')}
               className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white text-xs font-bold border border-white/20 transition flex items-center gap-2"
               title="Coba tampilan aplikasi sebagai Murid"
             >
@@ -205,7 +205,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <span>Simulasi Mode Siswa</span>
             </button>
             <button
-              onClick={() => onNavigateTab('admin-school')}
+              onClick={() => onNavigateTab('admin_settings')}
               className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 text-xs font-bold shadow-md transition flex items-center gap-2"
             >
               <Settings className="w-4 h-4" />
@@ -320,7 +320,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <button
-            onClick={() => onNavigateTab('admin-users')}
+            onClick={() => onNavigateTab('admin_users')}
             className="p-4 rounded-2xl bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-300 text-left transition flex items-center justify-between group"
           >
             <div className="flex items-center gap-3">
@@ -338,7 +338,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <button
-            onClick={() => onNavigateTab('admin-master')}
+            onClick={() => onNavigateTab('admin_master')}
             className="p-4 rounded-2xl bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-300 text-left transition flex items-center justify-between group"
           >
             <div className="flex items-center gap-3">
@@ -356,7 +356,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <button
-            onClick={() => onNavigateTab('guru-cbt')}
+            onClick={() => onNavigateTab('guru_cbt')}
             className="p-4 rounded-2xl bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-300 text-left transition flex items-center justify-between group"
           >
             <div className="flex items-center gap-3">
@@ -374,7 +374,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </button>
 
           <button
-            onClick={() => onNavigateTab('guru-nilai')}
+            onClick={() => onNavigateTab('guru_nilai')}
             className="p-4 rounded-2xl bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-300 text-left transition flex items-center justify-between group"
           >
             <div className="flex items-center gap-3">
