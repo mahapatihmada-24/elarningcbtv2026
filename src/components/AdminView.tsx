@@ -11,7 +11,12 @@ import {
   FileSpreadsheet,
   Download,
   Upload,
+  Edit2,
+  KeyRound,
+  Check,
+  X,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { User, Role } from '../types';
 import { api } from '../services/api';
 import { ModalState } from './ConfirmModal';
@@ -24,6 +29,7 @@ interface AdminViewProps {
 
 export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
   const [users, setUsers] = useState<User[]>([]);
+  const [classList, setClassList] = useState<string[]>(['6A', '6B', '5A', '5B', 'Semua']);
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [isUploadExcelOpen, setIsUploadExcelOpen] = useState(false);
@@ -36,18 +42,35 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
   const [kelas, setKelas] = useState('6A');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchUsers = async () => {
+  // Edit user modal state
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editNama, setEditNama] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editRole, setEditRole] = useState<Role>('murid');
+  const [editKelas, setEditKelas] = useState('6A');
+  const [isUpdatingUser, setIsUpdatingUser] = useState(false);
+
+  // Reset password modal state
+  const [resetTargetUser, setResetTargetUser] = useState<User | null>(null);
+  const [newPasswordVal, setNewPasswordVal] = useState('123456');
+  const [isResettingPass, setIsResettingPass] = useState(false);
+
+  const fetchUsersAndClasses = async () => {
     setIsLoading(true);
     try {
-      const data = await api.getUsers();
-      setUsers(data || []);
+      const [uData, cData] = await Promise.all([api.getUsers(), api.getMasterKelas()]);
+      setUsers(uData || []);
+      if (Array.isArray(cData) && cData.length > 0) {
+        setClassList(cData);
+        setKelas(cData[0] || '6A');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchUsers();
+    fetchUsersAndClasses();
   }, []);
 
   const handleAddUser = async (e: React.FormEvent) => {
@@ -86,8 +109,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
       setNama('');
       setUsername('');
       setPassword('');
-      setKelas('6A');
-      fetchUsers();
+      fetchUsersAndClasses();
     } else {
       onShowModal({
         isOpen: true,
@@ -97,6 +119,102 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
         isConfirm: false,
         okText: 'Tutup',
       });
+    }
+  };
+
+  const handleOpenEditUser = (u: User) => {
+    setEditingUser(u);
+    setEditNama(u.nama || '');
+    setEditPassword(u.password || '123456');
+    setEditRole(u.role || 'murid');
+    setEditKelas(u.kelas || (classList[0] || '6A'));
+  };
+
+  const handleSaveEditUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    if (!editNama.trim()) {
+      onShowModal({
+        isOpen: true,
+        title: 'Nama Kosong',
+        message: 'Nama pengguna tidak boleh kosong.',
+        type: 'warning',
+      });
+      return;
+    }
+
+    setIsUpdatingUser(true);
+    try {
+      const updated: User = {
+        ...editingUser,
+        nama: editNama.trim(),
+        role: editRole,
+        kelas: editRole === 'murid' ? editKelas : '-',
+        password: editPassword.trim() || editingUser.password || '123456',
+      };
+
+      const res = await api.updateUser(updated);
+      if (res.success) {
+        setEditingUser(null);
+        onShowModal({
+          isOpen: true,
+          title: 'Berhasil Diperbarui',
+          message: `Data pengguna "${updated.nama}" berhasil disimpan!`,
+          type: 'success',
+        });
+        fetchUsersAndClasses();
+      } else {
+        onShowModal({
+          isOpen: true,
+          title: 'Gagal Update',
+          message: res.message || 'Gagal menyimpan pembaruan.',
+          type: 'danger',
+        });
+      }
+    } finally {
+      setIsUpdatingUser(false);
+    }
+  };
+
+  const handleOpenResetPassword = (u: User) => {
+    setResetTargetUser(u);
+    setNewPasswordVal('123456');
+  };
+
+  const handleConfirmResetPassword = async () => {
+    if (!resetTargetUser) return;
+    if (!newPasswordVal.trim()) {
+      onShowModal({
+        isOpen: true,
+        title: 'Password Kosong',
+        message: 'Mohon masukkan password baru.',
+        type: 'warning',
+      });
+      return;
+    }
+
+    setIsResettingPass(true);
+    try {
+      const res = await api.resetUserPassword(resetTargetUser.username, newPasswordVal.trim());
+      if (res.success) {
+        setResetTargetUser(null);
+        onShowModal({
+          isOpen: true,
+          title: 'Password Berhasil Direset',
+          message: `Password untuk akun "${resetTargetUser.nama}" (${resetTargetUser.username}) telah berhasil diubah menjadi: "${newPasswordVal}". User sekarang dapat login dengan kata sandi baru.`,
+          type: 'success',
+        });
+        fetchUsersAndClasses();
+      } else {
+        onShowModal({
+          isOpen: true,
+          title: 'Gagal Reset Password',
+          message: res.message || 'Terjadi kesalahan.',
+          type: 'danger',
+        });
+      }
+    } finally {
+      setIsResettingPass(false);
     }
   };
 
@@ -120,19 +238,62 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
             isConfirm: false,
             okText: 'OK',
           });
-          fetchUsers();
+          fetchUsersAndClasses();
         } else {
           onShowModal({
             isOpen: true,
             title: 'Gagal',
             message: res.message || 'Gagal menghapus user.',
-            type: 'error',
+            type: 'danger',
             isConfirm: false,
             okText: 'Tutup',
           });
         }
       },
     });
+  };
+
+  // Export all users to Excel
+  const handleExportUsersExcel = () => {
+    const wb = XLSX.utils.book_new();
+    const headers = ['No', 'Nama Lengkap', 'Username', 'Password', 'Role', 'Kelas'];
+    const rows = users.map((u, idx) => [
+      idx + 1,
+      u.nama,
+      u.username,
+      u.password || '******',
+      u.role,
+      u.kelas || '-',
+    ]);
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = [
+      { wch: 6 },
+      { wch: 30 },
+      { wch: 20 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 12 },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'AKUN_PENGGUNA');
+
+    const filename = `Data_Akun_Pengguna_${Date.now()}.xlsx`;
+    try {
+      XLSX.writeFile(wb, filename);
+    } catch {
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
   };
 
   const sLower = (search || '').toLowerCase();
@@ -169,13 +330,22 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
           {/* Action Buttons for Excel */}
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
+              onClick={handleExportUsersExcel}
+              type="button"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition active:scale-95"
+              title="Unduh semua data akun ke file Excel"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-600" />
+              <span>Ekspor Excel</span>
+            </button>
+            <button
               onClick={downloadStudentTemplate}
               type="button"
               className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-300 rounded-xl text-xs font-bold shadow-xs transition active:scale-95"
               title="Unduh file template Excel untuk diisi data siswa"
             >
               <Download className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Format Excel</span>
+              <span>Format Template</span>
             </button>
             <button
               onClick={() => setIsUploadExcelOpen(true)}
@@ -215,7 +385,9 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
 
           <form onSubmit={handleAddUser} className="space-y-3.5">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Nama Lengkap <span className="text-rose-500">*</span>
+              </label>
               <input
                 type="text"
                 value={nama}
@@ -228,7 +400,9 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Username</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Username <span className="text-rose-500">*</span>
+                </label>
                 <input
                   type="text"
                   value={username}
@@ -238,13 +412,16 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
                   className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
               </div>
+
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Password</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Password <span className="text-rose-500">*</span>
+                </label>
                 <input
-                  type="password"
+                  type="text"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="******"
+                  placeholder="123456"
                   required
                   className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                 />
@@ -253,11 +430,11 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Peran (Role)</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Role / Peran</label>
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value as Role)}
-                  className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 font-semibold"
+                  className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold"
                 >
                   <option value="murid">Murid (Siswa)</option>
                   <option value="guru">Guru (Pengajar)</option>
@@ -265,38 +442,43 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Kelas / Sesi</label>
-                <input
-                  type="text"
-                  value={role === 'murid' ? kelas : '-'}
-                  disabled={role !== 'murid'}
-                  onChange={(e) => setKelas(e.target.value)}
-                  placeholder="6A / Sesi 1"
-                  className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
-                />
-              </div>
+              {role === 'murid' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Kelas / Rombel</label>
+                  <select
+                    value={kelas}
+                    onChange={(e) => setKelas(e.target.value)}
+                    className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold"
+                  >
+                    {classList.map((c) => (
+                      <option key={c} value={c}>
+                        Kelas {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full mt-2 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white font-bold text-xs sm:text-sm shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md transition disabled:opacity-50"
             >
-              <UserPlus className="w-4 h-4" />
-              {isSubmitting ? 'Menyimpan...' : 'Simpan Akun Pengguna'}
+              {isSubmitting ? 'Menyimpan...' : 'Simpan Pengguna'}
             </button>
           </form>
 
-          {/* Quick Excel Import Banner */}
-          <div className="mt-5 pt-4 border-t border-slate-100">
-            <div className="p-3.5 bg-gradient-to-br from-emerald-50 to-teal-50/50 border border-emerald-200/80 rounded-xl space-y-2">
-              <div className="flex items-center gap-2">
+          {/* Tips Import Excel */}
+          <div className="mt-5 pt-4 border-t border-slate-200">
+            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 space-y-2">
+              <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs">
                 <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                <span className="text-xs font-bold text-emerald-950">Impor Banyak Murid Sekaligus?</span>
+                <span>Input Banyak Siswa Sekaligus?</span>
               </div>
-              <p className="text-[11px] text-emerald-800 leading-relaxed">
-                Tidak perlu input satu-persatu. Unggah file Excel (.xlsx / .csv) daftar siswa dan simpan ke sistem langsung.
+              <p className="text-[11px] text-emerald-700 leading-relaxed">
+                Gunakan fitur <strong>Upload Excel</strong> untuk memasukkan ratusan murid
+                otomatis tanpa input satu persatu.
               </p>
               <div className="flex items-center gap-2 pt-1">
                 <button
@@ -345,7 +527,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
                 <span>Impor Excel</span>
               </button>
               <button
-                onClick={fetchUsers}
+                onClick={fetchUsersAndClasses}
                 disabled={isLoading}
                 title="Muat Ulang"
                 className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition disabled:opacity-50"
@@ -363,7 +545,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
                   <th className="p-3">Username</th>
                   <th className="p-3">Role</th>
                   <th className="p-3">Kelas / Sesi</th>
-                  <th className="p-3 text-center">Aksi</th>
+                  <th className="p-3 text-center">Aksi Manajemen</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -411,13 +593,29 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
                         </td>
                         <td className="p-3 font-medium text-slate-600">{u.kelas || '-'}</td>
                         <td className="p-3 text-center">
-                          <button
-                            onClick={() => handleDeleteUser(u)}
-                            className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition"
-                            title="Hapus Pengguna"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              onClick={() => handleOpenEditUser(u)}
+                              className="p-1.5 rounded-lg text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 transition"
+                              title="Edit Data Pengguna"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleOpenResetPassword(u)}
+                              className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 hover:text-amber-700 transition"
+                              title="Reset Password Akun"
+                            >
+                              <KeyRound className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(u)}
+                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition"
+                              title="Hapus Pengguna"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -429,10 +627,167 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
         </div>
       </div>
 
+      {/* MODAL EDIT USER */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Edit2 className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-extrabold text-base text-slate-800">Edit Data Pengguna</h3>
+              </div>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditUser} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Username (ID Akun)</label>
+                <input
+                  type="text"
+                  value={editingUser.username}
+                  disabled
+                  className="w-full text-xs p-2.5 rounded-xl border border-slate-200 bg-slate-100 font-mono text-slate-500 cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Nama Lengkap</label>
+                <input
+                  type="text"
+                  value={editNama}
+                  onChange={(e) => setEditNama(e.target.value)}
+                  className="w-full text-xs p-2.5 rounded-xl border border-slate-300 font-semibold focus:outline-indigo-600"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Peran (Role)</label>
+                  <select
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value as Role)}
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 font-semibold focus:outline-indigo-600"
+                  >
+                    <option value="murid">Murid</option>
+                    <option value="guru">Guru</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+
+                {editRole === 'murid' && (
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">Kelas</label>
+                    <select
+                      value={editKelas}
+                      onChange={(e) => setEditKelas(e.target.value)}
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 font-semibold focus:outline-indigo-600"
+                    >
+                      {classList.map((c) => (
+                        <option key={c} value={c}>
+                          Kelas {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Password</label>
+                <input
+                  type="text"
+                  value={editPassword}
+                  onChange={(e) => setEditPassword(e.target.value)}
+                  className="w-full text-xs p-2.5 rounded-xl border border-slate-300 font-mono focus:outline-indigo-600"
+                  placeholder="Biarkan atau isi password baru"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingUser}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md disabled:opacity-50"
+                >
+                  {isUpdatingUser ? 'Menyimpan...' : 'Simpan Perubahan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL RESET PASSWORD */}
+      {resetTargetUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                <KeyRound className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-slate-800">Reset Password User</h3>
+                <p className="text-xs text-slate-500">
+                  {resetTargetUser.nama} ({resetTargetUser.username})
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-700 block">
+                Password Baru:
+              </label>
+              <input
+                type="text"
+                value={newPasswordVal}
+                onChange={(e) => setNewPasswordVal(e.target.value)}
+                placeholder="123456"
+                className="w-full text-sm font-mono p-2.5 rounded-xl border border-slate-300 focus:outline-indigo-600"
+                autoFocus
+              />
+              <p className="text-[11px] text-slate-400">
+                Password default umum adalah <strong>123456</strong>.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setResetTargetUser(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmResetPassword}
+                disabled={isResettingPass}
+                className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md disabled:opacity-50"
+              >
+                {isResettingPass ? 'Mereset...' : 'Simpan Password Baru'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <UploadStudentExcelModal
         isOpen={isUploadExcelOpen}
         onClose={() => setIsUploadExcelOpen(false)}
-        onSuccess={() => fetchUsers()}
+        onSuccess={() => fetchUsersAndClasses()}
         onShowModal={onShowModal}
       />
     </div>

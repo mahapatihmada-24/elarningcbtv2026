@@ -1,4 +1,4 @@
-import { User, Materi, Ujian, Nilai, ApiResponse } from '../types';
+import { User, Materi, Ujian, Nilai, ApiResponse, SchoolProfile, Announcement } from '../types';
 import { INITIAL_USERS, INITIAL_MATERI, INITIAL_UJIAN, INITIAL_NILAI } from './seedData';
 import { firebaseService, ensureFirebaseSeeded } from './firebase';
 import {
@@ -11,6 +11,35 @@ import {
 // Re-export normalizers for backward compatibility
 export { normalizeUser, normalizeMateri, normalizeUjian, normalizeNilai };
 
+export const DEFAULT_SCHOOL_PROFILE: SchoolProfile = {
+  namaSekolah: 'SD NEGERI HARJOSARI KIDUL 01',
+  npsn: '20325432',
+  alamat: 'Jl. Raya Harjosari Kidul No. 01, Kec. Adiwerna, Kab. Tegal, Jawa Tengah',
+  kepalaSekolah: 'Hj. Siti Rohmah, S.Pd., M.Pd.',
+  nipKepalaSekolah: '19680512 199303 2 005',
+  tahunAjaran: '2025/2026',
+  semester: 'Genap',
+  kkmDefault: 75,
+  enableMFAAdmin: true,
+  adminOTPSecret: '240101',
+  sessionTimeoutMinutes: 30,
+};
+
+export const DEFAULT_MASTER_KELAS: string[] = ['6A', '6B', '5A', '5B', '4A', '4B', 'Semua'];
+export const DEFAULT_MASTER_MAPEL: string[] = [
+  'Matematika',
+  'Bahasa Indonesia',
+  'IPA (Ilmu Pengetahuan Alam)',
+  'IPS (Ilmu Pengetahuan Sosial)',
+  'PPKn (Pendidikan Kewarganegaraan)',
+  'Pendidikan Agama & Budi Pekerti',
+  'PJOK (Pendidikan Jasmani & Olahraga)',
+  'Seni Budaya & Prakarya',
+  'Bahasa Jawa',
+  'Bahasa Inggris',
+  'Umum / Tematik',
+];
+
 export const DEFAULT_GAS_URL =
   'https://script.google.com/macros/s/AKfycbwCqf1vnHI09ud7lV3pOFgGdShJaqjbv_6y74bv8F5PqKhGpIOLnGUgsLpqSWlGnbAGnQ/exec';
 
@@ -20,6 +49,10 @@ const STORAGE_KEY_USERS = 'cbt_db_users';
 const STORAGE_KEY_MATERI = 'cbt_db_materi';
 const STORAGE_KEY_UJIAN = 'cbt_db_ujian';
 const STORAGE_KEY_NILAI = 'cbt_db_nilai';
+const STORAGE_KEY_SCHOOL_PROFILE = 'cbt_db_school_profile';
+const STORAGE_KEY_MASTER_KELAS = 'cbt_db_master_kelas';
+const STORAGE_KEY_MASTER_MAPEL = 'cbt_db_master_mapel';
+const STORAGE_KEY_ANNOUNCEMENTS = 'cbt_db_announcements';
 
 // Initialize LocalStorage with seed data if empty
 function ensureLocalDbInitialized() {
@@ -34,6 +67,38 @@ function ensureLocalDbInitialized() {
   }
   if (!localStorage.getItem(STORAGE_KEY_NILAI)) {
     localStorage.setItem(STORAGE_KEY_NILAI, JSON.stringify(INITIAL_NILAI));
+  }
+  if (!localStorage.getItem(STORAGE_KEY_SCHOOL_PROFILE)) {
+    localStorage.setItem(STORAGE_KEY_SCHOOL_PROFILE, JSON.stringify(DEFAULT_SCHOOL_PROFILE));
+  } else if (!localStorage.getItem('cbt_mfa_initialized_v2')) {
+    localStorage.setItem('cbt_mfa_initialized_v2', 'true');
+    try {
+      const existing = JSON.parse(localStorage.getItem(STORAGE_KEY_SCHOOL_PROFILE) || '{}');
+      existing.enableMFAAdmin = true;
+      if (!existing.adminOTPSecret) existing.adminOTPSecret = '240101';
+      localStorage.setItem(STORAGE_KEY_SCHOOL_PROFILE, JSON.stringify(existing));
+    } catch {}
+  }
+  if (!localStorage.getItem(STORAGE_KEY_MASTER_KELAS)) {
+    localStorage.setItem(STORAGE_KEY_MASTER_KELAS, JSON.stringify(DEFAULT_MASTER_KELAS));
+  }
+  if (!localStorage.getItem(STORAGE_KEY_MASTER_MAPEL)) {
+    localStorage.setItem(STORAGE_KEY_MASTER_MAPEL, JSON.stringify(DEFAULT_MASTER_MAPEL));
+  }
+  if (!localStorage.getItem(STORAGE_KEY_ANNOUNCEMENTS)) {
+    localStorage.setItem(
+      STORAGE_KEY_ANNOUNCEMENTS,
+      JSON.stringify([
+        {
+          id: 'PENG-01',
+          judul: 'Selamat Datang di Portal CBT SDN Harjosari Kidul 01',
+          isi: 'Sistem CBT kini dilengkapi fitur acak soal, proteksi anti-contek, dan format soal berstandar nasional.',
+          tanggal: '2025-01-10',
+          penulis: 'Administrator',
+          target: 'semua',
+        },
+      ])
+    );
   }
 }
 
@@ -118,6 +183,62 @@ function getLocalNilai(): Nilai[] {
 
 function saveLocalNilai(nilai: Nilai[]) {
   localStorage.setItem(STORAGE_KEY_NILAI, JSON.stringify(nilai.map(normalizeNilai)));
+}
+
+function getLocalSchoolProfile(): SchoolProfile {
+  ensureLocalDbInitialized();
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY_SCHOOL_PROFILE) || '{}');
+    return { ...DEFAULT_SCHOOL_PROFILE, ...raw };
+  } catch {
+    return DEFAULT_SCHOOL_PROFILE;
+  }
+}
+
+function saveLocalSchoolProfile(profile: SchoolProfile) {
+  localStorage.setItem(STORAGE_KEY_SCHOOL_PROFILE, JSON.stringify(profile));
+}
+
+function getLocalMasterKelas(): string[] {
+  ensureLocalDbInitialized();
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY_MASTER_KELAS) || '[]');
+    return Array.isArray(raw) && raw.length > 0 ? raw : DEFAULT_MASTER_KELAS;
+  } catch {
+    return DEFAULT_MASTER_KELAS;
+  }
+}
+
+function saveLocalMasterKelas(classes: string[]) {
+  localStorage.setItem(STORAGE_KEY_MASTER_KELAS, JSON.stringify(classes));
+}
+
+function getLocalMasterMapel(): string[] {
+  ensureLocalDbInitialized();
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY_MASTER_MAPEL) || '[]');
+    return Array.isArray(raw) && raw.length > 0 ? raw : DEFAULT_MASTER_MAPEL;
+  } catch {
+    return DEFAULT_MASTER_MAPEL;
+  }
+}
+
+function saveLocalMasterMapel(mapels: string[]) {
+  localStorage.setItem(STORAGE_KEY_MASTER_MAPEL, JSON.stringify(mapels));
+}
+
+function getLocalAnnouncements(): Announcement[] {
+  ensureLocalDbInitialized();
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY_ANNOUNCEMENTS) || '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalAnnouncements(items: Announcement[]) {
+  localStorage.setItem(STORAGE_KEY_ANNOUNCEMENTS, JSON.stringify(items));
 }
 
 // Low-level GAS caller with timeout
@@ -439,6 +560,64 @@ export const api = {
     return { success: true, message: 'Pengguna berhasil dihapus!' };
   },
 
+  async updateUser(user: User): Promise<ApiResponse> {
+    const cleanUser = normalizeUser(user);
+
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        const res = await firebaseService.updateUser(cleanUser);
+        const users = getLocalUsers();
+        const idx = users.findIndex(
+          (u) => (u.username || '').toLowerCase() === cleanUser.username.toLowerCase()
+        );
+        if (idx >= 0) users[idx] = cleanUser;
+        else users.push(cleanUser);
+        saveLocalUsers(users);
+        return res;
+      } catch (err) {
+        console.warn('Firebase updateUser error:', err);
+      }
+    }
+
+    if (currentDataSource === 'GAS') {
+      try {
+        const res = await callGasServer<ApiResponse>('updateUser', [cleanUser]);
+        if (res && res.success) {
+          const users = getLocalUsers();
+          const idx = users.findIndex(
+            (u) => (u.username || '').toLowerCase() === cleanUser.username.toLowerCase()
+          );
+          if (idx >= 0) users[idx] = cleanUser;
+          else users.push(cleanUser);
+          saveLocalUsers(users);
+          return res;
+        }
+      } catch (err) {
+        console.warn('GAS updateUser error:', err);
+      }
+    }
+
+    const users = getLocalUsers();
+    const idx = users.findIndex(
+      (u) => (u.username || '').toLowerCase() === cleanUser.username.toLowerCase()
+    );
+    if (idx >= 0) users[idx] = cleanUser;
+    else users.push(cleanUser);
+    saveLocalUsers(users);
+    return { success: true, message: 'Data pengguna berhasil diperbarui!' };
+  },
+
+  async resetUserPassword(username: string, newPassword = '123456'): Promise<ApiResponse> {
+    const cleanU = (username || '').trim().toLowerCase();
+    const users = getLocalUsers();
+    const target = users.find((u) => (u.username || '').toLowerCase() === cleanU);
+    if (!target) {
+      return { success: false, message: 'Pengguna tidak ditemukan!' };
+    }
+    target.password = newPassword;
+    return this.updateUser(target);
+  },
+
   // 3. MATERI
   async getMateriList(targetKelas: string): Promise<Materi[]> {
     const cleanTarget = (targetKelas || '').toLowerCase();
@@ -650,6 +829,10 @@ export const api = {
             Mapel: ujianData.Mapel || 'Umum',
             Kelas: ujianData.Kelas || 'Semua',
             Durasi_Menit: Number(ujianData.Durasi_Menit) || 60,
+            Token_Ujian: ujianData.Token_Ujian || '',
+            Jadwal_Mulai: ujianData.Jadwal_Mulai || '',
+            Jadwal_Selesai: ujianData.Jadwal_Selesai || '',
+            Kisi_Kisi_JSON: ujianData.Kisi_Kisi_JSON || '',
             Soal_JSON: soalJsonStr,
             Status: ujianData.Status || 'Aktif',
           };
@@ -664,6 +847,10 @@ export const api = {
             Mapel: ujianData.Mapel || 'Umum',
             Kelas: ujianData.Kelas || 'Semua',
             Durasi_Menit: Number(ujianData.Durasi_Menit) || 60,
+            Token_Ujian: ujianData.Token_Ujian || '',
+            Jadwal_Mulai: ujianData.Jadwal_Mulai || '',
+            Jadwal_Selesai: ujianData.Jadwal_Selesai || '',
+            Kisi_Kisi_JSON: ujianData.Kisi_Kisi_JSON || '',
             Soal_JSON: soalJsonStr,
             Status: ujianData.Status || 'Aktif',
           });
@@ -685,6 +872,9 @@ export const api = {
             mapel: ujianData.Mapel || '',
             kelas: ujianData.Kelas || '',
             durasi: ujianData.Durasi_Menit || 60,
+            token_ujian: ujianData.Token_Ujian || '',
+            jadwal_mulai: ujianData.Jadwal_Mulai || '',
+            jadwal_selesai: ujianData.Jadwal_Selesai || '',
             soal: ujianData.soal,
             status: ujianData.Status || 'Aktif',
           },
@@ -704,6 +894,10 @@ export const api = {
           Mapel: ujianData.Mapel || list[idx].Mapel,
           Kelas: ujianData.Kelas || list[idx].Kelas,
           Durasi_Menit: Number(ujianData.Durasi_Menit) || list[idx].Durasi_Menit,
+          Token_Ujian: ujianData.Token_Ujian !== undefined ? ujianData.Token_Ujian : list[idx].Token_Ujian,
+          Jadwal_Mulai: ujianData.Jadwal_Mulai !== undefined ? ujianData.Jadwal_Mulai : list[idx].Jadwal_Mulai,
+          Jadwal_Selesai: ujianData.Jadwal_Selesai !== undefined ? ujianData.Jadwal_Selesai : list[idx].Jadwal_Selesai,
+          Kisi_Kisi_JSON: ujianData.Kisi_Kisi_JSON !== undefined ? ujianData.Kisi_Kisi_JSON : list[idx].Kisi_Kisi_JSON,
           Soal_JSON: soalJsonStr,
           Status: ujianData.Status || list[idx].Status,
         };
@@ -718,6 +912,10 @@ export const api = {
       Mapel: ujianData.Mapel || 'Matematika',
       Kelas: ujianData.Kelas || '6A',
       Durasi_Menit: Number(ujianData.Durasi_Menit) || 60,
+      Token_Ujian: ujianData.Token_Ujian || '',
+      Jadwal_Mulai: ujianData.Jadwal_Mulai || '',
+      Jadwal_Selesai: ujianData.Jadwal_Selesai || '',
+      Kisi_Kisi_JSON: ujianData.Kisi_Kisi_JSON || '',
       Soal_JSON: soalJsonStr,
       Status: (ujianData.Status as 'Aktif' | 'Non-Aktif') || 'Aktif',
     };
@@ -924,5 +1122,164 @@ export const api = {
     const list = getLocalNilai().filter((n) => n.ID !== idNilai);
     saveLocalNilai(list);
     return { success: true, message: 'Akses ujian ulang berhasil diberikan kepada murid!' };
+  },
+
+  async updateNilai(nilai: Nilai): Promise<ApiResponse> {
+    const cleanNilai = normalizeNilai(nilai);
+
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        const res = await firebaseService.updateNilai(cleanNilai);
+        const list = getLocalNilai();
+        const idx = list.findIndex((n) => n.ID === cleanNilai.ID);
+        if (idx >= 0) list[idx] = cleanNilai;
+        else list.push(cleanNilai);
+        saveLocalNilai(list);
+        return res;
+      } catch (err) {
+        console.warn('Firebase updateNilai error:', err);
+      }
+    }
+
+    const list = getLocalNilai();
+    const idx = list.findIndex((n) => n.ID === cleanNilai.ID);
+    if (idx >= 0) list[idx] = cleanNilai;
+    else list.push(cleanNilai);
+    saveLocalNilai(list);
+    return { success: true, message: 'Koreksi nilai berhasil disimpan!' };
+  },
+
+  // 5. PENGATURAN IDENTITAS SEKOLAH & MASTER DATA
+  async getSchoolProfile(): Promise<SchoolProfile> {
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        const p = await firebaseService.getSchoolProfile();
+        if (p) {
+          saveLocalSchoolProfile(p);
+          return p;
+        }
+      } catch (err) {
+        console.warn('Firebase getSchoolProfile error:', err);
+      }
+    }
+    return getLocalSchoolProfile();
+  },
+
+  async saveSchoolProfile(profile: SchoolProfile): Promise<ApiResponse> {
+    saveLocalSchoolProfile(profile);
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        const res = await firebaseService.saveSchoolProfile(profile);
+        return res;
+      } catch (err) {
+        console.warn('Firebase saveSchoolProfile error:', err);
+      }
+    }
+    return { success: true, message: 'Identitas sekolah berhasil diperbarui!' };
+  },
+
+  async getMasterKelas(): Promise<string[]> {
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        const c = await firebaseService.getMasterKelas();
+        if (Array.isArray(c) && c.length > 0) {
+          saveLocalMasterKelas(c);
+          return c;
+        }
+      } catch (err) {
+        console.warn('Firebase getMasterKelas error:', err);
+      }
+    }
+    return getLocalMasterKelas();
+  },
+
+  async saveMasterKelas(classes: string[]): Promise<ApiResponse> {
+    saveLocalMasterKelas(classes);
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        const res = await firebaseService.saveMasterKelas(classes);
+        return res;
+      } catch (err) {
+        console.warn('Firebase saveMasterKelas error:', err);
+      }
+    }
+    return { success: true, message: 'Daftar kelas berhasil disimpan!' };
+  },
+
+  async getMasterMapel(): Promise<string[]> {
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        const m = await firebaseService.getMasterMapel();
+        if (Array.isArray(m) && m.length > 0) {
+          saveLocalMasterMapel(m);
+          return m;
+        }
+      } catch (err) {
+        console.warn('Firebase getMasterMapel error:', err);
+      }
+    }
+    return getLocalMasterMapel();
+  },
+
+  async saveMasterMapel(mapels: string[]): Promise<ApiResponse> {
+    saveLocalMasterMapel(mapels);
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        const res = await firebaseService.saveMasterMapel(mapels);
+        return res;
+      } catch (err) {
+        console.warn('Firebase saveMasterMapel error:', err);
+      }
+    }
+    return { success: true, message: 'Daftar mata pelajaran berhasil disimpan!' };
+  },
+
+  // 6. PENGUMUMAN SEKOLAH
+  async getAnnouncements(): Promise<Announcement[]> {
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        const list = await firebaseService.getAnnouncements();
+        if (Array.isArray(list) && list.length > 0) {
+          saveLocalAnnouncements(list);
+          return list;
+        }
+      } catch (err) {
+        console.warn('Firebase getAnnouncements error:', err);
+      }
+    }
+    return getLocalAnnouncements();
+  },
+
+  async saveAnnouncement(item: Announcement): Promise<ApiResponse> {
+    const list = getLocalAnnouncements();
+    const id = item.id || 'PENG-' + Date.now();
+    const newItem = { ...item, id };
+    const idx = list.findIndex((p) => p.id === id);
+    if (idx >= 0) list[idx] = newItem;
+    else list.unshift(newItem);
+    saveLocalAnnouncements(list);
+
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        await firebaseService.saveAnnouncement(newItem);
+      } catch (err) {
+        console.warn('Firebase saveAnnouncement error:', err);
+      }
+    }
+    return { success: true, message: 'Pengumuman berhasil dipublikasikan!' };
+  },
+
+  async deleteAnnouncement(id: string): Promise<ApiResponse> {
+    const list = getLocalAnnouncements().filter((p) => p.id !== id);
+    saveLocalAnnouncements(list);
+
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        await firebaseService.deleteAnnouncement(id);
+      } catch (err) {
+        console.warn('Firebase deleteAnnouncement error:', err);
+      }
+    }
+    return { success: true, message: 'Pengumuman berhasil dihapus!' };
   },
 };

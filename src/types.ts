@@ -70,16 +70,38 @@ export interface QuestionPGKKategori {
 
 export type Question = QuestionPG | QuestionPGKMCMA | QuestionPGKKategori;
 
+export interface KisiKisiItem {
+  no: number;
+  elemen: string;
+  subElemen: string;
+  kompetensi: string;
+  levelKognitif: 'L1' | 'L2' | 'L3';
+  konteks: 'Personal' | 'Sosial Budaya' | 'Saintifik' | string;
+  indikator: string;
+  tipeSoal: string;
+  nomorSoal: number;
+
+  // Backward compatibility aliases
+  cp_kd?: string;
+  materi?: string;
+  bentukSoal?: string;
+  bobot?: number;
+}
+
 export interface ExamConfig {
   sesi: string;
   max_attempts: number;
   acak_soal: boolean;
   acak_opsi: boolean;
+  token?: string;
+  jadwal_mulai?: string;
+  jadwal_selesai?: string;
 }
 
 export interface ExamPayload {
   config: ExamConfig;
   questions: Question[];
+  kisi_kisi?: KisiKisiItem[];
 }
 
 export interface Ujian {
@@ -90,6 +112,10 @@ export interface Ujian {
   Durasi_Menit: number;
   Soal_JSON: string; // stringified ExamPayload or Question[]
   Status: 'Aktif' | 'Non-Aktif';
+  Token_Ujian?: string;
+  Jadwal_Mulai?: string;
+  Jadwal_Selesai?: string;
+  Kisi_Kisi_JSON?: string;
 }
 
 export interface Nilai {
@@ -101,6 +127,32 @@ export interface Nilai {
   Nilai: number;
   Pelanggaran: number;
   Waktu_Submit: string;
+  Catatan_Guru?: string;
+  Koreksi_Manual?: boolean;
+  No_HP_Ortu?: string;
+}
+
+export interface SchoolProfile {
+  namaSekolah: string;
+  npsn: string;
+  alamat: string;
+  kepalaSekolah: string;
+  nipKepalaSekolah: string;
+  tahunAjaran: string;
+  semester: string;
+  kkmDefault: number;
+  enableMFAAdmin: boolean;
+  adminOTPSecret: string;
+  sessionTimeoutMinutes: number;
+}
+
+export interface Announcement {
+  id: string;
+  judul: string;
+  isi: string;
+  tanggal: string;
+  penulis: string;
+  target: 'semua' | 'guru' | 'murid';
 }
 
 export interface ApiResponse<T = unknown> {

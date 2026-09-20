@@ -11,10 +11,16 @@ import {
   Sparkles,
   Download,
   Printer,
+  KeyRound,
+  Calendar,
+  X,
+  AlertTriangle,
+  BookOpen,
 } from 'lucide-react';
-import { Ujian, Nilai, User } from '../../types';
+import { Ujian, Nilai, User, SchoolProfile } from '../../types';
 import { api } from '../../services/api';
 import { downloadExamWord, printExamDocument } from '../../utils/documentExport';
+import { KisiKisiModal } from '../KisiKisiModal';
 
 interface MuridCBTListProps {
   currentUser: User;
@@ -25,16 +31,27 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
   const [ujianList, setUjianList] = useState<Ujian[]>([]);
   const [hasilList, setHasilList] = useState<Nilai[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [schoolProfile, setSchoolProfile] = useState<SchoolProfile | null>(null);
+
+  // Kisi-Kisi Modal
+  const [kisiModalExam, setKisiModalExam] = useState<Ujian | null>(null);
+
+  // Token Modal
+  const [tokenModalExam, setTokenModalExam] = useState<Ujian | null>(null);
+  const [tokenInput, setTokenInput] = useState('');
+  const [tokenError, setTokenError] = useState('');
 
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [uData, hData] = await Promise.all([
+      const [uData, hData, sProfile] = await Promise.all([
         api.getUjianList(currentUser.kelas || '6A', 'murid'),
         api.getHasilMurid(currentUser.nama),
+        api.getSchoolProfile().catch(() => null),
       ]);
       setUjianList(uData || []);
       setHasilList(hData || []);
+      if (sProfile) setSchoolProfile(sProfile);
     } finally {
       setIsLoading(false);
     }
@@ -43,6 +60,65 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
   useEffect(() => {
     fetchData();
   }, [currentUser.kelas, currentUser.nama]);
+
+  const handleInitiateExam = (u: Ujian) => {
+    // Schedule check
+    const now = new Date();
+    if (u.Jadwal_Mulai) {
+      const start = new Date(u.Jadwal_Mulai);
+      if (now < start) {
+        alert(
+          `Ujian ini belum dimulai. Waktu mulai: ${start.toLocaleString('id-ID', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          })}`
+        );
+        return;
+      }
+    }
+
+    if (u.Jadwal_Selesai) {
+      const end = new Date(u.Jadwal_Selesai);
+      if (now > end) {
+        alert(
+          `Ujian ini telah berakhir pada: ${end.toLocaleString('id-ID', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          })}`
+        );
+        return;
+      }
+    }
+
+    // Token check
+    if (u.Token_Ujian && u.Token_Ujian.trim() !== '') {
+      setTokenModalExam(u);
+      setTokenInput('');
+      setTokenError('');
+      return;
+    }
+
+    onStartExam(u);
+  };
+
+  const handleVerifyTokenAndStart = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tokenModalExam) return;
+
+    const required = (tokenModalExam.Token_Ujian || '').trim().toUpperCase();
+    const entered = tokenInput.trim().toUpperCase();
+
+    if (entered !== required) {
+      setTokenError('Token Ujian tidak sesuai. Silakan hubungi Guru / Pengawas.');
+      return;
+    }
+
+    const exam = tokenModalExam;
+    setTokenModalExam(null);
+    setTokenInput('');
+    setTokenError('');
+    onStartExam(exam);
+  };
 
   return (
     <div className="space-y-5">
@@ -113,6 +189,11 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
                 ? studentSubmissions[studentSubmissions.length - 1].Nilai
                 : null;
 
+            // Schedule check
+            const now = new Date();
+            const isUpcoming = u.Jadwal_Mulai ? now < new Date(u.Jadwal_Mulai) : false;
+            const isExpired = u.Jadwal_Selesai ? now > new Date(u.Jadwal_Selesai) : false;
+
             return (
               <div
                 key={u.ID}
@@ -132,6 +213,28 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
                   <h4 className="font-extrabold text-base sm:text-lg text-slate-800 leading-snug">
                     {u.Judul_Ujian}
                   </h4>
+
+                  {/* Schedule badges */}
+                  {(u.Jadwal_Mulai || u.Jadwal_Selesai || u.Token_Ujian) && (
+                    <div className="flex flex-wrap gap-1.5 text-[11px]">
+                      {u.Token_Ujian && (
+                        <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-bold border border-amber-200 flex items-center gap-1">
+                          <KeyRound className="w-3 h-3 text-amber-600" />
+                          Token Diperlukan
+                        </span>
+                      )}
+                      {isUpcoming && (
+                        <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 font-semibold border border-blue-200">
+                          Belum Dimulai
+                        </span>
+                      )}
+                      {isExpired && (
+                        <span className="px-2 py-0.5 rounded-md bg-rose-50 text-rose-800 font-semibold border border-rose-200">
+                          Jadwal Berakhir
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                     <span className="flex items-center gap-1">
@@ -155,7 +258,11 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
                             : 'bg-rose-100 text-rose-800'
                         }`}
                       >
-                        {Number(latestScore).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / 100,00
+                        {Number(latestScore).toLocaleString('id-ID', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}{' '}
+                        / 100,00
                       </span>
                     </div>
                   )}
@@ -167,15 +274,33 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
                       <CheckCircle className="w-4 h-4 text-emerald-600" />
                       <span>Selesai Dikerjakan ({attemptsCount}x)</span>
                     </div>
+                  ) : isUpcoming ? (
+                    <button
+                      disabled
+                      className="w-full py-3 px-4 rounded-xl bg-slate-200 text-slate-500 font-bold text-xs sm:text-sm cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      <Clock className="w-4 h-4" />
+                      <span>Belum Waktunya Ujian</span>
+                    </button>
+                  ) : isExpired ? (
+                    <button
+                      disabled
+                      className="w-full py-3 px-4 rounded-xl bg-rose-100 text-rose-600 font-bold text-xs sm:text-sm cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      <AlertTriangle className="w-4 h-4" />
+                      <span>Jadwal Ujian Telah Ditutup</span>
+                    </button>
                   ) : (
                     <button
-                      onClick={() => onStartExam(u)}
+                      onClick={() => handleInitiateExam(u)}
                       className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white font-bold text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2"
                     >
                       {attemptsCount > 0 ? (
                         <>
                           <RotateCcw className="w-4 h-4" />
-                          <span>Ulangi Ujian ({attemptsCount + 1}/{maxAttempts === 0 ? '∞' : maxAttempts})</span>
+                          <span>
+                            Ulangi Ujian ({attemptsCount + 1}/{maxAttempts === 0 ? '∞' : maxAttempts})
+                          </span>
                         </>
                       ) : (
                         <>
@@ -186,8 +311,18 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
                     </button>
                   )}
 
-                  {/* Student Question Sheet Download & Print (Untuk Belajar & Mengulang) */}
+                  {/* Student Question Sheet Download & Print & Kisi-Kisi */}
                   <div className="flex items-center gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setKisiModalExam(u)}
+                      className="py-1.5 px-2.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-700 font-bold text-[11px] border border-teal-200 transition flex items-center justify-center gap-1"
+                      title="Lihat Kisi-Kisi Soal & Panduan Belajar Ujian Ini"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 text-teal-600" />
+                      <span>Kisi-Kisi</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => downloadExamWord(u, { includeAnswers: false })}
@@ -213,6 +348,78 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
             );
           })}
         </div>
+      )}
+
+      {/* TOKEN VERIFICATION MODAL */}
+      {tokenModalExam && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-amber-600" />
+                <h4 className="font-black text-slate-800 text-base">Masukkan Token Ujian</h4>
+              </div>
+              <button
+                onClick={() => setTokenModalExam(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600">
+              Ujian <strong>"{tokenModalExam.Judul_Ujian}"</strong> dilindungi dengan kode token.
+              Silakan minta token kepada Guru / Pengawas di kelas.
+            </p>
+
+            <form onSubmit={handleVerifyTokenAndStart} className="space-y-3">
+              <div>
+                <input
+                  type="text"
+                  maxLength={10}
+                  autoFocus
+                  value={tokenInput}
+                  onChange={(e) => {
+                    setTokenInput(e.target.value.toUpperCase());
+                    setTokenError('');
+                  }}
+                  placeholder="Ketik Token (misal: ABC123)"
+                  className="w-full text-center text-lg font-mono tracking-widest uppercase font-black p-3 rounded-2xl border border-slate-300 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                />
+                {tokenError && (
+                  <p className="text-xs text-rose-600 font-bold mt-1.5 text-center">{tokenError}</p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setTokenModalExam(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-md"
+                >
+                  Verifikasi & Mulai
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* KISI-KISI MODAL FOR STUDENTS (READ-ONLY) */}
+      {kisiModalExam && (
+        <KisiKisiModal
+          isOpen={!!kisiModalExam}
+          onClose={() => setKisiModalExam(null)}
+          ujian={kisiModalExam}
+          schoolProfile={schoolProfile}
+          readOnly={true}
+        />
       )}
     </div>
   );

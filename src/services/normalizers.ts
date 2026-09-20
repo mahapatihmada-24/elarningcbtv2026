@@ -44,6 +44,10 @@ export function normalizeUjian(u: any): Ujian {
     Mapel: String(u.Mapel || u.mapel || ''),
     Kelas: String(u.Kelas || u.kelas || 'Semua'),
     Durasi_Menit: Number(u.Durasi_Menit ?? u.durasi_menit ?? u.durasi ?? 60),
+    Token_Ujian: u.Token_Ujian || u.token_ujian || u.token || '',
+    Jadwal_Mulai: u.Jadwal_Mulai || u.jadwal_mulai || '',
+    Jadwal_Selesai: u.Jadwal_Selesai || u.jadwal_selesai || '',
+    Kisi_Kisi_JSON: u.Kisi_Kisi_JSON || u.kisi_kisi_json || '',
     Soal_JSON: soalJson,
     Status: (u.Status || u.status || 'Aktif') as 'Aktif' | 'Non-Aktif',
   };

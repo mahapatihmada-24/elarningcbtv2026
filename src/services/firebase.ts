@@ -14,7 +14,7 @@ import {
   deleteField,
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { User, Materi, Ujian, Nilai, ApiResponse } from '../types';
+import { User, Materi, Ujian, Nilai, ApiResponse, SchoolProfile, Announcement } from '../types';
 import { INITIAL_USERS, INITIAL_MATERI, INITIAL_UJIAN, INITIAL_NILAI } from './seedData';
 import { normalizeUser, normalizeMateri, normalizeUjian, normalizeNilai } from './normalizers';
 
@@ -47,6 +47,8 @@ export const COLLECTIONS = {
   MATERI: 'materi',
   UJIAN: 'ujian',
   NILAI: 'nilai',
+  SETTINGS: 'settings',
+  ANNOUNCEMENTS: 'announcements',
 } as const;
 
 // Helper timeout aman
@@ -315,7 +317,83 @@ export const firebaseService = {
     return { success: true, message: 'Akses ujian ulang berhasil diberikan kepada murid!' };
   },
 
-  // 5. TEST CONNECTION DIAGNOSTIC
+  async updateNilai(nilai: Nilai): Promise<ApiResponse> {
+    const payload = normalizeNilai(nilai);
+    await withTimeout(setDoc(doc(db, COLLECTIONS.NILAI, payload.ID), payload), 7000);
+    return { success: true, message: 'Koreksi nilai berhasil disimpan ke database Firebase!' };
+  },
+
+  // 5. PENGATURAN IDENTITAS SEKOLAH & MASTER DATA
+  async getSchoolProfile(): Promise<SchoolProfile | null> {
+    try {
+      const snap = await withTimeout(getDoc(doc(db, COLLECTIONS.SETTINGS, 'school_profile')), 5000);
+      if (snap.exists()) {
+        return snap.data() as SchoolProfile;
+      }
+    } catch (err) {
+      console.warn('Gagal memuat profil sekolah dari Firebase:', err);
+    }
+    return null;
+  },
+
+  async saveSchoolProfile(profile: SchoolProfile): Promise<ApiResponse> {
+    await withTimeout(setDoc(doc(db, COLLECTIONS.SETTINGS, 'school_profile'), profile), 7000);
+    return { success: true, message: 'Identitas dan pengaturan sekolah berhasil disimpan ke Firebase!' };
+  },
+
+  async getMasterKelas(): Promise<string[] | null> {
+    try {
+      const snap = await withTimeout(getDoc(doc(db, COLLECTIONS.SETTINGS, 'master_kelas')), 5000);
+      if (snap.exists() && Array.isArray(snap.data()?.classes)) {
+        return snap.data().classes as string[];
+      }
+    } catch {}
+    return null;
+  },
+
+  async saveMasterKelas(classes: string[]): Promise<ApiResponse> {
+    await withTimeout(setDoc(doc(db, COLLECTIONS.SETTINGS, 'master_kelas'), { classes }), 7000);
+    return { success: true, message: 'Daftar kelas berhasil disimpan!' };
+  },
+
+  async getMasterMapel(): Promise<string[] | null> {
+    try {
+      const snap = await withTimeout(getDoc(doc(db, COLLECTIONS.SETTINGS, 'master_mapel')), 5000);
+      if (snap.exists() && Array.isArray(snap.data()?.mapels)) {
+        return snap.data().mapels as string[];
+      }
+    } catch {}
+    return null;
+  },
+
+  async saveMasterMapel(mapels: string[]): Promise<ApiResponse> {
+    await withTimeout(setDoc(doc(db, COLLECTIONS.SETTINGS, 'master_mapel'), { mapels }), 7000);
+    return { success: true, message: 'Daftar mata pelajaran berhasil disimpan!' };
+  },
+
+  async getAnnouncements(): Promise<Announcement[]> {
+    try {
+      const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.ANNOUNCEMENTS)), 5000);
+      const list: Announcement[] = [];
+      snap.forEach((d) => list.push({ id: d.id, ...(d.data() as Omit<Announcement, 'id'>) }));
+      return list;
+    } catch {
+      return [];
+    }
+  },
+
+  async saveAnnouncement(item: Announcement): Promise<ApiResponse> {
+    const id = item.id || 'PENG-' + Date.now();
+    await withTimeout(setDoc(doc(db, COLLECTIONS.ANNOUNCEMENTS, id), { ...item, id }), 7000);
+    return { success: true, message: 'Pengumuman berhasil disimpan!' };
+  },
+
+  async deleteAnnouncement(id: string): Promise<ApiResponse> {
+    await withTimeout(deleteDoc(doc(db, COLLECTIONS.ANNOUNCEMENTS, id)), 7000);
+    return { success: true, message: 'Pengumuman berhasil dihapus!' };
+  },
+
+  // 6. TEST CONNECTION DIAGNOSTIC
   async testConnection(): Promise<{ success: boolean; message: string; databaseId: string }> {
     try {
       // 1. Coba baca koleksi users

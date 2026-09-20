@@ -7,10 +7,18 @@ import {
   AlertTriangle,
   FileSpreadsheet,
   CheckCircle2,
+  Filter,
+  Edit3,
+  Send,
+  Printer,
+  X,
+  MessageSquare,
+  Check,
 } from 'lucide-react';
-import { Nilai } from '../../types';
+import { Nilai, SchoolProfile } from '../../types';
 import { api } from '../../services/api';
 import { ModalState } from '../ConfirmModal';
+import { exportNilaiToExcel } from '../../utils/excelExamHelper';
 
 interface GuruNilaiProps {
   onShowModal: (modal: Partial<ModalState>) => void;
@@ -18,22 +26,41 @@ interface GuruNilaiProps {
 
 export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
   const [nilaiList, setNilaiList] = useState<Nilai[]>([]);
+  const [schoolProfile, setSchoolProfile] = useState<SchoolProfile | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [filterKelas, setFilterKelas] = useState('ALL');
+  const [filterBankSoal, setFilterBankSoal] = useState('ALL');
 
-  const fetchNilai = async () => {
+  // Manual Correction State
+  const [editingNilai, setEditingNilai] = useState<Nilai | null>(null);
+  const [editScoreInput, setEditScoreInput] = useState<number>(0);
+  const [editCatatanInput, setEditCatatanInput] = useState<string>('');
+  const [isSavingCorrection, setIsSavingCorrection] = useState(false);
+
+  // WhatsApp modal state
+  const [waModalData, setWaModalData] = useState<{
+    nilai: Nilai;
+    phone: string;
+    message: string;
+  } | null>(null);
+
+  const fetchNilaiAndProfile = async () => {
     setIsLoading(true);
     try {
-      const data = await api.getNilaiList();
-      setNilaiList(data || []);
+      const [nData, sProfile] = await Promise.all([
+        api.getNilaiList(),
+        api.getSchoolProfile(),
+      ]);
+      setNilaiList(nData || []);
+      setSchoolProfile(sProfile || null);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchNilai();
+    fetchNilaiAndProfile();
   }, []);
 
   const handleResetNilai = (n: Nilai) => {
@@ -54,36 +81,106 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
             type: 'success',
             isConfirm: false,
           });
-          fetchNilai();
+          fetchNilaiAndProfile();
         }
       },
     });
   };
 
-  const handleExportCSV = () => {
-    if (nilaiList.length === 0) return;
-    const headers = ['Waktu Submit', 'Nama Murid', 'Kelas', 'Judul Ujian', 'Nilai Akhir', 'Pelanggaran Pindah Tab'];
-    const rows = nilaiList.map((n) => [
-      `"${n.Waktu_Submit}"`,
-      `"${n.Nama_Murid}"`,
-      `"${n.Kelas}"`,
-      `"${n.Judul_Ujian}"`,
-      `"${Number(n.Nilai).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}"`,
-      n.Pelanggaran || 0,
-    ]);
-
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `rekap_nilai_cbt_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // Manual Score Correction
+  const handleOpenCorrection = (n: Nilai) => {
+    setEditingNilai(n);
+    setEditScoreInput(Number(n.Nilai || 0));
+    setEditCatatanInput(n.Catatan_Guru || '');
   };
+
+  const handleSaveCorrection = async () => {
+    if (!editingNilai) return;
+    setIsSavingCorrection(true);
+    try {
+      const res = await api.updateNilai({
+        ...editingNilai,
+        Nilai: Number(editScoreInput),
+        Catatan_Guru: editCatatanInput.trim() || undefined,
+        Koreksi_Manual: true,
+      });
+
+      if (res.success) {
+        onShowModal({
+          isOpen: true,
+          title: 'Koreksi Nilai Berhasil',
+          message: `Nilai murid ${editingNilai.Nama_Murid} berhasil diperbarui menjadi ${editScoreInput}.`,
+          type: 'success',
+        });
+        setEditingNilai(null);
+        fetchNilaiAndProfile();
+      } else {
+        onShowModal({
+          isOpen: true,
+          title: 'Gagal Koreksi Nilai',
+          message: res.message || 'Terjadi kesalahan sistem.',
+          type: 'danger',
+        });
+      }
+    } finally {
+      setIsSavingCorrection(false);
+    }
+  };
+
+  // WhatsApp Notification
+  const handleOpenWAModal = (n: Nilai) => {
+    const schoolName = schoolProfile?.namaSekolah || 'SDN Harjosari Kidul 01';
+    const defaultMsg = `Yth. Bapak/Ibu Orang Tua/Wali dari ${n.Nama_Murid},\n\nKami menginformasikan bahwa ananda telah menyelesaikan asesmen CBT:\n📚 Ujian: ${n.Judul_Ujian}\n🎯 Nilai Akhir: ${n.Nilai}\n📅 Waktu: ${n.Waktu_Submit}\n${
+      n.Catatan_Guru ? `📝 Catatan Guru: ${n.Catatan_Guru}\n` : ''
+    }\nTerima kasih atas perhatian dan bimbingannya.\n- ${schoolName}`;
+
+    setWaModalData({
+      nilai: n,
+      phone: '',
+      message: defaultMsg,
+    });
+  };
+
+  const handleSendWA = () => {
+    if (!waModalData) return;
+    const cleanPhone = waModalData.phone.replace(/[^0-9]/g, '');
+    let targetNumber = cleanPhone;
+    if (targetNumber.startsWith('0')) {
+      targetNumber = '62' + targetNumber.slice(1);
+    }
+
+    const encodedText = encodeURIComponent(waModalData.message);
+    const waUrl = targetNumber
+      ? `https://wa.me/${targetNumber}?text=${encodedText}`
+      : `https://wa.me/?text=${encodedText}`;
+
+    window.open(waUrl, '_blank');
+    setWaModalData(null);
+  };
+
+  // Export to Excel
+  const handleExportExcel = () => {
+    if (filteredNilai.length === 0) {
+      onShowModal({
+        isOpen: true,
+        title: 'Data Kosong',
+        message: 'Tidak ada data nilai yang sesuai dengan filter untuk diekspor.',
+        type: 'warning',
+      });
+      return;
+    }
+    const filterTitle = filterBankSoal !== 'ALL' ? filterBankSoal : 'Semua_Ujian';
+    exportNilaiToExcel(filterTitle, filteredNilai, schoolProfile || undefined);
+  };
+
+  // Print PDF
+  const handlePrintPDF = () => {
+    window.print();
+  };
+
+  // Extract unique bank soal & classes for filter options
+  const uniqueBankSoal = Array.from(new Set(nilaiList.map((n) => n.Judul_Ujian).filter(Boolean)));
+  const uniqueKelas = Array.from(new Set(nilaiList.map((n) => n.Kelas).filter(Boolean)));
 
   const filteredNilai = nilaiList.filter((n) => {
     const sLower = (search || '').toLowerCase();
@@ -93,20 +190,26 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
       (n.Kelas || '').toLowerCase().includes(sLower);
 
     const matchesKelas = filterKelas === 'ALL' || n.Kelas === filterKelas;
-    return matchesSearch && matchesKelas;
+    const matchesBankSoal = filterBankSoal === 'ALL' || n.Judul_Ujian === filterBankSoal;
+    return matchesSearch && matchesKelas && matchesBankSoal;
   });
 
+  const kkm = schoolProfile?.kkmDefault || 75;
+
   const stats = {
-    total: nilaiList.length,
+    total: filteredNilai.length,
     rataRata:
-      nilaiList.length > 0
-        ? (nilaiList.reduce((acc, curr) => acc + Number(curr.Nilai || 0), 0) / nilaiList.length).toLocaleString('id-ID', {
+      filteredNilai.length > 0
+        ? (
+            filteredNilai.reduce((acc, curr) => acc + Number(curr.Nilai || 0), 0) /
+            filteredNilai.length
+          ).toLocaleString('id-ID', {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
           })
         : '0,00',
-    tuntas: nilaiList.filter((n) => Number(n.Nilai || 0) >= 75).length,
-    pelanggaranTotal: nilaiList.reduce((acc, curr) => acc + (curr.Pelanggaran || 0), 0),
+    tuntas: filteredNilai.filter((n) => Number(n.Nilai || 0) >= kkm).length,
+    pelanggaranTotal: filteredNilai.reduce((acc, curr) => acc + (curr.Pelanggaran || 0), 0),
   };
 
   return (
@@ -119,25 +222,37 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
             <span>Rekap Nilai Siswa & Catatan Anti-Contek</span>
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            SD Negeri Harjosari Kidul 01 • Terpantau langsung secara real-time
+            {schoolProfile?.namaSekolah || 'SD Negeri Harjosari Kidul 01'} • Terpantau langsung
+            secara real-time
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
-            onClick={handleExportCSV}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold border border-emerald-200 transition"
+            onClick={handleExportExcel}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition"
+            title="Ekspor Data Nilai ke Excel (.xlsx)"
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>Ekspor CSV</span>
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Ekspor Excel</span>
           </button>
           <button
-            onClick={fetchNilai}
+            onClick={handlePrintPDF}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition"
+            title="Cetak Laporan / Simpan PDF"
+          >
+            <Printer className="w-4 h-4 text-slate-600" />
+            <span>Cetak / PDF</span>
+          </button>
+          <button
+            onClick={fetchNilaiAndProfile}
             disabled={isLoading}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-indigo-600' : ''}`} />
-            <span>Segarkan Data</span>
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-indigo-600' : ''}`}
+            />
+            <span>Segarkan</span>
           </button>
         </div>
       </div>
@@ -145,48 +260,74 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-          <span className="text-[11px] font-semibold text-slate-500 block">Total Lembar Ujian</span>
-          <span className="text-xl font-extrabold text-slate-800">{stats.total} Siswa</span>
+          <span className="text-[11px] font-semibold text-slate-500 block">Total Hasil Ujian</span>
+          <span className="text-xl font-extrabold text-slate-800">{stats.total} Peserta</span>
         </div>
         <div className="p-3.5 rounded-xl bg-indigo-50 border border-indigo-200">
           <span className="text-[11px] font-semibold text-indigo-600 block">Rata-rata Nilai</span>
           <span className="text-xl font-extrabold text-indigo-900">{stats.rataRata}</span>
         </div>
         <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200">
-          <span className="text-[11px] font-semibold text-emerald-600 block">Tuntas (KKTP ≥ 75)</span>
+          <span className="text-[11px] font-semibold text-emerald-600 block">
+            Tuntas (KKM ≥ {kkm})
+          </span>
           <span className="text-xl font-extrabold text-emerald-800">{stats.tuntas} Siswa</span>
         </div>
         <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200">
           <span className="text-[11px] font-semibold text-rose-600 block">Insiden Pindah Tab</span>
-          <span className="text-xl font-extrabold text-rose-800">{stats.pelanggaranTotal}x Kejadian</span>
+          <span className="text-xl font-extrabold text-rose-800">
+            {stats.pelanggaranTotal}x Kejadian
+          </span>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-        <div className="relative flex-1 sm:max-w-xs">
+      {/* FILTERS: Bank Soal & Kelas (Requirement 4) */}
+      <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+        <div className="relative flex-1 md:max-w-xs">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Cari murid, ujian, kelas..."
-            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            placeholder="Cari nama murid, kelas, ujian..."
+            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-medium"
           />
         </div>
 
-        <select
-          value={filterKelas}
-          onChange={(e) => setFilterKelas(e.target.value)}
-          className="text-xs p-2 rounded-xl border border-slate-300 bg-white font-semibold text-slate-700"
-        >
-          <option value="ALL">Semua Kelas</option>
-          <option value="6A">Kelas 6A</option>
-          <option value="6B">Kelas 6B</option>
-        </select>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 text-xs font-semibold text-slate-600">
+            <Filter className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Bank Soal:</span>
+          </div>
+          <select
+            value={filterBankSoal}
+            onChange={(e) => setFilterBankSoal(e.target.value)}
+            className="text-xs p-2 rounded-xl border border-slate-300 bg-white font-bold text-indigo-700 max-w-xs"
+          >
+            <option value="ALL">Semua Bank Soal</option>
+            {uniqueBankSoal.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filterKelas}
+            onChange={(e) => setFilterKelas(e.target.value)}
+            className="text-xs p-2 rounded-xl border border-slate-300 bg-white font-semibold text-slate-700"
+          >
+            <option value="ALL">Semua Kelas</option>
+            {uniqueKelas.map((k) => (
+              <option key={k} value={k}>
+                Kelas {k}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Table */}
+      {/* Table Rekap */}
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-xs sm:text-sm text-left">
           <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
@@ -197,25 +338,26 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
               <th className="p-3">Judul Ujian CBT</th>
               <th className="p-3 text-center">Nilai Akhir</th>
               <th className="p-3 text-center">Deteksi Anti-Contek</th>
+              <th className="p-3 text-center">Catatan / Koreksi</th>
               <th className="p-3 text-center">Aksi Guru</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-slate-400">
+                <td colSpan={8} className="p-8 text-center text-slate-400">
                   Memuat data rekap nilai...
                 </td>
               </tr>
             ) : filteredNilai.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-slate-400">
-                  Belum ada catatan hasil ujian.
+                <td colSpan={8} className="p-8 text-center text-slate-400">
+                  Belum ada catatan hasil ujian yang sesuai dengan filter.
                 </td>
               </tr>
             ) : (
               filteredNilai.map((n) => {
-                const isPassed = n.Nilai >= 75;
+                const isPassed = Number(n.Nilai || 0) >= kkm;
                 const hasCheated = (n.Pelanggaran || 0) > 0;
 
                 return (
@@ -238,7 +380,10 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
                             : 'bg-rose-100 text-rose-800'
                         }`}
                       >
-                        {Number(n.Nilai).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {Number(n.Nilai).toLocaleString('id-ID', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
                       </span>
                     </td>
                     <td className="p-3 text-center">
@@ -255,14 +400,47 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
                       )}
                     </td>
                     <td className="p-3 text-center">
-                      <button
-                        onClick={() => handleResetNilai(n)}
-                        className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-semibold transition active:scale-95"
-                        title="Hapus nilai dan izinkan murid ujian lagi"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Ujian Ulang</span>
-                      </button>
+                      {n.Catatan_Guru ? (
+                        <span className="text-xs text-indigo-700 font-semibold italic truncate max-w-xs block">
+                          "{n.Catatan_Guru}"
+                        </span>
+                      ) : n.Koreksi_Manual ? (
+                        <span className="text-[11px] text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                          Dikoreksi Manual
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-xs">-</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        {/* Koreksi Nilai Manual Button */}
+                        <button
+                          onClick={() => handleOpenCorrection(n)}
+                          className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition"
+                          title="Koreksi Nilai Manual & Catatan Guru"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* WhatsApp Parent Notification Button */}
+                        <button
+                          onClick={() => handleOpenWAModal(n)}
+                          className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition"
+                          title="Kirim Laporan Nilai ke WhatsApp Orang Tua"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Reset Ujian Ulang Button */}
+                        <button
+                          onClick={() => handleResetNilai(n)}
+                          className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition"
+                          title="Hapus nilai dan izinkan murid ujian lagi"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -271,6 +449,154 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
           </tbody>
         </table>
       </div>
+
+      {/* MODAL KOREKSI NILAI MANUAL */}
+      {editingNilai && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-amber-600" />
+                <h4 className="font-black text-slate-800 text-base">Koreksi Nilai Manual</h4>
+              </div>
+              <button
+                onClick={() => setEditingNilai(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-1">
+              <div>
+                <span className="text-slate-500">Nama Siswa:</span>{' '}
+                <span className="font-bold text-slate-800">{editingNilai.Nama_Murid}</span>
+              </div>
+              <div>
+                <span className="text-slate-500">Kelas:</span>{' '}
+                <span className="font-semibold text-slate-700">{editingNilai.Kelas}</span>
+              </div>
+              <div>
+                <span className="text-slate-500">Judul Ujian:</span>{' '}
+                <span className="font-semibold text-indigo-700">{editingNilai.Judul_Ujian}</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Nilai Baru (Skala 0 - 100)
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                value={editScoreInput}
+                onChange={(e) => setEditScoreInput(Number(e.target.value))}
+                className="w-full text-base font-black p-3 rounded-2xl border border-slate-300 bg-white text-indigo-700 focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Catatan / Umpan Balik Guru (Opsional)
+              </label>
+              <textarea
+                rows={3}
+                value={editCatatanInput}
+                onChange={(e) => setEditCatatanInput(e.target.value)}
+                placeholder="Contoh: Diberikan tambahan nilai setelah penilaian esai..."
+                className="w-full text-xs p-3 rounded-2xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEditingNilai(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isSavingCorrection}
+                onClick={handleSaveCorrection}
+                className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black shadow-md transition disabled:opacity-50"
+              >
+                {isSavingCorrection ? 'Menyimpan...' : 'Simpan Koreksi Nilai'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL WHATSAPP NOTIFIKASI KE ORANG TUA */}
+      {waModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-emerald-600" />
+                <h4 className="font-black text-slate-800 text-base">Kirim Laporan Nilai via WhatsApp</h4>
+              </div>
+              <button
+                onClick={() => setWaModalData(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Nomor WhatsApp Orang Tua (Opsional)
+              </label>
+              <input
+                type="text"
+                value={waModalData.phone}
+                onChange={(e) =>
+                  setWaModalData({ ...waModalData, phone: e.target.value })
+                }
+                placeholder="Contoh: 08123456789 (Jika kosong, akan membuka kontak WA)"
+                className="w-full text-xs p-3 rounded-2xl border border-slate-300 bg-white focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Isi Pesan Laporan
+              </label>
+              <textarea
+                rows={6}
+                value={waModalData.message}
+                onChange={(e) =>
+                  setWaModalData({ ...waModalData, message: e.target.value })
+                }
+                className="w-full text-xs p-3 rounded-2xl border border-slate-300 bg-slate-50 font-sans focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setWaModalData(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleSendWA}
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md transition flex items-center gap-1.5"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Buka WhatsApp & Kirim</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
