@@ -1,6 +1,15 @@
 import { User, Materi, Ujian, Nilai, ApiResponse, SchoolProfile, Announcement } from '../types';
 import { INITIAL_USERS, INITIAL_MATERI, INITIAL_UJIAN, INITIAL_NILAI } from './seedData';
-import { firebaseService, ensureFirebaseSeeded } from './firebase';
+import {
+  firebaseService,
+  ensureFirebaseSeeded,
+  FirebaseConnectionDiagnostic,
+  FirebaseAppConfig,
+  getActiveFirebaseConfig,
+  setActiveFirebaseConfig,
+  resetActiveFirebaseConfig,
+  PRESET_CONFIGS,
+} from './firebase';
 import {
   normalizeUser,
   normalizeMateri,
@@ -8,8 +17,18 @@ import {
   normalizeNilai,
 } from './normalizers';
 
-// Re-export normalizers for backward compatibility
-export { normalizeUser, normalizeMateri, normalizeUjian, normalizeNilai };
+// Re-export normalizers & Firebase helpers for backward compatibility
+export {
+  normalizeUser,
+  normalizeMateri,
+  normalizeUjian,
+  normalizeNilai,
+  getActiveFirebaseConfig,
+  setActiveFirebaseConfig,
+  resetActiveFirebaseConfig,
+  PRESET_CONFIGS,
+};
+export type { FirebaseConnectionDiagnostic, FirebaseAppConfig };
 
 export const DEFAULT_SCHOOL_PROFILE: SchoolProfile = {
   namaSekolah: 'SD NEGERI HARJOSARI KIDUL 01',
@@ -328,12 +347,17 @@ ensureFirebaseSeeded().catch(() => {});
 // Unified API Methods supporting Firebase Firestore, Google Apps Script, and Local Storage
 export const api = {
   // Test connection to Firebase Firestore
-  async testFirebaseConnection(): Promise<{ success: boolean; message: string; databaseId?: string }> {
+  async testFirebaseConnection(): Promise<FirebaseConnectionDiagnostic> {
     const res = await firebaseService.testConnection();
     if (res.success) {
       notifyDataSource('FIREBASE');
     }
     return res;
+  },
+
+  // Manual seed to Firebase
+  async seedInitialFirebaseCollections(): Promise<ApiResponse> {
+    return firebaseService.seedInitialCollections();
   },
 
   // Test connection to GAS

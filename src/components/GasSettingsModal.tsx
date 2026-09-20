@@ -11,6 +11,13 @@ import {
   HardDrive,
   ShieldCheck,
   Check,
+  Copy,
+  ExternalLink,
+  ShieldAlert,
+  ChevronDown,
+  ChevronUp,
+  Sliders,
+  Sparkles,
 } from 'lucide-react';
 import {
   getGasUrl,
@@ -19,9 +26,13 @@ import {
   api,
   DataSource,
   setPreferredDataSource,
+  getActiveFirebaseConfig,
+  setActiveFirebaseConfig,
+  resetActiveFirebaseConfig,
+  PRESET_CONFIGS,
+  FirebaseAppConfig,
+  FirebaseConnectionDiagnostic,
 } from '../services/api';
-import firebaseConfig from '../../firebase-applet-config.json';
-import { ensureFirebaseSeeded } from '../services/firebase';
 
 interface GasSettingsModalProps {
   isOpen: boolean;
@@ -29,6 +40,15 @@ interface GasSettingsModalProps {
   currentSource: DataSource;
   onSourceChanged?: () => void;
 }
+
+const FIRESTORE_RULES_SNIPPET = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}`;
 
 export const GasSettingsModal: React.FC<GasSettingsModalProps> = ({
   isOpen,
@@ -39,7 +59,19 @@ export const GasSettingsModal: React.FC<GasSettingsModalProps> = ({
   const [activeTab, setActiveTab] = useState<'firebase' | 'gas' | 'local'>('firebase');
   const [url, setUrlState] = useState(getGasUrl());
   const [isTesting, setIsTesting] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ text: string; isError: boolean } | null>(null);
+  const [diagnostic, setDiagnostic] = useState<FirebaseConnectionDiagnostic | null>(null);
+  const [copiedRules, setCopiedRules] = useState(false);
+  const [showConfigEditor, setShowConfigEditor] = useState(false);
+
+  // Active config state
+  const [activeConfig, setActiveConfigState] = useState<FirebaseAppConfig>(() =>
+    getActiveFirebaseConfig()
+  );
+
+  // Form edit state for custom config
+  const [editConfig, setEditConfig] = useState<FirebaseAppConfig>(() => getActiveFirebaseConfig());
 
   if (!isOpen) return null;
 
@@ -61,9 +93,12 @@ export const GasSettingsModal: React.FC<GasSettingsModalProps> = ({
   const handleTestFirebase = async () => {
     setIsTesting(true);
     setStatusMsg(null);
+    setDiagnostic(null);
+
     try {
       const res = await api.testFirebaseConnection();
       setIsTesting(false);
+      setDiagnostic(res);
       setStatusMsg({
         text: res.message || 'Koneksi ke Google Firebase Console berhasil!',
         isError: !res.success,
@@ -80,6 +115,82 @@ export const GasSettingsModal: React.FC<GasSettingsModalProps> = ({
         isError: true,
       });
     }
+  };
+
+  const handleSeedFirebase = async () => {
+    setIsSeeding(true);
+    try {
+      const res = await api.seedInitialFirebaseCollections();
+      setIsSeeding(false);
+      setStatusMsg({
+        text: res.message || 'Data awal disinkronkan',
+        isError: !res.success,
+      });
+      if (res.success) {
+        handleTestFirebase();
+      }
+    } catch (err) {
+      setIsSeeding(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      setStatusMsg({
+        text: `Gagal inisialisasi: ${msg}`,
+        isError: true,
+      });
+    }
+  };
+
+  const handleCopyRules = () => {
+    navigator.clipboard.writeText(FIRESTORE_RULES_SNIPPET);
+    setCopiedRules(true);
+    setTimeout(() => setCopiedRules(false), 2500);
+  };
+
+  const handleSwitchPreset = (presetKey: 'wildan_fb826' | 'sebayu' | 'wildan') => {
+    const preset = PRESET_CONFIGS[presetKey];
+    if (!preset) return;
+    setActiveFirebaseConfig(preset.config);
+    setActiveConfigState(preset.config);
+    setEditConfig(preset.config);
+    setStatusMsg({
+      text: `Konfigurasi dialihkan ke ${preset.name}. Memuat ulang pengaturan...`,
+      isError: false,
+    });
+    setTimeout(() => {
+      window.location.reload();
+    }, 600);
+  };
+
+  const handleSaveCustomConfig = () => {
+    if (!editConfig.projectId || !editConfig.apiKey) {
+      setStatusMsg({
+        text: 'Project ID dan API Key tidak boleh kosong.',
+        isError: true,
+      });
+      return;
+    }
+    setActiveFirebaseConfig(editConfig);
+    setActiveConfigState(editConfig);
+    setStatusMsg({
+      text: 'Konfigurasi Firebase kustom berhasil disimpan. Memuat ulang aplikasi...',
+      isError: false,
+    });
+    setTimeout(() => {
+      window.location.reload();
+    }, 600);
+  };
+
+  const handleResetToDefaultConfig = () => {
+    resetActiveFirebaseConfig();
+    const cfg = getActiveFirebaseConfig();
+    setActiveConfigState(cfg);
+    setEditConfig(cfg);
+    setStatusMsg({
+      text: 'Konfigurasi Firebase dikembalikan ke bawaan.',
+      isError: false,
+    });
+    setTimeout(() => {
+      window.location.reload();
+    }, 600);
   };
 
   const handleTestGas = async () => {
@@ -109,6 +220,13 @@ export const GasSettingsModal: React.FC<GasSettingsModalProps> = ({
     setStatusMsg({ text: 'URL dikembalikan ke default template.', isError: false });
     if (onSourceChanged) onSourceChanged();
   };
+
+  const isPermissionDenied =
+    diagnostic?.errorCode === 'permission-denied' ||
+    (statusMsg?.isError &&
+      (statusMsg.text.toLowerCase().includes('permission-denied') ||
+        statusMsg.text.toLowerCase().includes('permission denied') ||
+        statusMsg.text.toLowerCase().includes('missing or insufficient permissions')));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
@@ -210,72 +328,171 @@ export const GasSettingsModal: React.FC<GasSettingsModalProps> = ({
         <div className="overflow-y-auto py-4 space-y-4 flex-1">
           {/* TAB 1: GOOGLE FIREBASE CONSOLE */}
           {activeTab === 'firebase' && (
-            <div className="space-y-4 text-xs">
-              <div className="p-4 rounded-xl bg-gradient-to-br from-amber-50/60 to-orange-50/40 border border-amber-200/70">
-                <div className="flex items-center justify-between mb-2">
+            <div className="space-y-3.5 text-xs">
+              {/* Header card */}
+              <div className="p-3.5 rounded-xl bg-gradient-to-br from-amber-50/70 to-orange-50/50 border border-amber-200/80">
+                <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2 font-bold text-slate-800 text-sm">
-                    <Flame className="w-5 h-5 text-amber-500" />
-                    <span>Konfigurasi Google Firebase Console</span>
+                    <Flame className="w-4 h-4 text-amber-500" />
+                    <span>Konfigurasi Firebase Firestore Cloud</span>
                   </div>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800 border border-amber-300/60">
-                    Resmi Cloud Terpasang
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                      currentSource === 'FIREBASE'
+                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                        : 'bg-amber-100 text-amber-800 border-amber-300'
+                    }`}
+                  >
+                    {currentSource === 'FIREBASE' ? 'Sumber Aktif' : 'Tersedia'}
                   </span>
                 </div>
                 <p className="text-slate-600 text-[11px] leading-relaxed">
-                  Database E-Learning & CBT telah dikonfigurasi terhubung langsung ke Google Firebase Console (Firestore NoSQL Database).
+                  Database Firestore NoSQL Google Cloud untuk sinkronisasi akun guru, siswa, bank soal CBT, dan rekapitulasi nilai secara real-time.
                 </p>
               </div>
 
-              {/* Firebase Spec details */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-[10px] text-slate-500 block uppercase font-semibold">Firebase Project ID</span>
-                  <span className="font-mono text-slate-800 font-semibold truncate block">
-                    {firebaseConfig.projectId || '-'}
+              {/* Preset Selector */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">
+                    Pilih Target Proyek Firebase:
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500">
+                    ID: {activeConfig.projectId}
                   </span>
                 </div>
-                <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                  <span className="text-[10px] text-slate-500 block uppercase font-semibold">Auth Domain</span>
-                  <span className="font-mono text-slate-800 font-semibold truncate block">
-                    {firebaseConfig.authDomain || '-'}
-                  </span>
-                </div>
-                <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 sm:col-span-2">
-                  <span className="text-[10px] text-slate-500 block uppercase font-semibold">Firestore Database ID</span>
-                  <span className="font-mono text-slate-800 font-semibold truncate block">
-                    {firebaseConfig.firestoreDatabaseId || '(default)'}
-                  </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchPreset('wildan_fb826')}
+                    className={`text-left p-2.5 rounded-lg border transition ${
+                      activeConfig.projectId === 'elearningcbt-wildanprama-fb826'
+                        ? 'bg-indigo-50/80 border-indigo-500 text-indigo-900 ring-1 ring-indigo-500'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="font-bold text-xs truncate">wildanprama-fb826</span>
+                      {activeConfig.projectId === 'elearningcbt-wildanprama-fb826' && (
+                        <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-500 block">
+                      Proyek Baru Anda
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchPreset('sebayu')}
+                    className={`text-left p-2.5 rounded-lg border transition ${
+                      activeConfig.projectId === 'elearningcbt-sebayu'
+                        ? 'bg-indigo-50/80 border-indigo-500 text-indigo-900 ring-1 ring-indigo-500'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="font-bold text-xs truncate">sebayu</span>
+                      {activeConfig.projectId === 'elearningcbt-sebayu' && (
+                        <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-500 block">
+                      Proyek Sebelumnya
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchPreset('wildan')}
+                    className={`text-left p-2.5 rounded-lg border transition ${
+                      activeConfig.projectId === 'elearningcbt-wildanpramadika'
+                        ? 'bg-indigo-50/80 border-indigo-500 text-indigo-900 ring-1 ring-indigo-500'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="font-bold text-xs truncate">wildanpramadika</span>
+                      {activeConfig.projectId === 'elearningcbt-wildanpramadika' && (
+                        <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-500 block">
+                      Proyek Cadangan
+                    </span>
+                  </button>
                 </div>
               </div>
 
-              {/* Collections list */}
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                <div className="flex items-center gap-1.5 font-semibold text-slate-700 mb-2">
-                  <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                  <span>Koleksi Terdaftar di Firestore:</span>
+              {/* SPECIFIC TROUBLESHOOTING GUIDE FOR PERMISSION DENIED */}
+              {isPermissionDenied && (
+                <div className="p-3.5 rounded-xl bg-amber-50/90 border-2 border-amber-400 text-slate-800 space-y-2.5 animate-in fade-in">
+                  <div className="flex items-start gap-2">
+                    <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold text-amber-900 text-xs sm:text-sm">
+                        Solusi Mengatasi Error: Aturan Keamanan Firestore Memblokir Akses
+                      </div>
+                      <p className="text-[11px] text-slate-700 mt-1 leading-relaxed">
+                        Kunci API dan Database <strong>{activeConfig.projectId}</strong> valid, namun aturan keamanan bawaan di Firebase Console masih mengunci izin akses baca/tulis (<code className="text-amber-900 bg-amber-100 px-1 py-0.5 rounded">allow read, write: if false;</code>).
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-3 rounded-lg border border-amber-200 space-y-2">
+                    <div className="text-[11px] font-bold text-slate-800">
+                      Ikuti 3 Langkah Cepat Berikut:
+                    </div>
+                    <ol className="list-decimal list-inside space-y-1.5 text-[11px] text-slate-700 leading-normal">
+                      <li>
+                        Buka halaman pengaturan aturan Firebase Console proyek Anda:{' '}
+                        <a
+                          href={`https://console.firebase.google.com/project/${activeConfig.projectId}/firestore/rules`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 font-bold text-indigo-600 hover:text-indigo-800 underline ml-1"
+                        >
+                          Buka Tab Rules di Firebase Console <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </li>
+                      <li>
+                        Salin kode aturan keamanan di bawah ini dan tempelkan (replace) seluruh isi tab <strong>Rules</strong> di Firebase Console:
+                      </li>
+                    </ol>
+
+                    {/* Code block with copy button */}
+                    <div className="relative mt-2">
+                      <pre className="p-2.5 rounded-lg bg-slate-900 text-amber-300 font-mono text-[10px] overflow-x-auto leading-relaxed border border-slate-800">
+                        {FIRESTORE_RULES_SNIPPET}
+                      </pre>
+                      <button
+                        type="button"
+                        onClick={handleCopyRules}
+                        className="absolute top-2 right-2 px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-sans font-semibold text-[10px] flex items-center gap-1 shadow-sm transition"
+                      >
+                        {copiedRules ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-300" />
+                            <span>Tersalin!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Salin Rules</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="text-[11px] text-slate-700">
+                      3. Klik tombol biru <strong>Publish (Publikasikan)</strong> di Firebase Console, lalu klik tombol <strong>"Uji & Sambungkan Firebase"</strong> di bawah.
+                    </div>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                  <div className="flex items-center gap-1.5 text-slate-700 bg-white p-2 rounded-lg border border-slate-100">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <span><code>users</code> (Akun Pengguna)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-slate-700 bg-white p-2 rounded-lg border border-slate-100">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <span><code>materi</code> (Modul Pembelajaran)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-slate-700 bg-white p-2 rounded-lg border border-slate-100">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <span><code>ujian</code> (Bank Soal CBT)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-slate-700 bg-white p-2 rounded-lg border border-slate-100">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <span><code>nilai</code> (Hasil & Rekapitulasi)</span>
-                  </div>
-                </div>
-              </div>
+              )}
 
               {/* Action buttons for Firebase */}
-              <div className="flex flex-wrap gap-2 pt-2">
+              <div className="flex flex-wrap gap-2 pt-1">
                 <button
                   onClick={handleTestFirebase}
                   disabled={isTesting}
@@ -292,6 +509,128 @@ export const GasSettingsModal: React.FC<GasSettingsModalProps> = ({
                   >
                     Aktifkan Firebase
                   </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleSeedFirebase}
+                  disabled={isSeeding || isTesting}
+                  title="Tulis data master awal (akun pengguna, mata pelajaran, ujian) ke Firestore"
+                  className="py-2.5 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold flex items-center gap-1.5 transition disabled:opacity-50"
+                >
+                  <Sparkles className={`w-3.5 h-3.5 text-amber-500 ${isSeeding ? 'animate-spin' : ''}`} />
+                  <span>{isSeeding ? 'Menyinkronkan...' : 'Sinkronkan Data Awal'}</span>
+                </button>
+              </div>
+
+              {/* Collapsible raw credentials editor */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowConfigEditor(!showConfigEditor)}
+                  className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-xs transition"
+                >
+                  <div className="flex items-center gap-2">
+                    <Sliders className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Lihat / Sesuaikan Kredensial Firebase</span>
+                  </div>
+                  {showConfigEditor ? (
+                    <ChevronUp className="w-4 h-4 text-slate-500" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-slate-500" />
+                  )}
+                </button>
+
+                {showConfigEditor && (
+                  <div className="p-3.5 space-y-2.5 bg-white border-t border-slate-200 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-600 uppercase mb-0.5">
+                          API Key
+                        </label>
+                        <input
+                          type="text"
+                          value={editConfig.apiKey}
+                          onChange={(e) => setEditConfig({ ...editConfig, apiKey: e.target.value })}
+                          className="w-full text-xs font-mono p-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-600 uppercase mb-0.5">
+                          Project ID
+                        </label>
+                        <input
+                          type="text"
+                          value={editConfig.projectId}
+                          onChange={(e) => setEditConfig({ ...editConfig, projectId: e.target.value })}
+                          className="w-full text-xs font-mono p-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-600 uppercase mb-0.5">
+                          Auth Domain
+                        </label>
+                        <input
+                          type="text"
+                          value={editConfig.authDomain}
+                          onChange={(e) => setEditConfig({ ...editConfig, authDomain: e.target.value })}
+                          className="w-full text-xs font-mono p-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-600 uppercase mb-0.5">
+                          Storage Bucket
+                        </label>
+                        <input
+                          type="text"
+                          value={editConfig.storageBucket}
+                          onChange={(e) => setEditConfig({ ...editConfig, storageBucket: e.target.value })}
+                          className="w-full text-xs font-mono p-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-600 uppercase mb-0.5">
+                          Messaging Sender ID
+                        </label>
+                        <input
+                          type="text"
+                          value={editConfig.messagingSenderId}
+                          onChange={(e) =>
+                            setEditConfig({ ...editConfig, messagingSenderId: e.target.value })
+                          }
+                          className="w-full text-xs font-mono p-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-slate-600 uppercase mb-0.5">
+                          App ID
+                        </label>
+                        <input
+                          type="text"
+                          value={editConfig.appId}
+                          onChange={(e) => setEditConfig({ ...editConfig, appId: e.target.value })}
+                          className="w-full text-xs font-mono p-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={handleResetToDefaultConfig}
+                        className="py-1.5 px-3 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium text-xs"
+                      >
+                        Reset Bawaan
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveCustomConfig}
+                        className="py-1.5 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition"
+                      >
+                        Simpan & Terapkan
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

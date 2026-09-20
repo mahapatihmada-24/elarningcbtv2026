@@ -13,26 +13,138 @@ import {
   where,
   deleteField,
 } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
+import firebaseConfigFile from '../../firebase-applet-config.json';
 import { User, Materi, Ujian, Nilai, ApiResponse, SchoolProfile, Announcement } from '../types';
 import { INITIAL_USERS, INITIAL_MATERI, INITIAL_UJIAN, INITIAL_NILAI } from './seedData';
 import { normalizeUser, normalizeMateri, normalizeUjian, normalizeNilai } from './normalizers';
 
+export interface FirebaseAppConfig {
+  projectId: string;
+  appId: string;
+  apiKey: string;
+  authDomain: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  firestoreDatabaseId?: string;
+  measurementId?: string;
+  oAuthClientId?: string;
+  recaptchaSiteKey?: string;
+}
+
+export interface FirebaseConnectionDiagnostic {
+  success: boolean;
+  message: string;
+  databaseId: string;
+  projectId: string;
+  errorCode?: 'permission-denied' | 'not-found' | 'network-error' | 'invalid-api-key' | 'unknown';
+  errorDetails?: string;
+  rulesSnippet?: string;
+  consoleRulesUrl?: string;
+  userCount?: number;
+}
+
+// Preset konfigurasi Firebase yang didukung
+export const PRESET_CONFIGS: Record<
+  string,
+  { id: string; name: string; desc: string; config: FirebaseAppConfig }
+> = {
+  wildan_fb826: {
+    id: 'wildan_fb826',
+    name: 'Proyek Baru (elearningcbt-wildanprama-fb826)',
+    desc: 'Proyek Firebase utama pengguna',
+    config: {
+      projectId: 'elearningcbt-wildanprama-fb826',
+      appId: '1:624261016334:web:ae98d13867da45265f055f',
+      apiKey: 'AIzaSyB_gbWt3NNE6bK183StP9SaAJ6yVM9kGs0',
+      authDomain: 'elearningcbt-wildanprama-fb826.firebaseapp.com',
+      storageBucket: 'elearningcbt-wildanprama-fb826.firebasestorage.app',
+      messagingSenderId: '624261016334',
+      firestoreDatabaseId: '(default)',
+    },
+  },
+  sebayu: {
+    id: 'sebayu',
+    name: 'Proyek Sebayu (elearningcbt-sebayu)',
+    desc: 'Proyek Firebase sebelumnya',
+    config: {
+      projectId: 'elearningcbt-sebayu',
+      appId: '1:426361589059:web:3a4cb3b96876b21a67f3f6',
+      apiKey: 'AIzaSyALY4FHEugOGlTBlM2EKCEoy_kwSCsiD-o',
+      authDomain: 'elearningcbt-sebayu.firebaseapp.com',
+      storageBucket: 'elearningcbt-sebayu.firebasestorage.app',
+      messagingSenderId: '426361589059',
+      firestoreDatabaseId: '(default)',
+    },
+  },
+  wildan: {
+    id: 'wildan',
+    name: 'Proyek Cadangan (elearningcbt-wildanpramadika)',
+    desc: 'Proyek cadangan yang sudah aktif dan data lengkap',
+    config: {
+      projectId: 'elearningcbt-wildanpramadika',
+      appId: '1:30686153349:web:3e623d07b77abf49cdb7ec',
+      apiKey: 'AIzaSyCNIg-_N-1q1ZpL-8vFv5l0V-hA0sF6T8',
+      authDomain: 'elearningcbt-wildanpramadika.firebaseapp.com',
+      storageBucket: 'elearningcbt-wildanpramadika.firebasestorage.app',
+      messagingSenderId: '30686153349',
+      firestoreDatabaseId: '(default)',
+    },
+  },
+};
+
+const STORAGE_KEY_CUSTOM_FIREBASE = 'cbt_custom_firebase_config';
+
+export function getActiveFirebaseConfig(): FirebaseAppConfig {
+  try {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_KEY_CUSTOM_FIREBASE);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.projectId && parsed.apiKey) {
+          // If stored custom config matches current app default project, use it
+          if (parsed.projectId === firebaseConfigFile.projectId) {
+            return parsed as FirebaseAppConfig;
+          }
+        }
+      }
+    }
+  } catch {}
+  return firebaseConfigFile as FirebaseAppConfig;
+}
+
+export function setActiveFirebaseConfig(cfg: FirebaseAppConfig): void {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY_CUSTOM_FIREBASE, JSON.stringify(cfg));
+    }
+  } catch {}
+}
+
+export function resetActiveFirebaseConfig(): void {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY_CUSTOM_FIREBASE);
+    }
+  } catch {}
+}
+
+// Konfigurasi aktif saat modul dimuat
+const activeConfig = getActiveFirebaseConfig();
+
 // Inisialisasi Firebase App (Cegah inisialisasi ganda)
-export const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+export const firebaseApp = getApps().length === 0 ? initializeApp(activeConfig) : getApp();
 
 // Inisialisasi Firestore dengan opsi aman
 const resolvedDatabaseId =
-  firebaseConfig.firestoreDatabaseId &&
-  firebaseConfig.firestoreDatabaseId !== '(default)'
-    ? firebaseConfig.firestoreDatabaseId
+  activeConfig.firestoreDatabaseId && activeConfig.firestoreDatabaseId !== '(default)'
+    ? activeConfig.firestoreDatabaseId
     : undefined;
 
 let firestoreInstance: ReturnType<typeof getFirestore>;
 try {
   firestoreInstance = resolvedDatabaseId
-    ? initializeFirestore(firebaseApp, { experimentalForceLongPolling: true }, resolvedDatabaseId)
-    : initializeFirestore(firebaseApp, { experimentalForceLongPolling: true });
+    ? initializeFirestore(firebaseApp, { experimentalAutoDetectLongPolling: true }, resolvedDatabaseId)
+    : initializeFirestore(firebaseApp, { experimentalAutoDetectLongPolling: true });
 } catch {
   firestoreInstance = resolvedDatabaseId
     ? getFirestore(firebaseApp, resolvedDatabaseId)
@@ -73,14 +185,18 @@ export function withTimeout<T>(promise: Promise<T>, timeoutMs = 8000): Promise<T
 // Helper pengecekan dan pengisian awal data (seed data) ke Firebase jika koleksi masih kosong
 let isSeeding = false;
 let hasSeeded = false;
+let lastSeedAttemptTime = 0;
 
 export async function ensureFirebaseSeeded(): Promise<void> {
   if (hasSeeded || isSeeding) return;
+  // Throttle agar tidak membombardir getDocs saat koneksi error
+  if (Date.now() - lastSeedAttemptTime < 25000) return;
+  lastSeedAttemptTime = Date.now();
   isSeeding = true;
 
   try {
     const usersCol = collection(db, COLLECTIONS.USERS);
-    const snap = await withTimeout(getDocs(usersCol), 7000);
+    const snap = await withTimeout(getDocs(usersCol), 4000);
 
     if (snap.empty) {
       console.log('Firebase Firestore masih kosong. Melakukan inisialisasi data awal...');
@@ -115,18 +231,19 @@ export const firebaseService = {
   // 1. AUTH & PENGGUNA
   async loginUser(username: string, passwordInput: string): Promise<ApiResponse> {
     const cleanUsername = (username || '').trim().toLowerCase();
-    await ensureFirebaseSeeded().catch(() => {});
+    // Non-blocking seed trigger agar login responsif
+    ensureFirebaseSeeded().catch(() => {});
 
     try {
       const userDocRef = doc(db, COLLECTIONS.USERS, cleanUsername);
-      const snap = await withTimeout(getDoc(userDocRef), 6000);
+      const snap = await withTimeout(getDoc(userDocRef), 4500);
 
       if (!snap.exists()) {
         const q = query(
           collection(db, COLLECTIONS.USERS),
           where('username', '==', cleanUsername)
         );
-        const querySnap = await withTimeout(getDocs(q), 6000);
+        const querySnap = await withTimeout(getDocs(q), 4500);
         if (querySnap.empty) {
           return { success: false, message: 'Username tidak ditemukan di database Firebase!' };
         }
@@ -141,7 +258,6 @@ export const firebaseService = {
       if (userData.password && userData.password !== passwordInput) {
         return { success: false, message: 'Password salah!' };
       }
-
       return { success: true, message: 'Login berhasil!', user: userData };
     } catch (err) {
       console.warn('Gagal menghubungi Firestore saat login, beralih ke penyimpanan lokal:', err);
@@ -393,27 +509,35 @@ export const firebaseService = {
     return { success: true, message: 'Pengumuman berhasil dihapus!' };
   },
 
-  // 6. TEST CONNECTION DIAGNOSTIC
-  async testConnection(): Promise<{ success: boolean; message: string; databaseId: string }> {
+  // 6. TEST CONNECTION DIAGNOSTIC & INITIAL SEED
+  async testConnection(): Promise<FirebaseConnectionDiagnostic> {
+    const activeCfg = getActiveFirebaseConfig();
+    const rulesSnippet = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}`;
+    const consoleRulesUrl = `https://console.firebase.google.com/project/${activeCfg.projectId}/firestore/rules`;
+
     try {
-      // 1. Coba baca koleksi users
+      // 1. Coba baca koleksi users dengan timeout terukur
       const usersCol = collection(db, COLLECTIONS.USERS);
-      const snap = await withTimeout(getDocs(usersCol), 10000);
+      const snap = await withTimeout(getDocs(usersCol), 5000);
 
       // Jika kosong, inisialisasi data awal
       if (snap.empty) {
         ensureFirebaseSeeded().catch(() => {});
         return {
           success: true,
-          message: `Berhasil terhubung ke database Firestore (${firebaseConfig.projectId})! Koleksi awal sedang disinkronkan.`,
-          databaseId: firebaseConfig.firestoreDatabaseId,
+          message: `Berhasil terhubung ke database Firestore (${activeCfg.projectId})! Database siap dan koleksi sedang disinkronkan.`,
+          databaseId: activeCfg.firestoreDatabaseId || '(default)',
+          projectId: activeCfg.projectId,
+          userCount: 0,
         };
       }
 
       return {
         success: true,
-        message: `Terhubung sukses ke Google Firebase Firestore (${firebaseConfig.projectId})! Ditemukan ${snap.size} akun pengguna aktif.`,
-        databaseId: firebaseConfig.firestoreDatabaseId,
+        message: `Terhubung sukses ke Google Firebase Firestore (${activeCfg.projectId})! Ditemukan ${snap.size} akun pengguna aktif.`,
+        databaseId: activeCfg.firestoreDatabaseId || '(default)',
+        projectId: activeCfg.projectId,
+        userCount: snap.size,
       };
     } catch (err: unknown) {
       console.error('Firebase testConnection error:', err);
@@ -421,20 +545,63 @@ export const firebaseService = {
       const code = errorObj?.code || '';
       const msg = errorObj?.message || String(err);
 
+      let errorCode: FirebaseConnectionDiagnostic['errorCode'] = 'unknown';
       let helpfulMsg = msg;
-      if (code === 'permission-denied' || msg.includes('permission-denied') || msg.includes('Missing or insufficient permissions')) {
-        helpfulMsg = 'Akses ditolak (Permission Denied). Pastikan Firestore Rules di Firebase Console diizinkan: "allow read, write: if true;".';
+
+      if (
+        code === 'permission-denied' ||
+        msg.includes('permission-denied') ||
+        msg.includes('Missing or insufficient permissions') ||
+        msg.includes('403')
+      ) {
+        errorCode = 'permission-denied';
+        helpfulMsg = `Akses Ditolak (Error 403: Permission Denied). Database Firestore di proyek "${activeCfg.projectId}" menolak permintaan karena Aturan Keamanan (Security Rules) masih terkunci. Silakan perbarui aturan di Firebase Console menjadi: allow read, write: if true;`;
       } else if (code === 'not-found' || msg.includes('not-found') || msg.includes('does not exist')) {
-        helpfulMsg = `Database Firestore belum dibuat di proyek "${firebaseConfig.projectId}". Buka Firebase Console > Firestore Database > Buat Database (lokasi asia-southeast1 / (default)).`;
-      } else if (code === 'unavailable' || msg.includes('unavailable') || msg.includes('batas waktu') || msg.includes('offline')) {
-        helpfulMsg = 'Layanan Firestore sedang menunggu jaringan atau mode offline. Aplikasi tetap aktif menggunakan database lokal secara otomatis.';
+        errorCode = 'not-found';
+        helpfulMsg = `Database Firestore belum dibuat di proyek "${activeCfg.projectId}". Buka Firebase Console > Firestore Database > Buat Database (lokasi asia-southeast1 / (default)).`;
+      } else if (
+        code === 'unavailable' ||
+        msg.includes('unavailable') ||
+        msg.includes('batas waktu') ||
+        msg.includes('timeout') ||
+        msg.includes('offline')
+      ) {
+        errorCode = 'network-error';
+        helpfulMsg = `Koneksi ke Firestore batas waktu (timeout). Periksa jaringan internet Anda atau gunakan mode cadangan offline.`;
       }
 
       return {
         success: false,
-        message: `Status: ${helpfulMsg}`,
-        databaseId: firebaseConfig.firestoreDatabaseId,
+        message: helpfulMsg,
+        databaseId: activeCfg.firestoreDatabaseId || '(default)',
+        projectId: activeCfg.projectId,
+        errorCode,
+        errorDetails: msg,
+        rulesSnippet,
+        consoleRulesUrl,
       };
+    }
+  },
+
+  // Inisialisasi manual seluruh koleksi data awal
+  async seedInitialCollections(): Promise<ApiResponse> {
+    try {
+      for (const u of INITIAL_USERS) {
+        await setDoc(doc(db, COLLECTIONS.USERS, u.username), u);
+      }
+      for (const m of INITIAL_MATERI) {
+        await setDoc(doc(db, COLLECTIONS.MATERI, m.ID), m);
+      }
+      for (const uj of INITIAL_UJIAN) {
+        await setDoc(doc(db, COLLECTIONS.UJIAN, uj.ID), uj);
+      }
+      for (const n of INITIAL_NILAI) {
+        await setDoc(doc(db, COLLECTIONS.NILAI, n.ID), n);
+      }
+      return { success: true, message: 'Berhasil menginisialisasi seluruh data master ke Firebase!' };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, message: `Gagal inisialisasi: ${msg}` };
     }
   },
 };
