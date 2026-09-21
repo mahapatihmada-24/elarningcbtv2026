@@ -85,29 +85,49 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
 
   const handleTypeChange = (newType: QuestionType) => {
     if (newType === 'pg') {
+      const existingOpts =
+        q.type === 'pgk_mcma'
+          ? (q as QuestionPGKMCMA).options?.map((o) => o.text) || []
+          : [(q as QuestionPG).a, (q as QuestionPG).b, (q as QuestionPG).c, (q as QuestionPG).d];
+
       onUpdateQuestion(activeIndex, {
         type: 'pg',
         bobot: q.bobot || 1,
         soal: q.soal,
         gambar: q.gambar,
-        a: (q as QuestionPG).a || '',
-        b: (q as QuestionPG).b || '',
-        c: (q as QuestionPG).c || '',
-        d: (q as QuestionPG).d || '',
+        a: existingOpts[0] || '',
+        b: existingOpts[1] || '',
+        c: existingOpts[2] || '',
+        d: existingOpts[3] || '',
+        ...(existingOpts[4] ? { e: existingOpts[4] } : {}),
         kunci: (q as QuestionPG).kunci || 'A',
       });
     } else if (newType === 'pgk_mcma') {
+      const existingOpts =
+        q.type === 'pg'
+          ? [
+              { text: (q as QuestionPG).a || '', isKey: (q as QuestionPG).kunci === 'A' },
+              { text: (q as QuestionPG).b || '', isKey: (q as QuestionPG).kunci === 'B' },
+              { text: (q as QuestionPG).c || '', isKey: (q as QuestionPG).kunci === 'C' },
+              { text: (q as QuestionPG).d || '', isKey: (q as QuestionPG).kunci === 'D' },
+              ...((q as QuestionPG).e ? [{ text: (q as QuestionPG).e || '', isKey: (q as QuestionPG).kunci === 'E' }] : []),
+            ]
+          : (q as QuestionPGKMCMA).options || [];
+
       onUpdateQuestion(activeIndex, {
         type: 'pgk_mcma',
         bobot: q.bobot || 1,
         soal: q.soal,
         gambar: q.gambar,
-        options: [
-          { text: (q as QuestionPG).a || '', isKey: true },
-          { text: (q as QuestionPG).b || '', isKey: false },
-          { text: (q as QuestionPG).c || '', isKey: false },
-          { text: (q as QuestionPG).d || '', isKey: false },
-        ],
+        options:
+          existingOpts.length > 0
+            ? existingOpts
+            : [
+                { text: '', isKey: true },
+                { text: '', isKey: false },
+                { text: '', isKey: false },
+                { text: '', isKey: false },
+              ],
       });
     } else {
       onUpdateQuestion(activeIndex, {
@@ -385,11 +405,43 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
               <label className="text-xs font-extrabold text-slate-800">
                 Pilihan Jawaban & Kunci Benar:
               </label>
-              <span className="text-[11px] text-slate-500">Pilih radio button untuk kunci</span>
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] text-slate-500">Pilih radio button untuk kunci</span>
+                {(q as QuestionPG).e === undefined ? (
+                  <button
+                    type="button"
+                    onClick={() => handleFieldChange('e', '')}
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200 transition"
+                  >
+                    + Tambah Opsi E
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...(q as QuestionPG) };
+                      delete updated.e;
+                      if (updated.kunci === 'E') updated.kunci = 'A';
+                      onUpdateQuestion(activeIndex, updated);
+                    }}
+                    className="text-[11px] font-bold text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded-md border border-red-200 transition"
+                  >
+                    - Hapus Opsi E
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {(['a', 'b', 'c', 'd'] as const).map((opt) => (
+              {(
+                ['a', 'b', 'c', 'd', ...((q as QuestionPG).e !== undefined ? ['e'] : [])] as (
+                  | 'a'
+                  | 'b'
+                  | 'c'
+                  | 'd'
+                  | 'e'
+                )[]
+              ).map((opt) => (
                 <div
                   key={opt}
                   className={`p-3 rounded-2xl border transition ${
@@ -429,12 +481,12 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
                     className="w-full text-xs p-2 rounded-xl border border-slate-300 bg-white"
                   />
                   {(q as QuestionPG)[opt] &&
-                    ((q as QuestionPG)[opt].includes('$') ||
-                      (q as QuestionPG)[opt].includes('\\frac')) && (
+                    ((q as QuestionPG)[opt]!.includes('$') ||
+                      (q as QuestionPG)[opt]!.includes('\\frac')) && (
                       <div className="mt-1.5 px-2 py-1 bg-indigo-50 border border-indigo-100 rounded-lg text-xs flex items-center gap-2">
                         <span className="text-[10px] text-indigo-600 font-bold uppercase">Formula:</span>
                         <MathRenderer
-                          content={(q as QuestionPG)[opt]}
+                          content={(q as QuestionPG)[opt]!}
                           className="font-semibold text-indigo-950"
                         />
                       </div>

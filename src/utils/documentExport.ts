@@ -461,7 +461,9 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
 
     let choicesHtml = '';
     if (q.type === 'pg') {
-      const keys: ('a' | 'b' | 'c' | 'd')[] = ['a', 'b', 'c', 'd'];
+      const keys: ('a' | 'b' | 'c' | 'd' | 'e')[] = q.e
+        ? ['a', 'b', 'c', 'd', 'e']
+        : ['a', 'b', 'c', 'd'];
       choicesHtml = `<table style="width: 100%; border: none; margin-top: 4pt; border-collapse: collapse;">`;
       keys.forEach((k) => {
         const optText = q[k];
@@ -728,7 +730,9 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
 
     let choicesHtml = '';
     if (q.type === 'pg') {
-      const keys: ('a' | 'b' | 'c' | 'd')[] = ['a', 'b', 'c', 'd'];
+      const keys: ('a' | 'b' | 'c' | 'd' | 'e')[] = q.e
+        ? ['a', 'b', 'c', 'd', 'e']
+        : ['a', 'b', 'c', 'd'];
       choicesHtml = `<div style="margin-top: 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">`;
       keys.forEach((k) => {
         const optText = q[k];

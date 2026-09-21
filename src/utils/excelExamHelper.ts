@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Question, QuestionPG, Nilai, SchoolProfile } from '../types';
+import { Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, McmaOption, Nilai, SchoolProfile } from '../types';
 
 /**
  * Downloads official Question Bank Excel (.xlsx) template for teachers.
@@ -18,30 +18,36 @@ export function downloadExamExcelTemplate(): void {
     'Pilihan D',
     'Kunci Jawaban',
     'Bobot Nilai',
+    'Pilihan E',
+    'Link/URL Gambar',
   ];
 
   const sampleData = [
     [
       1,
       'PG',
-      'Ibu kota Provinsi Jawa Tengah adalah ...',
-      'Surakarta',
-      'Semarang',
-      'Tegal',
-      'Pekalongan',
+      'Bu Aminah, seorang pedagang kain di Pasar Adiwerna, memotong selembar kain batik menjadi 8 bagian sama besar untuk dijadikan taplak meja. Bagian kain yang sudah terjual adalah 3 bagian. Pecahan yang senilai dengan bagian kain yang sudah terjual Bu Aminah adalah ....',
+      '2/4',
+      '6/16',
+      '4/6',
+      '5/6',
       'B',
       1,
+      '',
+      '',
     ],
     [
       2,
-      'PG',
-      'Hasil dari 25 x 4 + 50 adalah ...',
-      '100',
-      '125',
-      '150',
-      '175',
-      'C',
+      'PGK',
+      'Empat toko kelontong di Kecamatan Adiwerna mencatat sisa persediaan gula pasir dari stok awal masing-masing dalam bentuk pecahan sebagai berikut: Toko Makmur = 3/5 karung, Toko Barokah = 7/10 karung, Toko Sejahtera = 1/2 karung, Toko Rezeki = 13/20 karung. Berdasarkan data tersebut, pernyataan manakah yang benar? (Jawaban bisa lebih dari satu)',
+      'Sisa persediaan gula paling sedikit dimiliki oleh Toko Sejahtera',
+      'Toko Barokah memiliki sisa persediaan gula paling banyak',
+      'Sisa gula Toko Rezeki lebih banyak daripada Toko Makmur',
+      'Urutan dari yang paling sedikit ke paling banyak adalah Sejahtera, Rezeki, Makmur, Barokah',
+      'A,B,C',
       1,
+      'Sisa gula Toko Makmur sama banyak dengan Toko Rezeki',
+      '',
     ],
     [
       3,
@@ -53,17 +59,21 @@ export function downloadExamExcelTemplate(): void {
       'Kepala Banteng',
       'A',
       1,
+      '',
+      '',
     ],
     [
       4,
       'PG',
-      'Rumus luas persegi panjang dengan panjang p dan lebar l adalah ...',
+      'Rumus luas persegi panjang dengan panjang p dan lebar l adalah ... (LaTeX: $L = p \\times l$)',
       'p + l',
       '2 x (p + l)',
       'p x l',
       'p : l',
       'C',
       1,
+      '',
+      '',
     ],
   ];
 
@@ -71,13 +81,15 @@ export function downloadExamExcelTemplate(): void {
   wsSoal['!cols'] = [
     { wch: 6 },  // No
     { wch: 12 }, // Jenis
-    { wch: 45 }, // Soal
-    { wch: 22 }, // A
-    { wch: 22 }, // B
-    { wch: 22 }, // C
-    { wch: 22 }, // D
-    { wch: 15 }, // Kunci
+    { wch: 55 }, // Soal
+    { wch: 30 }, // A
+    { wch: 30 }, // B
+    { wch: 30 }, // C
+    { wch: 30 }, // D
+    { wch: 16 }, // Kunci
     { wch: 12 }, // Bobot
+    { wch: 30 }, // E
+    { wch: 25 }, // Gambar
   ];
 
   XLSX.utils.book_append_sheet(wb, wsSoal, 'TEMPLATE_SOAL');
@@ -88,20 +100,23 @@ export function downloadExamExcelTemplate(): void {
     ['SD NEGERI HARJOSARI KIDUL 01'],
     [],
     ['KOLOM', 'STATUS', 'KETENTUAN'],
-    ['No', 'Wajib', 'Nomor urut soal (1, 2, 3, ...)'],
-    ['Jenis Soal', 'Wajib', 'Isi dengan "PG" untuk Pilihan Ganda'],
-    ['Teks Soal', 'Wajib', 'Pertanyaan soal. Mendukung teks biasa maupun format matematika KaTeX, misal: $x^2 + 4x = 0$'],
-    ['Pilihan A - D', 'Wajib', 'Teks untuk masing-masing opsi jawaban'],
-    ['Kunci Jawaban', 'Wajib', 'Huruf besar: A, B, C, atau D'],
-    ['Bobot Nilai', 'Opsional', 'Angka bulat (default: 1 jika kosong)'],
+    ['No', 'Wajib', 'Nomor urut butir soal (1, 2, 3, ...)'],
+    ['Jenis Soal', 'Wajib', 'Isi "PG" untuk Pilihan Ganda biasa (1 kunci), atau "PGK" untuk Pilihan Ganda Kompleks (jawaban benar lebih dari satu)'],
+    ['Teks Soal', 'Wajib', 'Teks narasi dan kalimat pertanyaan soal lengkap. Mendukung rumus matematika LaTeX KaTeX, misal: $\\frac{a}{b}$ atau $x^2 + 4x = 0$'],
+    ['Pilihan A - D', 'Wajib', 'Teks untuk opsi pilihan jawaban A sampai D'],
+    ['Kunci Jawaban', 'Wajib', 'Untuk PG: isi satu huruf (misal: "B"). Untuk PGK: isi beberapa huruf dipisah koma (misal: "A,B,C" atau "A,C")'],
+    ['Bobot Nilai', 'Opsional', 'Angka bulat bobot nilai soal (default: 1 jika kosong)'],
+    ['Pilihan E', 'Opsional', 'Opsi pilihan E (opsional jika memiliki 5 opsi pilihan)'],
+    ['Link/URL Gambar', 'Opsional', 'Tautan gambar ilustrasi soal (URL https://... atau format data base64)'],
     [],
     ['CATATAN TAMBAHAN:'],
     ['- Pastikan baris judul pada baris ke-1 tidak diubah namanya.'],
-    ['- Anda dapat menyimpan format sebagai .xlsx atau .csv.'],
+    ['- Kolom "Teks Soal" harus berisi narasi/pertanyaan soal, bukan jenis soal.'],
+    ['- Anda dapat menyimpan format sebagai .xlsx, .xls, atau .csv.'],
   ];
 
   const wsPetunjuk = XLSX.utils.aoa_to_sheet(petunjuk);
-  wsPetunjuk['!cols'] = [{ wch: 18 }, { wch: 12 }, { wch: 70 }];
+  wsPetunjuk['!cols'] = [{ wch: 18 }, { wch: 12 }, { wch: 75 }];
   XLSX.utils.book_append_sheet(wb, wsPetunjuk, 'PETUNJUK');
 
   const filename = 'Template_Bank_Soal_CBT.xlsx';
@@ -138,7 +153,9 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
     'Pilihan C',
     'Pilihan D',
     'Kunci Jawaban',
-    'Bobot',
+    'Bobot Nilai',
+    'Pilihan E',
+    'Link/URL Gambar',
   ];
 
   const rows = questions.map((q, idx) => {
@@ -153,22 +170,33 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
         q.d,
         q.kunci,
         q.bobot || 1,
+        q.e || '',
+        q.gambar || '',
       ];
     } else if (q.type === 'pgk_mcma') {
-      const opts = (q.options || []).map((o) => `${o.text}${o.isKey ? ' [BENAR]' : ''}`).join('; ');
+      const opts = q.options || [];
+      const keys = opts
+        .map((o, oIdx) => (o.isKey ? String.fromCharCode(65 + oIdx) : null))
+        .filter(Boolean)
+        .join(',');
+
       return [
         idx + 1,
-        'PGK_MCMA',
+        'PGK',
         q.soal,
-        opts,
-        '-',
-        '-',
-        '-',
-        'Banyak Opsi',
+        opts[0]?.text || '',
+        opts[1]?.text || '',
+        opts[2]?.text || '',
+        opts[3]?.text || '',
+        keys || 'A',
         q.bobot || 1,
+        opts[4]?.text || '',
+        q.gambar || '',
       ];
     } else {
-      const rowsTxt = (q.rows || []).map((r) => `${r.text} => ${r.key === 'col1' ? q.col1 : q.col2}`).join('; ');
+      const rowsTxt = (q.rows || [])
+        .map((r) => `${r.text} => ${r.key === 'col1' ? q.col1 : q.col2}`)
+        .join('; ');
       return [
         idx + 1,
         'PGK_KATEGORI',
@@ -179,24 +207,28 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
         '-',
         'Tabel Kategori',
         q.bobot || 1,
+        '',
+        q.gambar || '',
       ];
     }
   });
 
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
   ws['!cols'] = [
-    { wch: 6 },
-    { wch: 14 },
-    { wch: 45 },
-    { wch: 25 },
-    { wch: 25 },
-    { wch: 25 },
-    { wch: 25 },
-    { wch: 15 },
-    { wch: 10 },
+    { wch: 6 },  // No
+    { wch: 12 }, // Jenis
+    { wch: 55 }, // Soal
+    { wch: 30 }, // A
+    { wch: 30 }, // B
+    { wch: 30 }, // C
+    { wch: 30 }, // D
+    { wch: 16 }, // Kunci
+    { wch: 12 }, // Bobot
+    { wch: 30 }, // E
+    { wch: 25 }, // Gambar
   ];
 
-  XLSX.utils.book_append_sheet(wb, ws, 'DAFTAR_SOAL');
+  XLSX.utils.book_append_sheet(wb, ws, 'TEMPLATE_SOAL');
 
   const safeTitle = (judulUjian || 'Soal_CBT').replace(/[^a-zA-Z0-9_-]/g, '_');
   const filename = `Soal_${safeTitle}_${Date.now()}.xlsx`;
@@ -221,12 +253,42 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
 
 /**
  * Parses questions from an uploaded Excel (.xlsx, .xls) or CSV file.
+ * Accurately detects and distinguishes 'Jenis Soal' from 'Teks Soal',
+ * supports single answer (PG) and complex multiple answers (PGK),KaTeX formulas,
+ * options A-E, and image links.
  */
 export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
   const buffer = await file.arrayBuffer();
   const wb = XLSX.read(buffer, { type: 'array' });
-  const firstSheetName = wb.SheetNames[0];
-  const ws = wb.Sheets[firstSheetName];
+
+  // 1. Select the most relevant worksheet (prioritize sheet with 'soal' or 'template_soal')
+  let targetSheetName = wb.SheetNames[0];
+  const soalSheet = wb.SheetNames.find((name) => {
+    const lower = name.toLowerCase().trim();
+    return (
+      lower.includes('template_soal') ||
+      lower.includes('daftar_soal') ||
+      lower === 'soal' ||
+      lower.includes('bank_soal') ||
+      lower.includes('soal')
+    );
+  });
+
+  if (soalSheet) {
+    targetSheetName = soalSheet;
+  } else if (wb.SheetNames.length > 1) {
+    // If first sheet happens to be 'petunjuk' or 'panduan', pick the other sheet
+    const nonPetunjuk = wb.SheetNames.find((name) => {
+      const lower = name.toLowerCase().trim();
+      return !lower.includes('petunjuk') && !lower.includes('panduan') && !lower.includes('help');
+    });
+    if (nonPetunjuk) targetSheetName = nonPetunjuk;
+  }
+
+  const ws = wb.Sheets[targetSheetName];
+  if (!ws) {
+    throw new Error('Lembar kerja (sheet) soal tidak ditemukan dalam file Excel.');
+  }
 
   const rawRows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
@@ -234,61 +296,302 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
     throw new Error('File tidak memiliki baris data soal.');
   }
 
-  // Detect header row index
-  let headerRowIndex = 0;
-  for (let i = 0; i < Math.min(rawRows.length, 5); i++) {
+  // 2. Detect header row index within the first 10 rows
+  let headerRowIndex = -1;
+  for (let i = 0; i < Math.min(rawRows.length, 10); i++) {
     const row = rawRows[i];
-    const rowStr = row.map((c) => String(c).toLowerCase()).join(' ');
-    if (rowStr.includes('soal') || rowStr.includes('pilihan') || rowStr.includes('kunci')) {
+    if (!Array.isArray(row)) continue;
+    const rowStr = row.map((c) => String(c ?? '').toLowerCase().trim()).join(' ');
+    // Row contains keywords like 'soal'/'pertanyaan' and ('pilihan' or 'kunci' or 'opsi' or 'jawaban' or 'jenis')
+    if (
+      (rowStr.includes('soal') || rowStr.includes('pertanyaan')) &&
+      (rowStr.includes('pilihan') ||
+        rowStr.includes('kunci') ||
+        rowStr.includes('opsi') ||
+        rowStr.includes('jawaban') ||
+        rowStr.includes('jenis'))
+    ) {
       headerRowIndex = i;
       break;
     }
   }
 
-  const header = rawRows[headerRowIndex].map((h) => String(h).trim().toLowerCase());
+  if (headerRowIndex < 0) {
+    headerRowIndex = 0;
+  }
 
-  const soalIdx = header.findIndex((h) => h.includes('teks soal') || h.includes('soal') || h.includes('pertanyaan'));
-  const aIdx = header.findIndex((h) => h.includes('pilihan a') || h === 'a' || h.includes('opsi a'));
-  const bIdx = header.findIndex((h) => h.includes('pilihan b') || h === 'b' || h.includes('opsi b'));
-  const cIdx = header.findIndex((h) => h.includes('pilihan c') || h === 'c' || h.includes('opsi c'));
-  const dIdx = header.findIndex((h) => h.includes('pilihan d') || h === 'd' || h.includes('opsi d'));
-  const kunciIdx = header.findIndex((h) => h.includes('kunci') || h.includes('jawaban') || h === 'key');
-  const bobotIdx = header.findIndex((h) => h.includes('bobot') || h.includes('poin'));
+  const header = (rawRows[headerRowIndex] || []).map((h) =>
+    String(h ?? '').trim().toLowerCase()
+  );
+
+  // 3. Identify column indices
+  // Column: 'Jenis Soal' / 'Tipe Soal'
+  const jenisIdx = header.findIndex(
+    (h) =>
+      h.includes('jenis soal') ||
+      h.includes('tipe soal') ||
+      h.includes('bentuk soal') ||
+      h === 'jenis' ||
+      h === 'tipe' ||
+      h === 'type'
+  );
+
+  // Column: 'Teks Soal' / Question Text (MUST NOT MATCH 'Jenis Soal'!)
+  // Priority 1: Exact matches or contains 'teks soal', 'isi soal', 'pertanyaan'
+  let soalIdx = header.findIndex(
+    (h, idx) =>
+      idx !== jenisIdx &&
+      (h === 'teks soal' ||
+        h === 'soal' ||
+        h === 'pertanyaan' ||
+        h === 'teks pertanyaan' ||
+        h === 'isi soal' ||
+        h.includes('teks soal') ||
+        h.includes('isi soal') ||
+        h.includes('pertanyaan'))
+  );
+
+  // Priority 2: Contains 'soal' but NOT 'jenis', 'tipe', or 'bentuk'
+  if (soalIdx < 0) {
+    soalIdx = header.findIndex(
+      (h, idx) =>
+        idx !== jenisIdx &&
+        !h.includes('jenis') &&
+        !h.includes('tipe') &&
+        !h.includes('bentuk') &&
+        h.includes('soal')
+    );
+  }
+
+  // Priority 3: Contains 'teks' but NOT 'jenis'
+  if (soalIdx < 0) {
+    soalIdx = header.findIndex(
+      (h, idx) => idx !== jenisIdx && !h.includes('jenis') && h.includes('teks')
+    );
+  }
+
+  // Positional fallback:
+  // In template with Jenis Soal: Col 0: No, Col 1: Jenis Soal, Col 2: Teks Soal
+  // In old template without Jenis Soal: Col 0: No, Col 1: Teks Soal
+  if (soalIdx < 0) {
+    if (jenisIdx === 1 && header.length > 2) {
+      soalIdx = 2;
+    } else if (jenisIdx === 0 && header.length > 1) {
+      soalIdx = 1;
+    } else if (header.length > 1) {
+      soalIdx = 1;
+    } else {
+      soalIdx = 0;
+    }
+  }
+
+  // Columns: Pilihan A, B, C, D, E
+  const aIdx = header.findIndex(
+    (h) =>
+      h.includes('pilihan a') ||
+      h === 'a' ||
+      h.includes('opsi a') ||
+      h === 'pil a' ||
+      h.includes('jawaban a')
+  );
+  const bIdx = header.findIndex(
+    (h) =>
+      h.includes('pilihan b') ||
+      h === 'b' ||
+      h.includes('opsi b') ||
+      h === 'pil b' ||
+      h.includes('jawaban b')
+  );
+  const cIdx = header.findIndex(
+    (h) =>
+      h.includes('pilihan c') ||
+      h === 'c' ||
+      h.includes('opsi c') ||
+      h === 'pil c' ||
+      h.includes('jawaban c')
+  );
+  const dIdx = header.findIndex(
+    (h) =>
+      h.includes('pilihan d') ||
+      h === 'd' ||
+      h.includes('opsi d') ||
+      h === 'pil d' ||
+      h.includes('jawaban d')
+  );
+  const eIdx = header.findIndex(
+    (h) =>
+      h.includes('pilihan e') ||
+      h === 'e' ||
+      h.includes('opsi e') ||
+      h === 'pil e' ||
+      h.includes('jawaban e')
+  );
+
+  // Column: Kunci Jawaban
+  const kunciIdx = header.findIndex(
+    (h) => h.includes('kunci') || h.includes('jawaban') || h === 'key'
+  );
+
+  // Column: Bobot Nilai
+  const bobotIdx = header.findIndex(
+    (h) => h.includes('bobot') || h.includes('poin') || h.includes('skor') || h === 'bobot'
+  );
+
+  // Column: Gambar / URL Gambar
+  const gambarIdx = header.findIndex(
+    (h) =>
+      h.includes('gambar') ||
+      h.includes('foto') ||
+      h.includes('image') ||
+      h.includes('img') ||
+      h.includes('ilustrasi')
+  );
 
   const parsedQuestions: Question[] = [];
 
+  // 4. Iterate data rows
   for (let r = headerRowIndex + 1; r < rawRows.length; r++) {
     const row = rawRows[r];
     if (!row || row.length === 0) continue;
 
-    const soalText = soalIdx >= 0 ? String(row[soalIdx] || '').trim() : String(row[2] || row[1] || '').trim();
-    if (!soalText) continue;
+    // Skip row if completely empty
+    const hasContent = row.some((c) => String(c ?? '').trim() !== '');
+    if (!hasContent) continue;
 
-    const optA = aIdx >= 0 ? String(row[aIdx] || '').trim() : String(row[3] || '').trim();
-    const optB = bIdx >= 0 ? String(row[bIdx] || '').trim() : String(row[4] || '').trim();
-    const optC = cIdx >= 0 ? String(row[cIdx] || '').trim() : String(row[5] || '').trim();
-    const optD = dIdx >= 0 ? String(row[dIdx] || '').trim() : String(row[6] || '').trim();
+    // Resolve Question Text
+    let soalText = soalIdx >= 0 ? String(row[soalIdx] ?? '').trim() : '';
 
-    let rawKunci = (kunciIdx >= 0 ? String(row[kunciIdx] || '') : String(row[7] || '')).trim().toUpperCase();
-    if (!['A', 'B', 'C', 'D'].includes(rawKunci)) {
-      rawKunci = 'A';
+    // Defensive check: if soalText is accidentally just 'PG', 'PGK', etc., and next column has actual text
+    const isTagOnly =
+      soalText.toUpperCase() === 'PG' ||
+      soalText.toUpperCase() === 'PGK' ||
+      soalText.toUpperCase() === 'PGK_MCMA' ||
+      soalText.toUpperCase() === 'PILIHAN GANDA' ||
+      soalText.toUpperCase() === 'PILIHAN GANDA KOMPLEKS';
+
+    if (isTagOnly && row[soalIdx + 1] && String(row[soalIdx + 1]).trim().length > 3) {
+      soalText = String(row[soalIdx + 1]).trim();
     }
 
-    const rawBobot = bobotIdx >= 0 ? Number(row[bobotIdx]) : Number(row[8]);
+    if (!soalText) continue;
+
+    // Resolve Options
+    const optA = aIdx >= 0 ? String(row[aIdx] ?? '').trim() : String(row[soalIdx + 1] ?? '').trim();
+    const optB = bIdx >= 0 ? String(row[bIdx] ?? '').trim() : String(row[soalIdx + 2] ?? '').trim();
+    const optC = cIdx >= 0 ? String(row[cIdx] ?? '').trim() : String(row[soalIdx + 3] ?? '').trim();
+    const optD = dIdx >= 0 ? String(row[dIdx] ?? '').trim() : String(row[soalIdx + 4] ?? '').trim();
+    const optE = eIdx >= 0 ? String(row[eIdx] ?? '').trim() : '';
+
+    // Resolve Kunci
+    const rawKunci = (
+      kunciIdx >= 0
+        ? String(row[kunciIdx] ?? '')
+        : String(row[soalIdx + 5] ?? '')
+    ).trim();
+
+    // Resolve Bobot
+    const rawBobot = bobotIdx >= 0 ? Number(row[bobotIdx]) : Number(row[soalIdx + 6]);
     const bobot = !isNaN(rawBobot) && rawBobot > 0 ? rawBobot : 1;
 
-    const q: QuestionPG = {
-      type: 'pg',
-      bobot,
-      soal: soalText,
-      a: optA || '-',
-      b: optB || '-',
-      c: optC || '-',
-      d: optD || '-',
-      kunci: rawKunci as 'A' | 'B' | 'C' | 'D',
-    };
+    // Resolve Gambar
+    const gambarUrl = gambarIdx >= 0 ? String(row[gambarIdx] ?? '').trim() : undefined;
 
-    parsedQuestions.push(q);
+    // Resolve Question Type
+    const rawJenis = jenisIdx >= 0 ? String(row[jenisIdx] ?? '').trim().toUpperCase() : '';
+
+    const isMultipleKeys =
+      rawKunci.includes(',') ||
+      rawKunci.includes(';') ||
+      rawKunci.includes(' ') ||
+      (rawKunci.length > 1 &&
+        !['BENAR', 'SALAH', 'TRUE', 'FALSE'].includes(rawKunci.toUpperCase()) &&
+        /^[A-E,\s;]+$/i.test(rawKunci));
+
+    const isPgk =
+      rawJenis.includes('PGK') ||
+      rawJenis.includes('KOMPLEKS') ||
+      rawJenis.includes('MCMA') ||
+      rawJenis.includes('CENTANG') ||
+      isMultipleKeys;
+
+    const isKategori =
+      rawJenis.includes('KATEGORI') ||
+      rawJenis.includes('BENAR_SALAH') ||
+      rawJenis.includes('BENAR SALAH') ||
+      rawJenis.includes('TABEL');
+
+    if (isPgk) {
+      // Pilihan Ganda Kompleks (PGK Multi Centang)
+      const keys = new Set(rawKunci.toUpperCase().match(/[A-E]/g) || []);
+
+      const options: McmaOption[] = [];
+      if (optA) options.push({ text: optA, isKey: keys.has('A') });
+      if (optB) options.push({ text: optB, isKey: keys.has('B') });
+      if (optC) options.push({ text: optC, isKey: keys.has('C') });
+      if (optD) options.push({ text: optD, isKey: keys.has('D') });
+      if (optE) options.push({ text: optE, isKey: keys.has('E') });
+
+      // Fallback if no options were resolved
+      if (options.length === 0) {
+        options.push(
+          { text: optA || 'Pernyataan 1', isKey: true },
+          { text: optB || 'Pernyataan 2', isKey: false }
+        );
+      }
+
+      // Ensure at least one option is marked as correct key
+      if (!options.some((o) => o.isKey)) {
+        options[0].isKey = true;
+      }
+
+      const q: QuestionPGKMCMA = {
+        type: 'pgk_mcma',
+        bobot,
+        soal: soalText,
+        gambar: gambarUrl || undefined,
+        options,
+      };
+      parsedQuestions.push(q);
+    } else if (isKategori) {
+      // Pilihan Ganda Kompleks Kategori (Tabel Benar/Salah)
+      const q: QuestionPGKKategori = {
+        type: 'pgk_kategori',
+        bobot,
+        soal: soalText,
+        gambar: gambarUrl || undefined,
+        col1: 'Benar',
+        col2: 'Salah',
+        rows: [
+          { text: optA || 'Pernyataan 1', key: 'col1' },
+          { text: optB || 'Pernyataan 2', key: 'col2' },
+          ...(optC ? [{ text: optC, key: 'col1' as const }] : []),
+          ...(optD ? [{ text: optD, key: 'col2' as const }] : []),
+        ],
+      };
+      parsedQuestions.push(q);
+    } else {
+      // Pilihan Ganda Standar (PG)
+      const cleanKunci = (rawKunci.toUpperCase().match(/[A-E]/)?.[0] || 'A') as
+        | 'A'
+        | 'B'
+        | 'C'
+        | 'D'
+        | 'E';
+
+      const q: QuestionPG = {
+        type: 'pg',
+        bobot,
+        soal: soalText,
+        gambar: gambarUrl || undefined,
+        a: optA || '-',
+        b: optB || '-',
+        c: optC || '-',
+        d: optD || '-',
+        ...(optE ? { e: optE } : {}),
+        kunci: cleanKunci,
+      };
+      parsedQuestions.push(q);
+    }
   }
 
   return parsedQuestions;

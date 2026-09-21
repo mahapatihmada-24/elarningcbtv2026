@@ -80,22 +80,24 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     return qList.map((q) => {
       const copy = { ...q };
       if (copy.type === 'pg' && cfg.acak_opsi !== false) {
-        const keys: ('a' | 'b' | 'c' | 'd')[] = ['a', 'b', 'c', 'd'];
+        const keys: ('a' | 'b' | 'c' | 'd' | 'e')[] = copy.e
+          ? ['a', 'b', 'c', 'd', 'e']
+          : ['a', 'b', 'c', 'd'];
         const correctKey = String(copy.kunci || 'A').toLowerCase();
 
         const opts = keys.map((k) => ({
           key: k,
-          text: copy[k] || '',
+          text: (copy as unknown as Record<string, string>)[k] || '',
           img: copy[`${k}_img` as keyof QuestionPG] as string | undefined,
           isKey: k === correctKey,
         }));
 
         const shuffled = shuffleArray(opts);
         keys.forEach((k, idx) => {
-          copy[k] = shuffled[idx].text;
+          (copy as unknown as Record<string, string>)[k] = shuffled[idx].text;
           (copy as unknown as Record<string, string | undefined>)[`${k}_img`] = shuffled[idx].img;
           if (shuffled[idx].isKey) {
-            copy.kunci = k.toUpperCase() as 'A' | 'B' | 'C' | 'D';
+            copy.kunci = k.toUpperCase() as 'A' | 'B' | 'C' | 'D' | 'E';
           }
         });
       }
@@ -543,14 +545,22 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
               {/* TYPE 1: PG */}
               {q.type === 'pg' && (
                 <div className="space-y-2.5 pt-2">
-                  {(['a', 'b', 'c', 'd'] as const).map((opt) => {
-                    const textVal = q[opt] || '';
+                  {(
+                    ['a', 'b', 'c', 'd', ...((q as QuestionPG).e ? ['e'] : [])] as (
+                      | 'a'
+                      | 'b'
+                      | 'c'
+                      | 'd'
+                      | 'e'
+                    )[]
+                  ).map((opt) => {
+                    const textVal = (q as QuestionPG)[opt] || '';
                     if (!textVal) return null;
 
                     const imgVal = q[`${opt}_img` as keyof QuestionPG] as string | undefined;
                     const isSelected = ans === opt.toUpperCase();
-                    // Bersihkan jika ada awalan huruf A., B., C., D. atau a., b., c., d. dari teks opsi
-                    const cleanTextVal = textVal.replace(/^[A-Da-d][\.\)]\s*/, '');
+                    // Bersihkan jika ada awalan huruf A., B., C., D., E. atau a., b., c., d., e. dari teks opsi
+                    const cleanTextVal = textVal.replace(/^[A-Ea-e][\.\)]\s*/, '');
 
                     return (
                       <label

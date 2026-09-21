@@ -176,8 +176,29 @@ export function parseCsvQuestions(csvText: string): Question[] {
     return header.findIndex((h) => patterns.some((p) => h.includes(p)));
   };
 
-  const idxType = getIdx(['jenis', 'type']);
-  const idxSoal = getIdx(['soal', 'pertanyaan', 'question']);
+  const idxType = getIdx(['jenis', 'type', 'bentuk']);
+  let idxSoal = header.findIndex(
+    (h, idx) =>
+      idx !== idxType &&
+      (h.includes('tekssoal') ||
+        h.includes('pertanyaan') ||
+        h.includes('isisoal') ||
+        h === 'soal' ||
+        h === 'pertanyaan')
+  );
+  if (idxSoal === -1) {
+    idxSoal = header.findIndex(
+      (h, idx) =>
+        idx !== idxType &&
+        !h.includes('jenis') &&
+        !h.includes('tipe') &&
+        !h.includes('bentuk') &&
+        h.includes('soal')
+    );
+  }
+  if (idxSoal === -1) {
+    idxSoal = idxType === 1 ? 2 : 1;
+  }
   const idxA = getIdx(['pilihana', 'opsia', 'a']);
   const idxB = getIdx(['pilihanb', 'opsib', 'b']);
   const idxC = getIdx(['pilihanc', 'opsic', 'c']);

@@ -35,7 +35,9 @@ export interface QuestionPG {
   c_img?: string;
   d: string;
   d_img?: string;
-  kunci: 'A' | 'B' | 'C' | 'D';
+  e?: string;
+  e_img?: string;
+  kunci: 'A' | 'B' | 'C' | 'D' | 'E';
 }
 
 export interface McmaOption {
