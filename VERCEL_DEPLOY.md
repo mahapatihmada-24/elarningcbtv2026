@@ -24,18 +24,18 @@ Aplikasi E-Learning dan CBT SDN Harjosari Kidul 01 ini telah dikonfigurasi secar
 
 ## 2. Cara Deploy via GitHub (Direkomendasikan)
 
-1. **Export / Push Kode ke GitHub**:
-   - Dari AI Studio, klik menu **Settings (ikon gear)** -> **Export to GitHub** (atau download ZIP, ekstrak, lalu push ke repository GitHub Anda).
-2. **Buka Dashboard Vercel**:
-   - Masuk ke [vercel.com](https://vercel.com) menggunakan akun GitHub Anda.
-   - Klik tombol **"Add New..."** lalu pilih **"Project"**.
-3. **Import Repository**:
-   - Pilih repository GitHub aplikasi ini, lalu klik **"Import"**.
-4. **Konfigurasi Project Settings**:
-   - **Framework Preset**: Pilih **Vite** (biasanya terdeteksi otomatis).
-   - **Root Directory**: `./` (default).
-   - **Build Command**: `npm run build` (default).
-   - **Output Directory**: `dist` (default).
+1. **Sinkronkan / Push Kode Terbaru ke GitHub**:
+   - Dari AI Studio, klik menu **Settings (ikon gerigi)** -> **Export to GitHub** ke repositori Anda (`sebayuloka5758-svg/elarningcbtv2026`).
+   - Perbaikan dependensi (`esbuild`, `.npmrc`, dan `vercel.json`) akan otomatis terkirim ke branch `main`.
+2. **Redeploy Otomatis di Vercel**:
+   - Saat kode ter-push ke GitHub, Vercel akan otomatis mendeteksi commit baru dan menjalankan build ulang secara otomatis.
+   - Atau di dashboard Vercel pada proyek Anda: Klik tab **Deployments** > pilih titik tiga (...) pada deployment terakhir > klik **Redeploy**.
+3. **Konfigurasi Project Settings di Vercel**:
+   - **Framework Preset**: Pilih **Vite**
+   - **Root Directory**: `./` (default)
+   - **Install Command**: `npm install --legacy-peer-deps` (sudah otomatis diset di `vercel.json`)
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
 5. **Environment Variables (Opsional)**:
    - `GEMINI_API_KEY`: Masukkan API Key Google Gemini Anda (jika ingin mengaktifkan generator soal AI).
    *(Catatan: Jika dikosongkan, generator soal lokal bawaan tetap berjalan 100% lancar).*
