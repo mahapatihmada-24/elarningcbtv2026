@@ -48,10 +48,24 @@ export const PRESET_CONFIGS: Record<
   string,
   { id: string; name: string; desc: string; config: FirebaseAppConfig }
 > = {
+  sebayuloka: {
+    id: 'sebayuloka',
+    name: 'Proyek Utama (elearningcbt-sebayuloka)',
+    desc: 'Proyek Firebase utama pengguna',
+    config: {
+      projectId: 'elearningcbt-sebayuloka',
+      appId: '1:932039432049:web:0ba341a7a315ef72c788d0',
+      apiKey: 'AIzaSyBOqoNUPhTl8iZbV_vtNfsq5ijqIMJwWEk',
+      authDomain: 'elearningcbt-sebayuloka.firebaseapp.com',
+      storageBucket: 'elearningcbt-sebayuloka.firebasestorage.app',
+      messagingSenderId: '932039432049',
+      firestoreDatabaseId: '(default)',
+    },
+  },
   wildan_fb826: {
     id: 'wildan_fb826',
     name: 'Proyek Baru (elearningcbt-wildanprama-fb826)',
-    desc: 'Proyek Firebase utama pengguna',
+    desc: 'Proyek Firebase alternatif pengguna',
     config: {
       projectId: 'elearningcbt-wildanprama-fb826',
       appId: '1:624261016334:web:ae98d13867da45265f055f',

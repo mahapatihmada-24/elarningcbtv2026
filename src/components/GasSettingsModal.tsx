@@ -145,7 +145,7 @@ export const GasSettingsModal: React.FC<GasSettingsModalProps> = ({
     setTimeout(() => setCopiedRules(false), 2500);
   };
 
-  const handleSwitchPreset = (presetKey: 'wildan_fb826' | 'sebayu' | 'wildan') => {
+  const handleSwitchPreset = (presetKey: 'sebayuloka' | 'wildan_fb826' | 'sebayu' | 'wildan') => {
     const preset = PRESET_CONFIGS[presetKey];
     if (!preset) return;
     setActiveFirebaseConfig(preset.config);
@@ -361,7 +361,27 @@ export const GasSettingsModal: React.FC<GasSettingsModalProps> = ({
                     ID: {activeConfig.projectId}
                   </span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchPreset('sebayuloka')}
+                    className={`text-left p-2.5 rounded-lg border transition ${
+                      activeConfig.projectId === 'elearningcbt-sebayuloka'
+                        ? 'bg-indigo-50/80 border-indigo-500 text-indigo-900 ring-1 ring-indigo-500'
+                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-0.5">
+                      <span className="font-bold text-xs truncate">sebayuloka</span>
+                      {activeConfig.projectId === 'elearningcbt-sebayuloka' && (
+                        <Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-500 block">
+                      Proyek Utama
+                    </span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => handleSwitchPreset('wildan_fb826')}
@@ -378,7 +398,7 @@ export const GasSettingsModal: React.FC<GasSettingsModalProps> = ({
                       )}
                     </div>
                     <span className="text-[10px] text-slate-500 block">
-                      Proyek Baru Anda
+                      Proyek Baru
                     </span>
                   </button>
 
