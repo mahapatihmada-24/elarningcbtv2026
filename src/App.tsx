@@ -14,8 +14,10 @@ import {
   ShieldAlert,
   ChevronDown,
   Layers,
+  Megaphone,
+  Bell,
 } from 'lucide-react';
-import { User, Ujian, SchoolProfile } from './types';
+import { User, Ujian, SchoolProfile, Announcement } from './types';
 import { api, DataSource, subscribeDataSource, normalizeUser } from './services/api';
 import { Navbar } from './components/Navbar';
 import { LoginView } from './components/LoginView';
@@ -29,6 +31,9 @@ import { GuruNilai } from './components/GuruView/GuruNilai';
 import { MuridMateri } from './components/MuridView/MuridMateri';
 import { MuridCBTList } from './components/MuridView/MuridCBTList';
 import { CBTExamActive } from './components/MuridView/CBTExamActive';
+import { AnnouncementBoard } from './components/AnnouncementBoard';
+import { NotificationModal, getUnreadAnnouncementsCount } from './components/NotificationModal';
+import { AnnouncementAlertBanner } from './components/AnnouncementAlertBanner';
 import { YouTubeModal } from './components/YouTubeModal';
 import { ImageModal } from './components/ImageModal';
 import { ConfirmModal, ModalState } from './components/ConfirmModal';
@@ -44,6 +49,11 @@ export default function App() {
   const [dataSource, setDataSource] = useState<DataSource>('LOCAL');
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [schoolProfile, setSchoolProfile] = useState<SchoolProfile | null>(null);
+
+  // Announcements and Notifications state
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
 
   // Modals state
   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
@@ -171,6 +181,39 @@ export default function App() {
     };
   }, [currentUser, activeExam, schoolProfile?.sessionTimeoutMinutes, handleSessionTimeout]);
 
+  // ANNOUNCEMENTS & NOTIFICATIONS SYNC
+  const refreshAnnouncements = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const list = await api.getAnnouncements();
+      setAnnouncements(list || []);
+      const count = getUnreadAnnouncementsCount(list || [], currentUser);
+      setUnreadNotificationsCount(count);
+    } catch (err) {
+      console.warn('Gagal memuat pengumuman:', err);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (currentUser) {
+      refreshAnnouncements();
+      // Periodically sync announcements every 30 seconds
+      const timer = setInterval(() => {
+        refreshAnnouncements();
+      }, 30000);
+      return () => clearInterval(timer);
+    }
+  }, [currentUser, refreshAnnouncements]);
+
+  // Filter announcements for current user's role:
+  const visibleAnnouncements = announcements.filter((item) => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'admin') return true;
+    if (currentUser.role === 'guru') return item.target === 'semua' || item.target === 'guru';
+    if (currentUser.role === 'murid') return item.target === 'semua' || item.target === 'murid';
+    return true;
+  });
+
   // LOGIN HANDLER (Requirement 5)
   const handleLogin = (user: User) => {
     const cleanUser = normalizeUser(user);
@@ -254,6 +297,17 @@ export default function App() {
       case 'guru-nilai':
       case 'guru_nilai':
         return 'guru_nilai';
+      case 'pengumuman':
+      case 'announcement':
+      case 'announcements':
+      case 'papan_pengumuman':
+      case 'papan-pengumuman':
+        return 'pengumuman';
+      case 'admin-announcements':
+      case 'admin_announcements':
+      case 'admin_pengumuman':
+      case 'admin-pengumuman':
+        return 'admin_announcements';
       default:
         return rawTab;
     }
@@ -300,6 +354,8 @@ export default function App() {
         dataSource={dataSource}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onLogout={handleLogout}
+        unreadNotificationsCount={unreadNotificationsCount}
+        onOpenNotifications={() => setIsNotificationOpen(true)}
       />
 
       {/* Content Area */}
@@ -386,6 +442,23 @@ export default function App() {
                       >
                         <School className="w-3.5 h-3.5" />
                         <span>Sekolah & Keamanan</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleSwitchTab('admin_announcements')}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${
+                          activeTab === 'admin_announcements'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        <Megaphone className="w-3.5 h-3.5" />
+                        <span>Pengumuman</span>
+                        {announcements.length > 0 && (
+                          <span className="px-1.5 py-0.2 rounded-full bg-indigo-100 text-indigo-800 text-[10px] font-bold">
+                            {announcements.length}
+                          </span>
+                        )}
                       </button>
                     </div>
 
@@ -484,6 +557,13 @@ export default function App() {
                   <AdminSchoolSettings onShowModal={handleShowModal} />
                 )}
 
+                {activeTab === 'admin_announcements' && (
+                  <AnnouncementBoard
+                    currentUser={currentUser}
+                    onShowModal={handleShowModal}
+                  />
+                )}
+
                 {/* Admin direct access to Guru modules */}
                 {activeTab === 'guru_materi' && (
                   <GuruMateri
@@ -545,6 +625,15 @@ export default function App() {
             {/* ============================================================== */}
             {currentUser.role === 'guru' && (
               <div className="space-y-6">
+                {/* School Announcement Top Alert Banner (Guru) */}
+                {activeTab !== 'pengumuman' && visibleAnnouncements.length > 0 && (
+                  <AnnouncementAlertBanner
+                    announcements={visibleAnnouncements}
+                    onViewAll={() => handleSwitchTab('pengumuman')}
+                    onOpenNotificationModal={() => setIsNotificationOpen(true)}
+                  />
+                )}
+
                 {/* Guru Tab Navigation */}
                 <div className="flex border-b border-slate-200 bg-white px-2 rounded-2xl shadow-sm overflow-x-auto">
                   <button
@@ -580,6 +669,22 @@ export default function App() {
                     <Award className="w-4 h-4" />
                     <span>Rekap Nilai & Anti-Contek</span>
                   </button>
+                  <button
+                    onClick={() => handleSwitchTab('pengumuman')}
+                    className={`py-3.5 px-5 font-bold text-xs sm:text-sm border-b-2 whitespace-nowrap transition flex items-center gap-2 ${
+                      activeTab === 'pengumuman'
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-slate-500 hover:text-indigo-600'
+                    }`}
+                  >
+                    <Megaphone className="w-4 h-4" />
+                    <span>Papan Pengumuman</span>
+                    {visibleAnnouncements.length > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold">
+                        {visibleAnnouncements.length}
+                      </span>
+                    )}
+                  </button>
                 </div>
 
                 {activeTab === 'materi' && (
@@ -601,6 +706,13 @@ export default function App() {
                 {activeTab === 'nilai' && (
                   <GuruNilai onShowModal={handleShowModal} />
                 )}
+
+                {activeTab === 'pengumuman' && (
+                  <AnnouncementBoard
+                    currentUser={currentUser}
+                    onShowModal={handleShowModal}
+                  />
+                )}
               </div>
             )}
 
@@ -609,6 +721,15 @@ export default function App() {
             {/* ============================================================== */}
             {currentUser.role === 'murid' && (
               <div className="space-y-6">
+                {/* School Announcement Top Alert Banner (Murid) */}
+                {activeTab !== 'pengumuman' && visibleAnnouncements.length > 0 && (
+                  <AnnouncementAlertBanner
+                    announcements={visibleAnnouncements}
+                    onViewAll={() => handleSwitchTab('pengumuman')}
+                    onOpenNotificationModal={() => setIsNotificationOpen(true)}
+                  />
+                )}
+
                 {/* Murid Tab Navigation */}
                 <div className="flex border-b border-slate-200 bg-white px-2 rounded-2xl shadow-sm overflow-x-auto">
                   <button
@@ -633,20 +754,61 @@ export default function App() {
                     <FileText className="w-4 h-4" />
                     <span>Daftar Ujian CBT</span>
                   </button>
+                  <button
+                    onClick={() => handleSwitchTab('pengumuman')}
+                    className={`py-3.5 px-5 font-bold text-xs sm:text-sm border-b-2 whitespace-nowrap transition flex items-center gap-2 ${
+                      activeTab === 'pengumuman'
+                        ? 'border-indigo-600 text-indigo-600'
+                        : 'border-transparent text-slate-500 hover:text-indigo-600'
+                    }`}
+                  >
+                    <Megaphone className="w-4 h-4" />
+                    <span>Papan Pengumuman</span>
+                    {visibleAnnouncements.length > 0 && (
+                      <span className="px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold">
+                        {visibleAnnouncements.length}
+                      </span>
+                    )}
+                  </button>
                 </div>
 
                 {activeTab === 'materi' && (
-                  <MuridMateri
-                    currentUser={currentUser}
-                    onPlayYoutube={(id) => setYoutubeVideoId(id)}
-                    onViewImage={(url, title) => setPreviewImage({ url, title })}
-                  />
+                  <div className="space-y-6">
+                    <MuridMateri
+                      currentUser={currentUser}
+                      onPlayYoutube={(id) => setYoutubeVideoId(id)}
+                      onViewImage={(url, title) => setPreviewImage({ url, title })}
+                    />
+                    {visibleAnnouncements.length > 0 && (
+                      <AnnouncementBoard
+                        currentUser={currentUser}
+                        compact={true}
+                        onViewAll={() => handleSwitchTab('pengumuman')}
+                      />
+                    )}
+                  </div>
                 )}
 
                 {activeTab === 'cbt' && (
-                  <MuridCBTList
+                  <div className="space-y-6">
+                    <MuridCBTList
+                      currentUser={currentUser}
+                      onStartExam={(exam) => setActiveExam(exam)}
+                    />
+                    {visibleAnnouncements.length > 0 && (
+                      <AnnouncementBoard
+                        currentUser={currentUser}
+                        compact={true}
+                        onViewAll={() => handleSwitchTab('pengumuman')}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {activeTab === 'pengumuman' && (
+                  <AnnouncementBoard
                     currentUser={currentUser}
-                    onStartExam={(exam) => setActiveExam(exam)}
+                    onShowModal={handleShowModal}
                   />
                 )}
               </div>
@@ -678,6 +840,20 @@ export default function App() {
                 <FileText className="w-5 h-5" />
                 <span className="text-[10px]">Ujian CBT</span>
               </button>
+              <button
+                onClick={() => handleSwitchTab('pengumuman')}
+                className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition relative ${
+                  activeTab === 'pengumuman' ? 'text-indigo-600 font-bold' : 'text-slate-500'
+                }`}
+              >
+                <div className="relative">
+                  <Megaphone className="w-5 h-5" />
+                  {unreadNotificationsCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                  )}
+                </div>
+                <span className="text-[10px]">Pengumuman</span>
+              </button>
             </>
           ) : currentUser.role === 'guru' ? (
             <>
@@ -707,6 +883,20 @@ export default function App() {
               >
                 <Award className="w-4 h-4" />
                 <span className="text-[10px]">Rekap</span>
+              </button>
+              <button
+                onClick={() => handleSwitchTab('pengumuman')}
+                className={`flex flex-col items-center gap-1 py-1 px-2 rounded-xl transition relative ${
+                  activeTab === 'pengumuman' ? 'text-indigo-600 font-bold' : 'text-slate-500'
+                }`}
+              >
+                <div className="relative">
+                  <Megaphone className="w-4 h-4" />
+                  {unreadNotificationsCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                  )}
+                </div>
+                <span className="text-[10px]">Pengumuman</span>
               </button>
             </>
           ) : (
@@ -739,6 +929,15 @@ export default function App() {
                 <span className="text-[10px]">Master</span>
               </button>
               <button
+                onClick={() => handleSwitchTab('admin_announcements')}
+                className={`flex flex-col items-center gap-1 py-1 px-2 rounded-xl transition ${
+                  activeTab === 'admin_announcements' ? 'text-indigo-600 font-bold' : 'text-slate-500'
+                }`}
+              >
+                <Megaphone className="w-4 h-4" />
+                <span className="text-[10px]">Pengumuman</span>
+              </button>
+              <button
                 onClick={() => handleSwitchTab('admin_settings')}
                 className={`flex flex-col items-center gap-1 py-1 px-2 rounded-xl transition ${
                   activeTab === 'admin_settings' ? 'text-indigo-600 font-bold' : 'text-slate-500'
@@ -765,6 +964,23 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         currentSource={dataSource}
+      />
+
+      <NotificationModal
+        isOpen={isNotificationOpen}
+        onClose={() => {
+          setIsNotificationOpen(false);
+          refreshAnnouncements();
+        }}
+        currentUser={currentUser}
+        onOpenFullBoard={() => {
+          setIsNotificationOpen(false);
+          if (currentUser.role === 'admin') {
+            handleSwitchTab('admin_announcements');
+          } else {
+            handleSwitchTab('pengumuman');
+          }
+        }}
       />
 
       <ConfirmModal modal={modalState} onClose={handleCloseModal} />

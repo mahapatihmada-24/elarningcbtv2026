@@ -67,6 +67,8 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
   }, []);
 
   const isAdmin = currentUser.role === 'admin';
+  const isTeacher = currentUser.role === 'guru';
+  const canManage = isAdmin || isTeacher;
 
   // Filter announcements for the current user's role:
   // - Admin sees everything
@@ -355,7 +357,7 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
         </div>
 
         <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
-          {isAdmin && (
+          {canManage && (
             <button
               type="button"
               onClick={handleOpenCreate}
@@ -630,8 +632,8 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
                     <span>•</span>
                     <span className="font-semibold text-slate-600">{item.penulis}</span>
 
-                    {/* Admin Actions */}
-                    {isAdmin && (
+                    {/* Actions (Admin can manage all, Teachers can manage their own) */}
+                    {(isAdmin || (isTeacher && item.penulis === currentUser.nama)) && (
                       <div className="flex items-center gap-1 ml-2 pl-2 border-l border-slate-200">
                         <button
                           type="button"
