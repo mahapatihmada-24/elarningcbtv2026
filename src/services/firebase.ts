@@ -110,13 +110,30 @@ export const PRESET_CONFIGS: Record<
 const STORAGE_KEY_CUSTOM_FIREBASE = 'cbt_custom_firebase_config';
 
 export function getActiveFirebaseConfig(): FirebaseAppConfig {
+  // 1. Cek environment variables (misal saat di-deploy di Vercel/hosting)
+  try {
+    const envProjectId = import.meta.env?.VITE_FIREBASE_PROJECT_ID;
+    const envApiKey = import.meta.env?.VITE_FIREBASE_API_KEY;
+    if (envProjectId && envApiKey) {
+      return {
+        projectId: envProjectId,
+        apiKey: envApiKey,
+        appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfigFile.appId,
+        authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || `${envProjectId}.firebaseapp.com`,
+        storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || `${envProjectId}.firebasestorage.app`,
+        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseConfigFile.messagingSenderId,
+        firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || '(default)',
+      };
+    }
+  } catch {}
+
+  // 2. Cek konfigurasi kustom di localStorage
   try {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_KEY_CUSTOM_FIREBASE);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.projectId && parsed.apiKey) {
-          // If stored custom config matches current app default project, use it
           if (parsed.projectId === firebaseConfigFile.projectId) {
             return parsed as FirebaseAppConfig;
           }
@@ -124,6 +141,8 @@ export function getActiveFirebaseConfig(): FirebaseAppConfig {
       }
     }
   } catch {}
+
+  // 3. Gunakan konfigurasi default bawaan (elearningcbt-sebayuloka)
   return firebaseConfigFile as FirebaseAppConfig;
 }
 
