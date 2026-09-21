@@ -9,6 +9,7 @@ import {
   setActiveFirebaseConfig,
   resetActiveFirebaseConfig,
   PRESET_CONFIGS,
+  isFirestoreOffline,
 } from './firebase';
 import {
   normalizeUser,
@@ -27,6 +28,7 @@ export {
   setActiveFirebaseConfig,
   resetActiveFirebaseConfig,
   PRESET_CONFIGS,
+  isFirestoreOffline,
 };
 export type { FirebaseConnectionDiagnostic, FirebaseAppConfig };
 
@@ -344,6 +346,8 @@ function notifyDataSource(src: DataSource) {
 // Auto-seed Firebase on initial startup in background
 ensureFirebaseSeeded().catch(() => {});
 
+let inFlightSchoolProfilePromise: Promise<SchoolProfile> | null = null;
+
 // Unified API Methods supporting Firebase Firestore, Google Apps Script, and Local Storage
 export const api = {
   // Test connection to Firebase Firestore
@@ -457,7 +461,7 @@ export const api = {
 
   // 2. USERS
   async getUsers(): Promise<User[]> {
-    if (currentDataSource === 'FIREBASE') {
+    if (currentDataSource === 'FIREBASE' && !isFirestoreOffline()) {
       try {
         const users = await firebaseService.getUsers();
         if (users && users.length > 0) {
@@ -465,7 +469,7 @@ export const api = {
           return users;
         }
       } catch (err) {
-        console.warn('Firebase getUsers error, falling back to local:', err);
+        // Fall back to local
       }
     }
 
@@ -661,7 +665,7 @@ export const api = {
     const cleanTarget = (targetKelas || '').trim().toLowerCase();
     const isAllClasses = !cleanTarget || cleanTarget === 'all' || cleanTarget === 'semua';
 
-    if (currentDataSource === 'FIREBASE') {
+    if (currentDataSource === 'FIREBASE' && !isFirestoreOffline()) {
       try {
         const allMateri = await firebaseService.getMateriList();
         if (Array.isArray(allMateri)) {
@@ -676,7 +680,7 @@ export const api = {
             .reverse();
         }
       } catch (err) {
-        console.warn('Firebase getMateriList error, fallback to local:', err);
+        // Fall back to local
       }
     }
 
@@ -812,7 +816,7 @@ export const api = {
     const isAllClasses = !cleanTarget || cleanTarget === 'all' || cleanTarget === 'semua';
     const isPrivileged = role === 'guru' || role === 'admin';
 
-    if (currentDataSource === 'FIREBASE') {
+    if (currentDataSource === 'FIREBASE' && !isFirestoreOffline()) {
       try {
         const allUjian = await firebaseService.getUjianList();
         if (Array.isArray(allUjian)) {
@@ -841,7 +845,7 @@ export const api = {
             .reverse();
         }
       } catch (err) {
-        console.warn('Firebase getUjianList error, fallback to local:', err);
+        // Fall back to local
       }
     }
 
@@ -1079,12 +1083,12 @@ export const api = {
   async getHasilMurid(namaMurid: string): Promise<Nilai[]> {
     const cleanTarget = (namaMurid || '').trim().toLowerCase();
 
-    if (currentDataSource === 'FIREBASE') {
+    if (currentDataSource === 'FIREBASE' && !isFirestoreOffline()) {
       try {
         const list = await firebaseService.getHasilMurid(namaMurid);
         if (Array.isArray(list)) return list;
       } catch (err) {
-        console.warn('Firebase getHasilMurid error:', err);
+        // Fall back to local
       }
     }
 
@@ -1103,7 +1107,7 @@ export const api = {
   },
 
   async getNilaiList(): Promise<Nilai[]> {
-    if (currentDataSource === 'FIREBASE') {
+    if (currentDataSource === 'FIREBASE' && !isFirestoreOffline()) {
       try {
         const list = await firebaseService.getNilaiList();
         if (Array.isArray(list)) {
@@ -1111,7 +1115,7 @@ export const api = {
           return list;
         }
       } catch (err) {
-        console.warn('Firebase getNilaiList error:', err);
+        // Fall back to local
       }
     }
 
@@ -1234,18 +1238,28 @@ export const api = {
 
   // 5. PENGATURAN IDENTITAS SEKOLAH & MASTER DATA
   async getSchoolProfile(): Promise<SchoolProfile> {
-    if (currentDataSource === 'FIREBASE') {
+    if (inFlightSchoolProfilePromise) return inFlightSchoolProfilePromise;
+
+    inFlightSchoolProfilePromise = (async () => {
       try {
-        const p = await firebaseService.getSchoolProfile();
-        if (p) {
-          saveLocalSchoolProfile(p);
-          return p;
+        if (currentDataSource === 'FIREBASE' && !isFirestoreOffline()) {
+          try {
+            const p = await firebaseService.getSchoolProfile();
+            if (p) {
+              saveLocalSchoolProfile(p);
+              return p;
+            }
+          } catch {
+            // Fall back to local
+          }
         }
-      } catch (err) {
-        console.warn('Firebase getSchoolProfile error:', err);
+        return getLocalSchoolProfile();
+      } finally {
+        inFlightSchoolProfilePromise = null;
       }
-    }
-    return getLocalSchoolProfile();
+    })();
+
+    return inFlightSchoolProfilePromise;
   },
 
   async saveSchoolProfile(profile: SchoolProfile): Promise<ApiResponse> {
@@ -1262,7 +1276,7 @@ export const api = {
   },
 
   async getMasterKelas(): Promise<string[]> {
-    if (currentDataSource === 'FIREBASE') {
+    if (currentDataSource === 'FIREBASE' && !isFirestoreOffline()) {
       try {
         const c = await firebaseService.getMasterKelas();
         if (Array.isArray(c) && c.length > 0) {
@@ -1270,7 +1284,7 @@ export const api = {
           return c;
         }
       } catch (err) {
-        console.warn('Firebase getMasterKelas error:', err);
+        // Fall back to local
       }
     }
     return getLocalMasterKelas();
@@ -1290,7 +1304,7 @@ export const api = {
   },
 
   async getMasterMapel(): Promise<string[]> {
-    if (currentDataSource === 'FIREBASE') {
+    if (currentDataSource === 'FIREBASE' && !isFirestoreOffline()) {
       try {
         const m = await firebaseService.getMasterMapel();
         if (Array.isArray(m) && m.length > 0) {
@@ -1298,7 +1312,7 @@ export const api = {
           return m;
         }
       } catch (err) {
-        console.warn('Firebase getMasterMapel error:', err);
+        // Fall back to local
       }
     }
     return getLocalMasterMapel();
@@ -1319,7 +1333,7 @@ export const api = {
 
   // 6. PENGUMUMAN SEKOLAH
   async getAnnouncements(): Promise<Announcement[]> {
-    if (currentDataSource === 'FIREBASE') {
+    if (currentDataSource === 'FIREBASE' && !isFirestoreOffline()) {
       try {
         const list = await firebaseService.getAnnouncements();
         if (Array.isArray(list) && list.length > 0) {
@@ -1327,7 +1341,7 @@ export const api = {
           return list;
         }
       } catch (err) {
-        console.warn('Firebase getAnnouncements error:', err);
+        // Fall back to local
       }
     }
     return getLocalAnnouncements();
