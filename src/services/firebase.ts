@@ -1,4 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
 import {
   initializeFirestore,
   getFirestore,
@@ -148,7 +149,10 @@ const activeConfig = getActiveFirebaseConfig();
 // Inisialisasi Firebase App (Cegah inisialisasi ganda)
 export const firebaseApp = getApps().length === 0 ? initializeApp(activeConfig) : getApp();
 
-// Inisialisasi Firestore dengan opsi aman
+// Inisialisasi Auth
+export const auth = getAuth(firebaseApp);
+
+// Inisialisasi Firestore dengan opsi aman (auto-detect long-polling untuk preview iframe sandbox)
 const resolvedDatabaseId =
   activeConfig.firestoreDatabaseId && activeConfig.firestoreDatabaseId !== '(default)'
     ? activeConfig.firestoreDatabaseId
@@ -177,40 +181,33 @@ export const COLLECTIONS = {
   ANNOUNCEMENTS: 'announcements',
 } as const;
 
-// Helper timeout aman & status deteksi koneksi Firestore
+// Helper status koneksi Firestore
 let isFirestoreAvailable: boolean | null = null;
-let lastFirestoreErrorTime = 0;
-const OFFLINE_RETRY_INTERVAL_MS = 25000; // 25 detik jeda sebelum mencoba ulang agar aplikasi tetap cepat & responsif
 
 export function markFirestoreOffline(reason?: unknown) {
   if (isFirestoreAvailable !== false) {
-    console.info('Mode cadangan lokal aktif (Firestore belum siap/dalam jeda tunggu):', reason instanceof Error ? reason.message : reason);
+    console.info('Mode cadangan lokal aktif untuk operasi ini:', reason instanceof Error ? reason.message : reason);
   }
   isFirestoreAvailable = false;
-  lastFirestoreErrorTime = Date.now();
 }
 
 export function markFirestoreOnline() {
   if (isFirestoreAvailable !== true) {
-    console.info('Koneksi database Firebase Firestore berhasil terhubung.');
+    console.info('Koneksi database Firebase Firestore aktif.');
   }
   isFirestoreAvailable = true;
-  lastFirestoreErrorTime = 0;
 }
 
 export function isFirestoreOffline(): boolean {
-  if (isFirestoreAvailable === false) {
-    if (Date.now() - lastFirestoreErrorTime < OFFLINE_RETRY_INTERVAL_MS) {
-      return true;
-    }
+  if (typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean' && !navigator.onLine) {
+    return true;
   }
   return false;
 }
 
-export function withTimeout<T>(promise: Promise<T>, timeoutMs = 3000): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, timeoutMs = 8000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      markFirestoreOffline('Waktu koneksi melebihi batas');
       reject(new Error(`Waktu koneksi melebihi batas (${timeoutMs / 1000}s)`));
     }, timeoutMs);
 
@@ -222,7 +219,6 @@ export function withTimeout<T>(promise: Promise<T>, timeoutMs = 3000): Promise<T
       })
       .catch((err) => {
         clearTimeout(timer);
-        markFirestoreOffline(err);
         reject(err);
       });
   });
@@ -243,7 +239,7 @@ export async function ensureFirebaseSeeded(): Promise<void> {
 
   try {
     const usersCol = collection(db, COLLECTIONS.USERS);
-    const snap = await withTimeout(getDocs(usersCol), 2500);
+    const snap = await withTimeout(getDocs(usersCol), 7000);
 
     if (snap.empty) {
       console.log('Firebase Firestore masih kosong. Melakukan inisialisasi data awal...');
@@ -287,14 +283,14 @@ export const firebaseService = {
 
     try {
       const userDocRef = doc(db, COLLECTIONS.USERS, cleanUsername);
-      const snap = await withTimeout(getDoc(userDocRef), 3000);
+      const snap = await withTimeout(getDoc(userDocRef), 7000);
 
       if (!snap.exists()) {
         const q = query(
           collection(db, COLLECTIONS.USERS),
           where('username', '==', cleanUsername)
         );
-        const querySnap = await withTimeout(getDocs(q), 3000);
+        const querySnap = await withTimeout(getDocs(q), 7000);
         if (querySnap.empty) {
           return { success: false, message: 'Username tidak ditemukan di database Firebase!' };
         }
@@ -319,7 +315,7 @@ export const firebaseService = {
   async getUsers(): Promise<User[]> {
     if (isFirestoreOffline()) throw new Error('Firestore sedang offline');
     await ensureFirebaseSeeded().catch(() => {});
-    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.USERS)), 3000);
+    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.USERS)), 7000);
     const list: User[] = [];
     snap.forEach((d) => {
       list.push(normalizeUser(d.data()));
@@ -371,7 +367,7 @@ export const firebaseService = {
   async getMateriList(): Promise<Materi[]> {
     if (isFirestoreOffline()) throw new Error('Firestore sedang offline');
     await ensureFirebaseSeeded().catch(() => {});
-    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.MATERI)), 3000);
+    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.MATERI)), 7000);
     const list: Materi[] = [];
     snap.forEach((d) => {
       list.push(normalizeMateri(d.data()));
@@ -401,7 +397,7 @@ export const firebaseService = {
   async getUjianList(): Promise<Ujian[]> {
     if (isFirestoreOffline()) throw new Error('Firestore sedang offline');
     await ensureFirebaseSeeded().catch(() => {});
-    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.UJIAN)), 3000);
+    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.UJIAN)), 7000);
     const list: Ujian[] = [];
     snap.forEach((d) => {
       list.push(normalizeUjian(d.data()));
@@ -431,7 +427,7 @@ export const firebaseService = {
   async getHasilMurid(namaMurid: string): Promise<Nilai[]> {
     if (isFirestoreOffline()) throw new Error('Firestore sedang offline');
     await ensureFirebaseSeeded().catch(() => {});
-    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.NILAI)), 3000);
+    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.NILAI)), 7000);
     const cleanTarget = (namaMurid || '').trim().toLowerCase();
     const list: Nilai[] = [];
     snap.forEach((d) => {
@@ -446,7 +442,7 @@ export const firebaseService = {
   async getNilaiList(): Promise<Nilai[]> {
     if (isFirestoreOffline()) throw new Error('Firestore sedang offline');
     await ensureFirebaseSeeded().catch(() => {});
-    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.NILAI)), 3000);
+    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.NILAI)), 7000);
     const list: Nilai[] = [];
     snap.forEach((d) => {
       list.push(normalizeNilai(d.data()));
@@ -499,7 +495,7 @@ export const firebaseService = {
   async getSchoolProfile(): Promise<SchoolProfile | null> {
     if (isFirestoreOffline()) return null;
     try {
-      const snap = await withTimeout(getDoc(doc(db, COLLECTIONS.SETTINGS, 'school_profile')), 2500);
+      const snap = await withTimeout(getDoc(doc(db, COLLECTIONS.SETTINGS, 'school_profile')), 6000);
       if (snap.exists()) {
         return snap.data() as SchoolProfile;
       }
@@ -510,14 +506,14 @@ export const firebaseService = {
   },
 
   async saveSchoolProfile(profile: SchoolProfile): Promise<ApiResponse> {
-    await withTimeout(setDoc(doc(db, COLLECTIONS.SETTINGS, 'school_profile'), profile), 5000);
+    await withTimeout(setDoc(doc(db, COLLECTIONS.SETTINGS, 'school_profile'), profile), 7000);
     return { success: true, message: 'Identitas dan pengaturan sekolah berhasil disimpan ke Firebase!' };
   },
 
   async getMasterKelas(): Promise<string[] | null> {
     if (isFirestoreOffline()) return null;
     try {
-      const snap = await withTimeout(getDoc(doc(db, COLLECTIONS.SETTINGS, 'master_kelas')), 2500);
+      const snap = await withTimeout(getDoc(doc(db, COLLECTIONS.SETTINGS, 'master_kelas')), 6000);
       if (snap.exists() && Array.isArray(snap.data()?.classes)) {
         return snap.data().classes as string[];
       }
@@ -528,14 +524,14 @@ export const firebaseService = {
   },
 
   async saveMasterKelas(classes: string[]): Promise<ApiResponse> {
-    await withTimeout(setDoc(doc(db, COLLECTIONS.SETTINGS, 'master_kelas'), { classes }), 5000);
+    await withTimeout(setDoc(doc(db, COLLECTIONS.SETTINGS, 'master_kelas'), { classes }), 7000);
     return { success: true, message: 'Daftar kelas berhasil disimpan!' };
   },
 
   async getMasterMapel(): Promise<string[] | null> {
     if (isFirestoreOffline()) return null;
     try {
-      const snap = await withTimeout(getDoc(doc(db, COLLECTIONS.SETTINGS, 'master_mapel')), 2500);
+      const snap = await withTimeout(getDoc(doc(db, COLLECTIONS.SETTINGS, 'master_mapel')), 6000);
       if (snap.exists() && Array.isArray(snap.data()?.mapels)) {
         return snap.data().mapels as string[];
       }
@@ -546,14 +542,14 @@ export const firebaseService = {
   },
 
   async saveMasterMapel(mapels: string[]): Promise<ApiResponse> {
-    await withTimeout(setDoc(doc(db, COLLECTIONS.SETTINGS, 'master_mapel'), { mapels }), 5000);
+    await withTimeout(setDoc(doc(db, COLLECTIONS.SETTINGS, 'master_mapel'), { mapels }), 7000);
     return { success: true, message: 'Daftar mata pelajaran berhasil disimpan!' };
   },
 
   async getAnnouncements(): Promise<Announcement[]> {
     if (isFirestoreOffline()) return [];
     try {
-      const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.ANNOUNCEMENTS)), 2500);
+      const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.ANNOUNCEMENTS)), 6000);
       const list: Announcement[] = [];
       snap.forEach((d) => list.push({ id: d.id, ...(d.data() as Omit<Announcement, 'id'>) }));
       return list;
@@ -576,6 +572,9 @@ export const firebaseService = {
 
   // 6. TEST CONNECTION DIAGNOSTIC & INITIAL SEED
   async testConnection(): Promise<FirebaseConnectionDiagnostic> {
+    // Reset status to test fresh connection
+    isFirestoreAvailable = null;
+
     const activeCfg = getActiveFirebaseConfig();
     const rulesSnippet = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}`;
     const consoleRulesUrl = `https://console.firebase.google.com/project/${activeCfg.projectId}/firestore/rules`;
@@ -583,7 +582,7 @@ export const firebaseService = {
     try {
       // Coba baca koleksi users dengan timeout terukur
       const usersCol = collection(db, COLLECTIONS.USERS);
-      const snap = await withTimeout(getDocs(usersCol), 4000);
+      const snap = await withTimeout(getDocs(usersCol), 8000);
       markFirestoreOnline();
 
       // Jika kosong, inisialisasi data awal
