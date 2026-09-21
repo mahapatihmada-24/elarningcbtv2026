@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Megaphone, Pin, ArrowRight, X, Bell, Calendar, UserCheck } from 'lucide-react';
+import { Megaphone, Pin, ArrowRight, X, Bell, Calendar, UserCheck, Paperclip } from 'lucide-react';
 import { Announcement } from '../types';
 
 interface AnnouncementAlertBannerProps {
@@ -77,6 +77,13 @@ export const AnnouncementAlertBanner: React.FC<AnnouncementAlertBannerProps> = (
               {topAnnouncement.kategori && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/80 text-slate-700 border border-slate-200">
                   {topAnnouncement.kategori.toUpperCase()}
+                </span>
+              )}
+
+              {(topAnnouncement.fileData || topAnnouncement.linkUrl) && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                  <Paperclip className="w-2.5 h-2.5 text-emerald-600" />
+                  {topAnnouncement.fileName ? 'Lampiran Dokumen' : 'Lampiran Link'}
                 </span>
               )}
 

@@ -155,6 +155,13 @@ export interface Announcement {
   target: 'semua' | 'guru' | 'murid';
   kategori?: 'penting' | 'ujian' | 'libur' | 'info';
   pinned?: boolean;
+  // File upload & link attachment support
+  fileData?: string;
+  fileName?: string;
+  fileType?: string;
+  fileSize?: string;
+  linkUrl?: string;
+  linkTitle?: string;
 }
 
 export interface ApiResponse<T = unknown> {

@@ -13,6 +13,10 @@ import {
 } from 'lucide-react';
 import { Announcement, User } from '../types';
 import { api } from '../services/api';
+import {
+  AnnouncementAttachmentCard,
+  FormattedAnnouncementBody,
+} from './AnnouncementAttachmentCard';
 
 const READ_ANNOUNCEMENTS_KEY = 'cbt_read_announcements';
 
@@ -220,9 +224,20 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                   >
                     {item.judul}
                   </h4>
-                  <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">
-                    {item.isi}
-                  </p>
+                  <FormattedAnnouncementBody content={item.isi} />
+                  {(item.fileData || item.linkUrl) && (
+                    <div className="mt-2.5">
+                      <AnnouncementAttachmentCard
+                        fileData={item.fileData}
+                        fileName={item.fileName}
+                        fileType={item.fileType}
+                        fileSize={item.fileSize}
+                        linkUrl={item.linkUrl}
+                        linkTitle={item.linkTitle}
+                        className="p-2.5 text-xs"
+                      />
+                    </div>
+                  )}
                   <div className="mt-2 text-[10px] text-slate-400 font-semibold">
                     Dipublikasikan oleh: {item.penulis || 'Administrator'}
                   </div>

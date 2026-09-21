@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Bell,
   Plus,
@@ -17,10 +17,26 @@ import {
   UserCheck,
   GraduationCap,
   Sparkles,
+  Upload,
+  Paperclip,
+  HardDrive,
+  FileText,
+  FileSpreadsheet,
+  Download,
+  ExternalLink,
+  File,
 } from 'lucide-react';
 import { Announcement, User } from '../types';
 import { api } from '../services/api';
 import { ModalState } from './ConfirmModal';
+import {
+  AnnouncementAttachmentCard,
+  FormattedAnnouncementBody,
+} from './AnnouncementAttachmentCard';
+import {
+  readFileAsDataUrl,
+  parseGoogleDriveLink,
+} from '../utils/fileAttachmentHelper';
 
 interface AnnouncementBoardProps {
   currentUser: User;
@@ -40,7 +56,7 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<'semua' | 'penting' | 'ujian' | 'guru' | 'murid'>('semua');
 
-  // Admin form state
+  // Form state
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formTitle, setFormTitle] = useState('');
@@ -49,6 +65,17 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
   const [formCategory, setFormCategory] = useState<'penting' | 'ujian' | 'libur' | 'info'>('info');
   const [formPinned, setFormPinned] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Attachment states (File & Google Drive/URL)
+  const [formFileData, setFormFileData] = useState<string>('');
+  const [formFileName, setFormFileName] = useState<string>('');
+  const [formFileType, setFormFileType] = useState<string>('');
+  const [formFileSize, setFormFileSize] = useState<string>('');
+  const [formLinkUrl, setFormLinkUrl] = useState<string>('');
+  const [formLinkTitle, setFormLinkTitle] = useState<string>('');
+  const [attachmentTab, setAttachmentTab] = useState<'upload' | 'link'>('upload');
+  const [isReadingFile, setIsReadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchAnnouncements = async () => {
     setIsLoading(true);
@@ -118,6 +145,13 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
     setFormTarget('semua');
     setFormCategory('info');
     setFormPinned(false);
+    setFormFileData('');
+    setFormFileName('');
+    setFormFileType('');
+    setFormFileSize('');
+    setFormLinkUrl('');
+    setFormLinkTitle('');
+    setAttachmentTab('upload');
     setIsFormOpen(true);
   };
 
@@ -128,7 +162,70 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
     setFormTarget(item.target || 'semua');
     setFormCategory(item.kategori || 'info');
     setFormPinned(!!item.pinned);
+    setFormFileData(item.fileData || '');
+    setFormFileName(item.fileName || '');
+    setFormFileType(item.fileType || '');
+    setFormFileSize(item.fileSize || '');
+    setFormLinkUrl(item.linkUrl || '');
+    setFormLinkTitle(item.linkTitle || '');
+    setAttachmentTab(item.fileData ? 'upload' : item.linkUrl ? 'link' : 'upload');
     setIsFormOpen(true);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+
+    // Check size (warn if > 1.2MB for Firestore document stability)
+    if (file.size > 1.5 * 1024 * 1024) {
+      if (onShowModal) {
+        onShowModal({
+          isOpen: true,
+          title: 'Ukuran Berkas Cukup Besar',
+          message: `Berkas "${file.name}" berukuran ${(file.size / (1024 * 1024)).toFixed(1)} MB. Untuk dokumen besar (> 1.5 MB), sangat direkomendasikan menggunakan tautan Google Drive agar dapat diunduh cepat tanpa beban data. Tetap ingin mengunggah berkas langsung?`,
+          type: 'warning',
+          isConfirm: true,
+          onConfirm: async () => {
+            await processFileUpload(file);
+          },
+        });
+        return;
+      }
+    }
+    await processFileUpload(file);
+  };
+
+  const processFileUpload = async (file: File) => {
+    setIsReadingFile(true);
+    try {
+      const res = await readFileAsDataUrl(file);
+      setFormFileData(res.dataUrl);
+      setFormFileName(res.fileName);
+      setFormFileType(res.fileType);
+      setFormFileSize(res.fileSize);
+    } catch {
+      if (onShowModal) {
+        onShowModal({
+          isOpen: true,
+          title: 'Gagal Membaca Berkas',
+          message: 'Terjadi kendala saat membaca file dari perangkat Anda. Silakan coba lagi.',
+          type: 'danger',
+        });
+      }
+    } finally {
+      setIsReadingFile(false);
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setFormFileData('');
+    setFormFileName('');
+    setFormFileType('');
+    setFormFileSize('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -157,6 +254,12 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
         target: formTarget,
         kategori: formCategory,
         pinned: formPinned,
+        fileData: formFileData || undefined,
+        fileName: formFileName || undefined,
+        fileType: formFileType || undefined,
+        fileSize: formFileSize || undefined,
+        linkUrl: formLinkUrl.trim() || undefined,
+        linkTitle: formLinkTitle.trim() || undefined,
       };
 
       await api.saveAnnouncement(payload);
@@ -167,7 +270,7 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
         onShowModal({
           isOpen: true,
           title: editingId ? 'Pengumuman Diperbarui' : 'Pengumuman Diterbitkan',
-          message: `Pengumuman "${payload.judul}" berhasil disimpan ke sistem!`,
+          message: `Pengumuman "${payload.judul}" berhasil disimpan beserta lampiran dokumen!`,
           type: 'success',
         });
       }
@@ -322,9 +425,20 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
                   <span className="text-[10px] text-slate-400 ml-auto">{item.tanggal}</span>
                 </div>
                 <h5 className="font-bold text-xs text-slate-800 mb-1">{item.judul}</h5>
-                <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed whitespace-pre-wrap">
-                  {item.isi}
-                </p>
+                <FormattedAnnouncementBody content={item.isi} />
+                {(item.fileData || item.linkUrl) && (
+                  <div className="mt-2">
+                    <AnnouncementAttachmentCard
+                      fileData={item.fileData}
+                      fileName={item.fileName}
+                      fileType={item.fileType}
+                      fileSize={item.fileSize}
+                      linkUrl={item.linkUrl}
+                      linkTitle={item.linkTitle}
+                      className="p-2 text-xs"
+                    />
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -381,8 +495,8 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
         </div>
       </div>
 
-      {/* Admin Create / Edit Form Modal Inline */}
-      {isFormOpen && isAdmin && (
+      {/* Admin / Teacher Create / Edit Form Modal Inline */}
+      {isFormOpen && canManage && (
         <form
           onSubmit={handleSave}
           className="p-4 sm:p-5 rounded-2xl bg-indigo-50/70 border border-indigo-200 space-y-4 shadow-sm animate-fadeIn"
@@ -480,10 +594,147 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
               rows={4}
               value={formContent}
               onChange={(e) => setFormContent(e.target.value)}
-              placeholder="Tuliskan petunjuk lengkap, ketentuan asesmen, tanggal pelaksanaan, atau instruksi..."
+              placeholder="Tuliskan petunjuk lengkap, ketentuan asesmen, tanggal pelaksanaan, tautan berkas, atau instruksi..."
               className="w-full text-xs p-3 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-hidden leading-relaxed"
               required
             />
+          </div>
+
+          {/* File Attachment & Google Drive Links */}
+          <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-indigo-200 space-y-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+              <div>
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Paperclip className="w-4 h-4 text-indigo-600" />
+                  Lampiran Berkas / Dokumen & Google Drive
+                </label>
+                <p className="text-[11px] text-slate-500">
+                  Dapat langsung diunduh dan dibaca oleh seluruh guru dan siswa.
+                </p>
+              </div>
+
+              {/* Mode switch */}
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setAttachmentTab('upload')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-md transition flex items-center gap-1 cursor-pointer ${
+                    attachmentTab === 'upload'
+                      ? 'bg-white text-indigo-700 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Upload className="w-3 h-3" />
+                  Unggah Berkas Langsung
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAttachmentTab('link')}
+                  className={`px-2.5 py-1 text-xs font-bold rounded-md transition flex items-center gap-1 cursor-pointer ${
+                    attachmentTab === 'link'
+                      ? 'bg-white text-indigo-700 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <HardDrive className="w-3 h-3 text-emerald-600" />
+                  Google Drive / Tautan
+                </button>
+              </div>
+            </div>
+
+            {attachmentTab === 'upload' && (
+              <div className="space-y-2">
+                {formFileData ? (
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 font-bold text-xs">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-slate-800 truncate">
+                          {formFileName}
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          {formFileSize} • Siap diunduh oleh semua user
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveFile}
+                      className="px-2.5 py-1 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      id="announcementFileInput"
+                      onChange={handleFileChange}
+                      accept=".pdf,.xlsx,.xls,.docx,.doc,.pptx,.ppt,.png,.jpg,.jpeg,.webp,.txt"
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="announcementFileInput"
+                      className="border-2 border-dashed border-indigo-200 hover:border-indigo-400 bg-indigo-50/40 hover:bg-indigo-50/70 p-4 rounded-xl flex flex-col items-center justify-center gap-1.5 cursor-pointer transition text-center"
+                    >
+                      <Upload className="w-5 h-5 text-indigo-600" />
+                      <span className="text-xs font-bold text-indigo-900">
+                        {isReadingFile ? 'Sedang memproses berkas...' : 'Klik untuk Memilih File Dokumen (PDF, Excel, Word, dll)'}
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        Mendukung PDF (.pdf), Excel (.xlsx, .xls), Word (.docx, .doc), PowerPoint, & Gambar
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {attachmentTab === 'link' && (
+              <div className="space-y-2.5">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    URL Tautan Dokumen / Google Drive
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="url"
+                      value={formLinkUrl}
+                      onChange={(e) => setFormLinkUrl(e.target.value)}
+                      placeholder="https://drive.google.com/file/d/... atau https://docs.google.com/..."
+                      className="w-full text-xs p-2.5 pl-8 rounded-xl border border-slate-300 bg-white font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                    />
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                    Keterangan Dokumen / Judul Tautan (Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    value={formLinkTitle}
+                    onChange={(e) => setFormLinkTitle(e.target.value)}
+                    placeholder="Contoh: Dokumen Kisi-Kisi Soal di Google Drive"
+                    className="w-full text-xs p-2.5 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-hidden"
+                  />
+                </div>
+
+                {formLinkUrl && parseGoogleDriveLink(formLinkUrl).isGoogleDrive && (
+                  <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-medium flex items-center gap-2">
+                    <HardDrive className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      <strong>Tautan Google Drive Terverifikasi:</strong> Sistem otomatis menyediakan tombol <strong>Unduh Langsung</strong> dan <strong>Buka Pratinjau</strong> untuk semua pengguna!
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Action Buttons */}
@@ -661,10 +912,22 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
                   {item.judul}
                 </h4>
 
-                {/* Body Text */}
-                <p className="text-xs sm:text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
-                  {item.isi}
-                </p>
+                {/* Body Text with Auto-link and Quick Download Detection */}
+                <FormattedAnnouncementBody content={item.isi} />
+
+                {/* Attached Document (PDF, Word, Excel, PPT, Image) or Google Drive Link */}
+                {(item.fileData || item.linkUrl) && (
+                  <div className="mt-3.5">
+                    <AnnouncementAttachmentCard
+                      fileData={item.fileData}
+                      fileName={item.fileName}
+                      fileType={item.fileType}
+                      fileSize={item.fileSize}
+                      linkUrl={item.linkUrl}
+                      linkTitle={item.linkTitle}
+                    />
+                  </div>
+                )}
               </div>
             );
           })}

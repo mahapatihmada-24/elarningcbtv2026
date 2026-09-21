@@ -121,16 +121,30 @@ function ensureLocalDbInitialized() {
     localStorage.setItem(STORAGE_KEY_MASTER_MAPEL, JSON.stringify(DEFAULT_MASTER_MAPEL));
   }
   if (!localStorage.getItem(STORAGE_KEY_ANNOUNCEMENTS)) {
+    const today = new Date().toISOString().split('T')[0];
     localStorage.setItem(
       STORAGE_KEY_ANNOUNCEMENTS,
       JSON.stringify([
         {
           id: 'PENG-01',
+          judul: 'Panduan & Jadwal Pelaksanaan Asesmen CBT Semester Genap',
+          isi: 'Diberitahukan kepada seluruh Guru dan Siswa, berikut terlampir berkas kisi-kisi dan panduan pelaksanaan asesmen CBT. Dokumen dapat diunduh langsung atau dilihat melalui tautan lampiran di bawah.',
+          tanggal: today,
+          penulis: 'Hj. Siti Rohmah, M.Pd. (Kepala Sekolah)',
+          target: 'semua',
+          kategori: 'ujian',
+          pinned: true,
+          linkUrl: 'https://docs.google.com/document/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit',
+          linkTitle: 'Panduan Pelaksanaan & Kisi-Kisi CBT (Google Drive / Docs)',
+        },
+        {
+          id: 'PENG-02',
           judul: 'Selamat Datang di Portal CBT SDN Harjosari Kidul 01',
-          isi: 'Sistem CBT kini dilengkapi fitur acak soal, proteksi anti-contek, dan format soal berstandar nasional.',
-          tanggal: '2025-01-10',
+          isi: 'Sistem CBT kini dilengkapi fitur acak soal, proteksi anti-contek, format soal berstandar nasional, serta papan pengumuman resmi dengan dukungan unduh berkas (PDF, Excel, Word) dan Google Drive.',
+          tanggal: today,
           penulis: 'Administrator',
           target: 'semua',
+          kategori: 'info',
         },
       ])
     );

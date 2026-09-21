@@ -580,7 +580,13 @@ export const firebaseService = {
 
   async saveAnnouncement(item: Announcement): Promise<ApiResponse> {
     const id = item.id || 'PENG-' + Date.now();
-    await withTimeout(setDoc(doc(db, COLLECTIONS.ANNOUNCEMENTS, id), { ...item, id }), 5000);
+    const cleanPayload: Record<string, unknown> = { id };
+    Object.entries(item).forEach(([key, val]) => {
+      if (val !== undefined) {
+        cleanPayload[key] = val;
+      }
+    });
+    await withTimeout(setDoc(doc(db, COLLECTIONS.ANNOUNCEMENTS, id), cleanPayload), 5000);
     return { success: true, message: 'Pengumuman berhasil disimpan!' };
   },
 
