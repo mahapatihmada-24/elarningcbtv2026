@@ -700,7 +700,7 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
           ? (opt.img || opt.gambar || opt.image || opt.url)
           : (q as any)[`${letter.toLowerCase()}_img`];
         const imgMarkup = optImg
-          ? `<div style="margin-top: 4pt;"><img src="${optImg}" alt="Gambar Opsi ${letter}" style="max-height: 120px; max-width: 280px; border: 1px solid #cbd5e1; border-radius: 4px;" /></div>`
+          ? `<div style="margin-top: 4pt;"><img src="${optImg}" alt="Gambar Opsi ${oIdx + 1}" style="max-height: 120px; max-width: 280px; border: 1px solid #cbd5e1; border-radius: 4px;" /></div>`
           : '';
         choicesHtml += `
           <tr>
@@ -710,7 +710,7 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
               </span>
             </td>
             <td valign="top" style="border: none; padding: 3pt 4pt;"${marker}>
-              <strong>${letter}.</strong> ${optText ? formatMathForExport(optText, 'word') : `<span style="color:#888;">(Pilihan ${letter})</span>`} ${isCorrect ? '<strong>(KUNCI BENAR)</strong>' : ''}
+              ${optText ? formatMathForExport(optText, 'word') : `<span style="color:#888;">(Pilihan ${oIdx + 1})</span>`} ${isCorrect ? '<strong>(KUNCI BENAR)</strong>' : ''}
               ${imgMarkup}
             </td>
           </tr>
@@ -1020,7 +1020,7 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
           ? (opt.img || opt.gambar || opt.image || opt.url)
           : (q as any)[`${letter.toLowerCase()}_img`];
         const imgMarkup = optImg
-          ? `<div style="margin-top: 6px;"><img src="${optImg}" alt="Gambar Opsi ${letter}" referrerpolicy="no-referrer" loading="eager" decoding="sync" style="max-height: 120px; max-width: 280px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #fff; object-fit: contain; display: block;" /></div>`
+          ? `<div style="margin-top: 6px;"><img src="${optImg}" alt="Gambar Opsi ${oIdx + 1}" referrerpolicy="no-referrer" loading="eager" decoding="sync" style="max-height: 120px; max-width: 280px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #fff; object-fit: contain; display: block;" /></div>`
           : '';
         choicesHtml += `
           <div style="display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; border-radius: 6px; font-size: 13px;${badge}">
@@ -1028,8 +1028,7 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
               ${isCorrect ? '✓' : '&nbsp;'}
             </div>
             <div style="flex: 1;">
-              <strong style="margin-right: 4px;">${letter}.</strong>
-              <span>${optText ? formatMathForExport(optText, 'print') : `<span style="color:#94a3b8; font-style:italic;">Opsi ${letter}</span>`}</span>
+              <span>${optText ? formatMathForExport(optText, 'print') : `<span style="color:#94a3b8; font-style:italic;">Opsi ${oIdx + 1}</span>`}</span>
               ${isCorrect ? ' <span style="color: #15803d; font-weight: bold; font-size: 11px;">[KUNCI BENAR]</span>' : ''}
               ${imgMarkup}
             </div>
