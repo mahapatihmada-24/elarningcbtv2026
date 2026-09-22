@@ -555,9 +555,9 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                     )[]
                   ).map((opt) => {
                     const textVal = (q as QuestionPG)[opt] || '';
-                    if (!textVal) return null;
-
                     const imgVal = q[`${opt}_img` as keyof QuestionPG] as string | undefined;
+                    if (!textVal && !imgVal) return null;
+
                     const isSelected = ans === opt.toUpperCase();
                     // Bersihkan jika ada awalan huruf A., B., C., D., E. atau a., b., c., d., e. dari teks opsi
                     const cleanTextVal = textVal.replace(/^[A-Ea-e][\.\)]\s*/, '');
@@ -586,16 +586,38 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                             className="w-5 h-5 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
                           />
                           <div className="text-sm sm:text-base font-semibold text-slate-800">
-                            <MathRenderer content={cleanTextVal} className="inline-block" />
+                            <span className="font-bold text-indigo-700 mr-2">{opt.toUpperCase()}.</span>
+                            {cleanTextVal ? (
+                              <MathRenderer content={cleanTextVal} className="inline-block" />
+                            ) : null}
                           </div>
                         </div>
 
                         {imgVal && (
-                          <img
-                            src={imgVal}
-                            alt="Ilustrasi Pilihan Jawaban"
-                            className="max-h-24 rounded border object-contain bg-white p-1 ml-8 sm:ml-0"
-                          />
+                          <div className="relative group/optimg self-center sm:self-auto shrink-0 mt-2 sm:mt-0">
+                            <img
+                              src={imgVal}
+                              alt={`Pilihan ${opt.toUpperCase()}`}
+                              className="max-h-24 sm:max-h-28 rounded-lg border border-slate-200 object-contain bg-white p-1 ml-8 sm:ml-0 cursor-pointer hover:border-indigo-400 transition"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onViewImage(imgVal, `Pilihan ${opt.toUpperCase()} - Soal Nomor ${idx + 1}`);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onViewImage(imgVal, `Pilihan ${opt.toUpperCase()} - Soal Nomor ${idx + 1}`);
+                              }}
+                              className="absolute bottom-1 right-1 opacity-0 group-hover/optimg:opacity-100 bg-black/75 hover:bg-black text-white p-1 rounded-md text-[10px] flex items-center gap-0.5 transition shadow"
+                              title="Perbesar gambar"
+                            >
+                              <Eye className="w-3 h-3" />
+                            </button>
+                          </div>
                         )}
                       </label>
                     );
@@ -612,6 +634,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                   {(q.options || []).map((opt, oIdx) => {
                     const checkedArr = (ans as boolean[]) || [];
                     const isChecked = !!checkedArr[oIdx];
+                    if (!opt.text && !opt.img) return null;
 
                     return (
                       <label
@@ -634,19 +657,42 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                                 [idx]: copy,
                               }));
                             }}
-                            className="w-5 h-5 text-emerald-600 rounded cursor-pointer"
+                            className="w-5 h-5 text-emerald-600 rounded cursor-pointer shrink-0"
                           />
                           <div className="text-sm sm:text-base font-semibold">
-                            <MathRenderer content={opt.text} className="inline-block" />
+                            {opt.text ? (
+                              <MathRenderer content={opt.text} className="inline-block" />
+                            ) : (
+                              <span className="text-slate-500 italic">Opsi {oIdx + 1}</span>
+                            )}
                           </div>
                         </div>
 
                         {opt.img && (
-                          <img
-                            src={opt.img}
-                            alt="Ilustrasi Opsi"
-                            className="max-h-24 rounded border object-contain bg-white p-1 ml-8 sm:ml-0"
-                          />
+                          <div className="relative group/optimg self-center sm:self-auto shrink-0 mt-2 sm:mt-0">
+                            <img
+                              src={opt.img}
+                              alt={`Opsi ${oIdx + 1}`}
+                              className="max-h-24 sm:max-h-28 rounded-lg border border-slate-200 object-contain bg-white p-1 ml-8 sm:ml-0 cursor-pointer hover:border-emerald-400 transition"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onViewImage(opt.img!, `Opsi ${oIdx + 1} - Soal Nomor ${idx + 1}`);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onViewImage(opt.img!, `Opsi ${oIdx + 1} - Soal Nomor ${idx + 1}`);
+                              }}
+                              className="absolute bottom-1 right-1 opacity-0 group-hover/optimg:opacity-100 bg-black/75 hover:bg-black text-white p-1 rounded-md text-[10px] flex items-center gap-0.5 transition shadow"
+                              title="Perbesar gambar"
+                            >
+                              <Eye className="w-3 h-3" />
+                            </button>
+                          </div>
                         )}
                       </label>
                     );

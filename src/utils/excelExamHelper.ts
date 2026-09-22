@@ -20,6 +20,11 @@ export function downloadExamExcelTemplate(): void {
     'Bobot Nilai',
     'Pilihan E',
     'Link/URL Gambar',
+    'Gambar Opsi A',
+    'Gambar Opsi B',
+    'Gambar Opsi C',
+    'Gambar Opsi D',
+    'Gambar Opsi E',
   ];
 
   const sampleData = [
@@ -35,6 +40,11 @@ export function downloadExamExcelTemplate(): void {
       1,
       '',
       '',
+      '',
+      '',
+      '',
+      '',
+      '',
     ],
     [
       2,
@@ -47,6 +57,11 @@ export function downloadExamExcelTemplate(): void {
       'A,B,C',
       1,
       'Sisa gula Toko Makmur sama banyak dengan Toko Rezeki',
+      '',
+      '',
+      '',
+      '',
+      '',
       '',
     ],
     [
@@ -61,6 +76,11 @@ export function downloadExamExcelTemplate(): void {
       1,
       '',
       '',
+      '',
+      '',
+      '',
+      '',
+      '',
     ],
     [
       4,
@@ -72,6 +92,11 @@ export function downloadExamExcelTemplate(): void {
       'p : l',
       'C',
       1,
+      '',
+      '',
+      '',
+      '',
+      '',
       '',
       '',
     ],
@@ -90,6 +115,11 @@ export function downloadExamExcelTemplate(): void {
     { wch: 12 }, // Bobot
     { wch: 30 }, // E
     { wch: 25 }, // Gambar
+    { wch: 25 }, // Gambar A
+    { wch: 25 }, // Gambar B
+    { wch: 25 }, // Gambar C
+    { wch: 25 }, // Gambar D
+    { wch: 25 }, // Gambar E
   ];
 
   XLSX.utils.book_append_sheet(wb, wsSoal, 'TEMPLATE_SOAL');
@@ -103,15 +133,17 @@ export function downloadExamExcelTemplate(): void {
     ['No', 'Wajib', 'Nomor urut butir soal (1, 2, 3, ...)'],
     ['Jenis Soal', 'Wajib', 'Isi "PG" untuk Pilihan Ganda biasa (1 kunci), atau "PGK" untuk Pilihan Ganda Kompleks (jawaban benar lebih dari satu)'],
     ['Teks Soal', 'Wajib', 'Teks narasi dan kalimat pertanyaan soal lengkap. Mendukung rumus matematika LaTeX KaTeX, misal: $\\frac{a}{b}$ atau $x^2 + 4x = 0$'],
-    ['Pilihan A - D', 'Wajib', 'Teks untuk opsi pilihan jawaban A sampai D'],
+    ['Pilihan A - D', 'Wajib', 'Teks untuk opsi pilihan jawaban A sampai D (bisa kosong jika opsi berupa gambar)'],
     ['Kunci Jawaban', 'Wajib', 'Untuk PG: isi satu huruf (misal: "B"). Untuk PGK: isi beberapa huruf dipisah koma (misal: "A,B,C" atau "A,C")'],
     ['Bobot Nilai', 'Opsional', 'Angka bulat bobot nilai soal (default: 1 jika kosong)'],
     ['Pilihan E', 'Opsional', 'Opsi pilihan E (opsional jika memiliki 5 opsi pilihan)'],
-    ['Link/URL Gambar', 'Opsional', 'Tautan gambar ilustrasi soal (URL https://... atau format data base64)'],
+    ['Link/URL Gambar', 'Opsional', 'Tautan gambar ilustrasi soal utama (URL https://... atau format base64)'],
+    ['Gambar Opsi A - E', 'Opsional', 'Tautan URL gambar untuk opsi jawaban A s/d E (opsional, untuk soal dengan opsi bergambar)'],
     [],
     ['CATATAN TAMBAHAN:'],
     ['- Pastikan baris judul pada baris ke-1 tidak diubah namanya.'],
     ['- Kolom "Teks Soal" harus berisi narasi/pertanyaan soal, bukan jenis soal.'],
+    ['- Opsi jawaban dapat menggunakan teks saja, gambar saja, maupun kombinasi teks dan gambar.'],
     ['- Anda dapat menyimpan format sebagai .xlsx, .xls, atau .csv.'],
   ];
 
@@ -156,6 +188,11 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
     'Bobot Nilai',
     'Pilihan E',
     'Link/URL Gambar',
+    'Gambar Opsi A',
+    'Gambar Opsi B',
+    'Gambar Opsi C',
+    'Gambar Opsi D',
+    'Gambar Opsi E',
   ];
 
   const rows = questions.map((q, idx) => {
@@ -172,6 +209,11 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
         q.bobot || 1,
         q.e || '',
         q.gambar || '',
+        q.a_img || '',
+        q.b_img || '',
+        q.c_img || '',
+        q.d_img || '',
+        q.e_img || '',
       ];
     } else if (q.type === 'pgk_mcma') {
       const opts = q.options || [];
@@ -192,6 +234,11 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
         q.bobot || 1,
         opts[4]?.text || '',
         q.gambar || '',
+        opts[0]?.img || '',
+        opts[1]?.img || '',
+        opts[2]?.img || '',
+        opts[3]?.img || '',
+        opts[4]?.img || '',
       ];
     } else {
       const rowsTxt = (q.rows || [])
@@ -209,6 +256,11 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
         q.bobot || 1,
         '',
         q.gambar || '',
+        q.rows?.[0]?.img || '',
+        q.rows?.[1]?.img || '',
+        q.rows?.[2]?.img || '',
+        q.rows?.[3]?.img || '',
+        '',
       ];
     }
   });
@@ -226,6 +278,11 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
     { wch: 12 }, // Bobot
     { wch: 30 }, // E
     { wch: 25 }, // Gambar
+    { wch: 25 }, // Gambar A
+    { wch: 25 }, // Gambar B
+    { wch: 25 }, // Gambar C
+    { wch: 25 }, // Gambar D
+    { wch: 25 }, // Gambar E
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'TEMPLATE_SOAL');
@@ -437,14 +494,73 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
     (h) => h.includes('bobot') || h.includes('poin') || h.includes('skor') || h === 'bobot'
   );
 
-  // Column: Gambar / URL Gambar
+  // Column: Gambar / URL Gambar Soal Utama
   const gambarIdx = header.findIndex(
     (h) =>
-      h.includes('gambar') ||
-      h.includes('foto') ||
-      h.includes('image') ||
-      h.includes('img') ||
-      h.includes('ilustrasi')
+      (h.includes('gambar') ||
+        h.includes('foto') ||
+        h.includes('image') ||
+        h.includes('img') ||
+        h.includes('ilustrasi')) &&
+      !h.includes('opsi') &&
+      !h.includes('pilihan') &&
+      !h.includes(' a') &&
+      !h.includes(' b') &&
+      !h.includes(' c') &&
+      !h.includes(' d') &&
+      !h.includes(' e')
+  );
+
+  // Columns: Gambar Opsi A-E
+  const gambarAIdx = header.findIndex(
+    (h) =>
+      h.includes('gambar opsi a') ||
+      h.includes('gambar pilihan a') ||
+      h.includes('gambar a') ||
+      h.includes('img a') ||
+      h.includes('foto a') ||
+      h.includes('url gambar a') ||
+      h.includes('link gambar a')
+  );
+  const gambarBIdx = header.findIndex(
+    (h) =>
+      h.includes('gambar opsi b') ||
+      h.includes('gambar pilihan b') ||
+      h.includes('gambar b') ||
+      h.includes('img b') ||
+      h.includes('foto b') ||
+      h.includes('url gambar b') ||
+      h.includes('link gambar b')
+  );
+  const gambarCIdx = header.findIndex(
+    (h) =>
+      h.includes('gambar opsi c') ||
+      h.includes('gambar pilihan c') ||
+      h.includes('gambar c') ||
+      h.includes('img c') ||
+      h.includes('foto c') ||
+      h.includes('url gambar c') ||
+      h.includes('link gambar c')
+  );
+  const gambarDIdx = header.findIndex(
+    (h) =>
+      h.includes('gambar opsi d') ||
+      h.includes('gambar pilihan d') ||
+      h.includes('gambar d') ||
+      h.includes('img d') ||
+      h.includes('foto d') ||
+      h.includes('url gambar d') ||
+      h.includes('link gambar d')
+  );
+  const gambarEIdx = header.findIndex(
+    (h) =>
+      h.includes('gambar opsi e') ||
+      h.includes('gambar pilihan e') ||
+      h.includes('gambar e') ||
+      h.includes('img e') ||
+      h.includes('foto e') ||
+      h.includes('url gambar e') ||
+      h.includes('link gambar e')
   );
 
   const parsedQuestions: Question[] = [];
@@ -481,6 +597,13 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
     const optC = cIdx >= 0 ? String(row[cIdx] ?? '').trim() : String(row[soalIdx + 3] ?? '').trim();
     const optD = dIdx >= 0 ? String(row[dIdx] ?? '').trim() : String(row[soalIdx + 4] ?? '').trim();
     const optE = eIdx >= 0 ? String(row[eIdx] ?? '').trim() : '';
+
+    // Resolve Option Images
+    const optAImg = gambarAIdx >= 0 ? String(row[gambarAIdx] ?? '').trim() : undefined;
+    const optBImg = gambarBIdx >= 0 ? String(row[gambarBIdx] ?? '').trim() : undefined;
+    const optCImg = gambarCIdx >= 0 ? String(row[gambarCIdx] ?? '').trim() : undefined;
+    const optDImg = gambarDIdx >= 0 ? String(row[gambarDIdx] ?? '').trim() : undefined;
+    const optEImg = gambarEIdx >= 0 ? String(row[gambarEIdx] ?? '').trim() : undefined;
 
     // Resolve Kunci
     const rawKunci = (
@@ -525,17 +648,17 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
       const keys = new Set(rawKunci.toUpperCase().match(/[A-E]/g) || []);
 
       const options: McmaOption[] = [];
-      if (optA) options.push({ text: optA, isKey: keys.has('A') });
-      if (optB) options.push({ text: optB, isKey: keys.has('B') });
-      if (optC) options.push({ text: optC, isKey: keys.has('C') });
-      if (optD) options.push({ text: optD, isKey: keys.has('D') });
-      if (optE) options.push({ text: optE, isKey: keys.has('E') });
+      if (optA || optAImg) options.push({ text: optA, img: optAImg || undefined, isKey: keys.has('A') });
+      if (optB || optBImg) options.push({ text: optB, img: optBImg || undefined, isKey: keys.has('B') });
+      if (optC || optCImg) options.push({ text: optC, img: optCImg || undefined, isKey: keys.has('C') });
+      if (optD || optDImg) options.push({ text: optD, img: optDImg || undefined, isKey: keys.has('D') });
+      if (optE || optEImg) options.push({ text: optE, img: optEImg || undefined, isKey: keys.has('E') });
 
       // Fallback if no options were resolved
       if (options.length === 0) {
         options.push(
-          { text: optA || 'Pernyataan 1', isKey: true },
-          { text: optB || 'Pernyataan 2', isKey: false }
+          { text: optA || 'Pernyataan 1', img: optAImg || undefined, isKey: true },
+          { text: optB || 'Pernyataan 2', img: optBImg || undefined, isKey: false }
         );
       }
 
@@ -562,10 +685,10 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
         col1: 'Benar',
         col2: 'Salah',
         rows: [
-          { text: optA || 'Pernyataan 1', key: 'col1' },
-          { text: optB || 'Pernyataan 2', key: 'col2' },
-          ...(optC ? [{ text: optC, key: 'col1' as const }] : []),
-          ...(optD ? [{ text: optD, key: 'col2' as const }] : []),
+          { text: optA || 'Pernyataan 1', img: optAImg || undefined, key: 'col1' },
+          { text: optB || 'Pernyataan 2', img: optBImg || undefined, key: 'col2' },
+          ...(optC || optCImg ? [{ text: optC, img: optCImg || undefined, key: 'col1' as const }] : []),
+          ...(optD || optDImg ? [{ text: optD, img: optDImg || undefined, key: 'col2' as const }] : []),
         ],
       };
       parsedQuestions.push(q);
@@ -583,11 +706,15 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
         bobot,
         soal: soalText,
         gambar: gambarUrl || undefined,
-        a: optA || '-',
-        b: optB || '-',
-        c: optC || '-',
-        d: optD || '-',
-        ...(optE ? { e: optE } : {}),
+        a: optA || (optAImg ? '' : '-'),
+        a_img: optAImg || undefined,
+        b: optB || (optBImg ? '' : '-'),
+        b_img: optBImg || undefined,
+        c: optC || (optCImg ? '' : '-'),
+        c_img: optCImg || undefined,
+        d: optD || (optDImg ? '' : '-'),
+        d_img: optDImg || undefined,
+        ...(optE || optEImg ? { e: optE || '', e_img: optEImg || undefined } : {}),
         kunci: cleanKunci,
       };
       parsedQuestions.push(q);

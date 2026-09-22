@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Question, QuestionType, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori } from '../../types';
 import { MathRenderer } from '../MathRenderer';
+import { OptionImageControl } from './OptionImageControl';
 
 interface PerQuestionEditorProps {
   examCode: string;
@@ -85,32 +86,44 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
 
   const handleTypeChange = (newType: QuestionType) => {
     if (newType === 'pg') {
+      const mcmaOpts = (q as QuestionPGKMCMA).options || [];
+      const pgQ = q as QuestionPG;
       const existingOpts =
         q.type === 'pgk_mcma'
-          ? (q as QuestionPGKMCMA).options?.map((o) => o.text) || []
-          : [(q as QuestionPG).a, (q as QuestionPG).b, (q as QuestionPG).c, (q as QuestionPG).d];
+          ? mcmaOpts.map((o) => ({ text: o.text, img: o.img }))
+          : [
+              { text: pgQ.a, img: pgQ.a_img },
+              { text: pgQ.b, img: pgQ.b_img },
+              { text: pgQ.c, img: pgQ.c_img },
+              { text: pgQ.d, img: pgQ.d_img },
+            ];
 
       onUpdateQuestion(activeIndex, {
         type: 'pg',
         bobot: q.bobot || 1,
         soal: q.soal,
         gambar: q.gambar,
-        a: existingOpts[0] || '',
-        b: existingOpts[1] || '',
-        c: existingOpts[2] || '',
-        d: existingOpts[3] || '',
-        ...(existingOpts[4] ? { e: existingOpts[4] } : {}),
+        a: existingOpts[0]?.text || '',
+        a_img: existingOpts[0]?.img,
+        b: existingOpts[1]?.text || '',
+        b_img: existingOpts[1]?.img,
+        c: existingOpts[2]?.text || '',
+        c_img: existingOpts[2]?.img,
+        d: existingOpts[3]?.text || '',
+        d_img: existingOpts[3]?.img,
+        ...(existingOpts[4] ? { e: existingOpts[4].text, e_img: existingOpts[4].img } : {}),
         kunci: (q as QuestionPG).kunci || 'A',
       });
     } else if (newType === 'pgk_mcma') {
+      const pgQ = q as QuestionPG;
       const existingOpts =
         q.type === 'pg'
           ? [
-              { text: (q as QuestionPG).a || '', isKey: (q as QuestionPG).kunci === 'A' },
-              { text: (q as QuestionPG).b || '', isKey: (q as QuestionPG).kunci === 'B' },
-              { text: (q as QuestionPG).c || '', isKey: (q as QuestionPG).kunci === 'C' },
-              { text: (q as QuestionPG).d || '', isKey: (q as QuestionPG).kunci === 'D' },
-              ...((q as QuestionPG).e ? [{ text: (q as QuestionPG).e || '', isKey: (q as QuestionPG).kunci === 'E' }] : []),
+              { text: pgQ.a || '', img: pgQ.a_img, isKey: pgQ.kunci === 'A' },
+              { text: pgQ.b || '', img: pgQ.b_img, isKey: pgQ.kunci === 'B' },
+              { text: pgQ.c || '', img: pgQ.c_img, isKey: pgQ.kunci === 'C' },
+              { text: pgQ.d || '', img: pgQ.d_img, isKey: pgQ.kunci === 'D' },
+              ...(pgQ.e !== undefined ? [{ text: pgQ.e || '', img: pgQ.e_img, isKey: pgQ.kunci === 'E' }] : []),
             ]
           : (q as QuestionPGKMCMA).options || [];
 
@@ -186,10 +199,14 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
   const isQuestionComplete = (item: Question) => {
     if (!item.soal.trim()) return false;
     if (item.type === 'pg') {
-      return Boolean(item.a && item.b && item.kunci);
+      return Boolean(
+        (item.a || item.a_img) && (item.b || item.b_img) && item.kunci
+      );
     }
     if (item.type === 'pgk_mcma') {
-      return (item.options || []).some((o) => o.isKey && o.text.trim());
+      return (item.options || []).some(
+        (o) => o.isKey && (o.text.trim() || o.img)
+      );
     }
     if (item.type === 'pgk_kategori') {
       return (item.rows || []).length > 0;
@@ -421,6 +438,7 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
                     onClick={() => {
                       const updated = { ...(q as QuestionPG) };
                       delete updated.e;
+                      delete updated.e_img;
                       if (updated.kunci === 'E') updated.kunci = 'A';
                       onUpdateQuestion(activeIndex, updated);
                     }}
@@ -491,6 +509,15 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
                         />
                       </div>
                     )}
+
+                  {/* Kontrol Gambar Opsi (Upload PC/Laptop atau URL) */}
+                  <OptionImageControl
+                    label={`Pilihan ${opt.toUpperCase()}`}
+                    imageUrl={(q as QuestionPG)[`${opt}_img` as keyof QuestionPG] as string | undefined}
+                    onImageChange={(val) => handleFieldChange(`${opt}_img`, val)}
+                    onViewImage={onViewImage}
+                    handleUploadImage={handleUploadImage}
+                  />
                 </div>
               ))}
             </div>
@@ -521,48 +548,65 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
               {((q as QuestionPGKMCMA).options || []).map((opt, oIdx) => (
                 <div
                   key={oIdx}
-                  className={`p-3 rounded-2xl border flex items-center gap-3 transition ${
+                  className={`p-3 rounded-2xl border transition space-y-2 ${
                     opt.isKey ? 'bg-emerald-50/70 border-emerald-300' : 'bg-white border-slate-200'
                   }`}
                 >
-                  <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-slate-700 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-slate-700 shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={opt.isKey}
+                        onChange={(e) => {
+                          const opts = [...(q as QuestionPGKMCMA).options];
+                          opts[oIdx] = { ...opts[oIdx], isKey: e.target.checked };
+                          handleFieldChange('options', opts);
+                        }}
+                        className="w-4 h-4 text-emerald-600 rounded"
+                      />
+                      <span className={opt.isKey ? 'text-emerald-800 font-black' : ''}>Kunci Benar</span>
+                    </label>
+
                     <input
-                      type="checkbox"
-                      checked={opt.isKey}
+                      type="text"
+                      value={opt.text}
                       onChange={(e) => {
                         const opts = [...(q as QuestionPGKMCMA).options];
-                        opts[oIdx] = { ...opts[oIdx], isKey: e.target.checked };
+                        opts[oIdx] = { ...opts[oIdx], text: e.target.value };
                         handleFieldChange('options', opts);
                       }}
-                      className="w-4 h-4 text-emerald-600 rounded"
+                      placeholder={`Teks pilihan ${oIdx + 1}...`}
+                      className="flex-1 text-xs p-2 rounded-xl border border-slate-300 bg-white"
                     />
-                    <span className={opt.isKey ? 'text-emerald-800 font-black' : ''}>Kunci Benar</span>
-                  </label>
 
-                  <input
-                    type="text"
-                    value={opt.text}
-                    onChange={(e) => {
-                      const opts = [...(q as QuestionPGKMCMA).options];
-                      opts[oIdx] = { ...opts[oIdx], text: e.target.value };
-                      handleFieldChange('options', opts);
-                    }}
-                    placeholder={`Teks pilihan ${oIdx + 1}...`}
-                    className="flex-1 text-xs p-2 rounded-xl border border-slate-300 bg-white"
-                  />
+                    {(q as QuestionPGKMCMA).options.length > 2 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const opts = (q as QuestionPGKMCMA).options.filter((_, i) => i !== oIdx);
+                          handleFieldChange('options', opts);
+                        }}
+                        className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
 
-                  {(q as QuestionPGKMCMA).options.length > 2 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const opts = (q as QuestionPGKMCMA).options.filter((_, i) => i !== oIdx);
+                  <div className="pl-6">
+                    <OptionImageControl
+                      label={`Opsi ${oIdx + 1}`}
+                      imageUrl={opt.img}
+                      onImageChange={(val) => {
+                        const opts = [...(q as QuestionPGKMCMA).options];
+                        opts[oIdx] = { ...opts[oIdx], img: val || undefined };
                         handleFieldChange('options', opts);
                       }}
-                      className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                      onViewImage={onViewImage}
+                      handleUploadImage={handleUploadImage}
+                      compact
+                    />
+                  </div>
                 </div>
               ))}
             </div>
@@ -616,49 +660,66 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
               {((q as QuestionPGKKategori).rows || []).map((row, rIdx) => (
                 <div
                   key={rIdx}
-                  className="p-3 rounded-2xl border border-slate-200 bg-slate-50 flex items-center gap-3"
+                  className="p-3 rounded-2xl border border-slate-200 bg-slate-50 space-y-2"
                 >
-                  <span className="text-xs font-bold text-slate-500 w-5">{rIdx + 1}.</span>
-                  <input
-                    type="text"
-                    value={row.text}
-                    onChange={(e) => {
-                      const rows = [...(q as QuestionPGKKategori).rows];
-                      rows[rIdx] = { ...rows[rIdx], text: e.target.value };
-                      handleFieldChange('rows', rows);
-                    }}
-                    placeholder={`Pernyataan ${rIdx + 1}...`}
-                    className="flex-1 text-xs p-2 rounded-xl border border-slate-300 bg-white"
-                  />
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-bold flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="radio"
-                        name={`row_key_${activeIndex}_${rIdx}`}
-                        checked={row.key === 'col1'}
-                        onChange={() => {
-                          const rows = [...(q as QuestionPGKKategori).rows];
-                          rows[rIdx] = { ...rows[rIdx], key: 'col1' };
-                          handleFieldChange('rows', rows);
-                        }}
-                        className="w-3.5 h-3.5 text-indigo-600"
-                      />
-                      <span>{(q as QuestionPGKKategori).col1 || 'Benar'}</span>
-                    </label>
-                    <label className="text-xs font-bold flex items-center gap-1 cursor-pointer">
-                      <input
-                        type="radio"
-                        name={`row_key_${activeIndex}_${rIdx}`}
-                        checked={row.key === 'col2'}
-                        onChange={() => {
-                          const rows = [...(q as QuestionPGKKategori).rows];
-                          rows[rIdx] = { ...rows[rIdx], key: 'col2' };
-                          handleFieldChange('rows', rows);
-                        }}
-                        className="w-3.5 h-3.5 text-rose-600"
-                      />
-                      <span>{(q as QuestionPGKKategori).col2 || 'Salah'}</span>
-                    </label>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-slate-500 w-5">{rIdx + 1}.</span>
+                    <input
+                      type="text"
+                      value={row.text}
+                      onChange={(e) => {
+                        const rows = [...(q as QuestionPGKKategori).rows];
+                        rows[rIdx] = { ...rows[rIdx], text: e.target.value };
+                        handleFieldChange('rows', rows);
+                      }}
+                      placeholder={`Pernyataan ${rIdx + 1}...`}
+                      className="flex-1 text-xs p-2 rounded-xl border border-slate-300 bg-white"
+                    />
+                    <div className="flex items-center gap-2 shrink-0">
+                      <label className="text-xs font-bold flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`row_key_${activeIndex}_${rIdx}`}
+                          checked={row.key === 'col1'}
+                          onChange={() => {
+                            const rows = [...(q as QuestionPGKKategori).rows];
+                            rows[rIdx] = { ...rows[rIdx], key: 'col1' };
+                            handleFieldChange('rows', rows);
+                          }}
+                          className="w-3.5 h-3.5 text-indigo-600"
+                        />
+                        <span>{(q as QuestionPGKKategori).col1 || 'Benar'}</span>
+                      </label>
+                      <label className="text-xs font-bold flex items-center gap-1 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`row_key_${activeIndex}_${rIdx}`}
+                          checked={row.key === 'col2'}
+                          onChange={() => {
+                            const rows = [...(q as QuestionPGKKategori).rows];
+                            rows[rIdx] = { ...rows[rIdx], key: 'col2' };
+                            handleFieldChange('rows', rows);
+                          }}
+                          className="w-3.5 h-3.5 text-rose-600"
+                        />
+                        <span>{(q as QuestionPGKKategori).col2 || 'Salah'}</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="pl-8">
+                    <OptionImageControl
+                      label={`Pernyataan ${rIdx + 1}`}
+                      imageUrl={row.img}
+                      onImageChange={(val) => {
+                        const rows = [...(q as QuestionPGKKategori).rows];
+                        rows[rIdx] = { ...rows[rIdx], img: val || undefined };
+                        handleFieldChange('rows', rows);
+                      }}
+                      onViewImage={onViewImage}
+                      handleUploadImage={handleUploadImage}
+                      compact
+                    />
                   </div>
                 </div>
               ))}

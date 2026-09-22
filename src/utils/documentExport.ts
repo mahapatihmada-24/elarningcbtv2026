@@ -461,19 +461,26 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
 
     let choicesHtml = '';
     if (q.type === 'pg') {
-      const keys: ('a' | 'b' | 'c' | 'd' | 'e')[] = q.e
+      const keys: ('a' | 'b' | 'c' | 'd' | 'e')[] = q.e !== undefined
         ? ['a', 'b', 'c', 'd', 'e']
         : ['a', 'b', 'c', 'd'];
       choicesHtml = `<table style="width: 100%; border: none; margin-top: 4pt; border-collapse: collapse;">`;
       keys.forEach((k) => {
         const optText = q[k];
-        if (optText) {
+        const optImg = (q as any)[`${k}_img`];
+        if (optText || optImg) {
           const isCorrect = options.includeAnswers && q.kunci === k.toUpperCase();
           const marker = isCorrect ? ' style="font-weight: bold; color: #15803d; background-color: #dcfce7;"' : '';
+          const imgMarkup = optImg
+            ? `<div style="margin-top: 3pt;"><img src="${optImg}" alt="Gambar ${k.toUpperCase()}" style="max-height: 120px; max-width: 260px; border: 1px solid #cbd5e1; border-radius: 4px;" /></div>`
+            : '';
           choicesHtml += `
             <tr>
               <td width="30pt" valign="top" style="border: none; padding: 3pt 4pt;"${marker}>${k.toUpperCase()}.</td>
-              <td valign="top" style="border: none; padding: 3pt 4pt;"${marker}>${formatMathForExport(optText, 'word')}</td>
+              <td valign="top" style="border: none; padding: 3pt 4pt;"${marker}>
+                ${optText ? formatMathForExport(optText, 'word') : ''}
+                ${imgMarkup}
+              </td>
             </tr>
           `;
         }
@@ -488,10 +495,16 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
       q.options.forEach((opt, oIdx) => {
         const isCorrect = options.includeAnswers && opt.isKey;
         const marker = isCorrect ? ' style="font-weight: bold; color: #15803d; background-color: #dcfce7;"' : '';
+        const imgMarkup = opt.img
+          ? `<div style="margin-top: 3pt;"><img src="${opt.img}" alt="Gambar Opsi ${oIdx + 1}" style="max-height: 120px; max-width: 260px; border: 1px solid #cbd5e1; border-radius: 4px;" /></div>`
+          : '';
         choicesHtml += `
           <tr>
             <td width="30pt" valign="top" style="border: none; padding: 3pt 4pt;"${marker}>[ &nbsp; ]</td>
-            <td valign="top" style="border: none; padding: 3pt 4pt;"${marker}>${formatMathForExport(opt.text, 'word')} ${isCorrect ? '<strong>(BENAR)</strong>' : ''}</td>
+            <td valign="top" style="border: none; padding: 3pt 4pt;"${marker}>
+              ${opt.text ? formatMathForExport(opt.text, 'word') : ''} ${isCorrect ? '<strong>(BENAR)</strong>' : ''}
+              ${imgMarkup}
+            </td>
           </tr>
         `;
       });
@@ -730,18 +743,23 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
 
     let choicesHtml = '';
     if (q.type === 'pg') {
-      const keys: ('a' | 'b' | 'c' | 'd' | 'e')[] = q.e
+      const keys: ('a' | 'b' | 'c' | 'd' | 'e')[] = q.e !== undefined
         ? ['a', 'b', 'c', 'd', 'e']
         : ['a', 'b', 'c', 'd'];
       choicesHtml = `<div style="margin-top: 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">`;
       keys.forEach((k) => {
         const optText = q[k];
-        if (optText) {
+        const optImg = (q as any)[`${k}_img`];
+        if (optText || optImg) {
           const isCorrect = options.includeAnswers && q.kunci === k.toUpperCase();
           const badge = isCorrect ? ' background-color: #dcfce7; font-weight: bold; border: 1px solid #86efac;' : '';
+          const imgMarkup = optImg
+            ? `<div style="margin-top: 4px;"><img src="${optImg}" alt="Gambar ${k.toUpperCase()}" style="max-height: 110px; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; object-fit: contain;" /></div>`
+            : '';
           choicesHtml += `
             <div style="padding: 4px 8px; border-radius: 4px; font-size: 13px;${badge}">
-              <strong>${k.toUpperCase()}.</strong> ${formatMathForExport(optText, 'print')}
+              <strong>${k.toUpperCase()}.</strong> ${optText ? formatMathForExport(optText, 'print') : ''}
+              ${imgMarkup}
             </div>
           `;
         }
@@ -753,12 +771,16 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
     } else if (q.type === 'pgk_mcma') {
       choicesHtml = `<div style="font-size: 11px; color: #64748b; font-style: italic; margin-top: 4px;">Pilihan Ganda Kompleks (Centang pilihan yang benar):</div>`;
       choicesHtml += `<div style="margin-top: 4px;">`;
-      q.options.forEach((opt) => {
+      q.options.forEach((opt, oIdx) => {
         const isCorrect = options.includeAnswers && opt.isKey;
         const badge = isCorrect ? ' color: #15803d; font-weight: bold;' : '';
+        const imgMarkup = opt.img
+          ? `<div style="margin-top: 4px;"><img src="${opt.img}" alt="Gambar Opsi ${oIdx + 1}" style="max-height: 110px; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; object-fit: contain;" /></div>`
+          : '';
         choicesHtml += `
           <div style="padding: 3px 0; font-size: 13px;${badge}">
-            [ &nbsp; ] ${formatMathForExport(opt.text, 'print')} ${isCorrect ? '<strong>✓ (KUNCI BENAR)</strong>' : ''}
+            [ &nbsp; ] ${opt.text ? formatMathForExport(opt.text, 'print') : ''} ${isCorrect ? '<strong>✓ (KUNCI BENAR)</strong>' : ''}
+            ${imgMarkup}
           </div>
         `;
       });
