@@ -100,8 +100,11 @@ export const QuestionImageManager: React.FC<QuestionImageManagerProps> = ({
     setIsProcessing(false);
   };
 
-  const handleAddUrl = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddUrl = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const trimmed = urlInput.trim();
     if (!trimmed) return;
 
@@ -182,27 +185,35 @@ export const QuestionImageManager: React.FC<QuestionImageManagerProps> = ({
           />
         </label>
 
-        {/* URL Input Form */}
-        <form onSubmit={handleAddUrl} className="flex items-center gap-1.5 flex-1">
+        {/* URL Input Controls (div instead of form to avoid nested form in parent GuruCBT exam editor) */}
+        <div className="flex items-center gap-1.5 flex-1">
           <div className="relative flex-1">
             <Link className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="url"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleAddUrl();
+                }
+              }}
               placeholder="Atau tempel link URL gambar (https://...)"
               className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-xl border border-slate-300 bg-white focus:outline-indigo-600 focus:ring-1 focus:ring-indigo-500"
             />
           </div>
           <button
-            type="submit"
+            type="button"
+            onClick={() => handleAddUrl()}
             disabled={!urlInput.trim()}
             className="px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 disabled:opacity-50 text-slate-700 font-bold text-xs flex items-center gap-1 transition shrink-0"
           >
             <Plus className="w-3 h-3" />
             <span className="hidden sm:inline">Tambah URL</span>
           </button>
-        </form>
+        </div>
       </div>
 
       <p className="text-[11px] text-slate-500">
