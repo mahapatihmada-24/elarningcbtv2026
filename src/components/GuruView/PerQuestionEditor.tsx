@@ -14,6 +14,12 @@ import {
   Layers,
   Sparkles,
   Image as ImageIcon,
+  Bold,
+  Italic,
+  Underline,
+  AlignCenter,
+  Palette,
+  Heading,
 } from 'lucide-react';
 import { Question, QuestionType, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, getQuestionImages } from '../../types';
 import { MathRenderer } from '../MathRenderer';
@@ -110,6 +116,48 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
       }, 50);
     } else {
       const newText = currentText.trim() ? `${currentText}\n\n${tag}\n\n` : tag;
+      handleFieldChange('soal', newText);
+    }
+  };
+
+  const wrapSelectionOrInsert = (
+    prefix: string,
+    suffix: string,
+    defaultPlaceholder: string = '',
+    isBlock: boolean = false
+  ) => {
+    const textarea = textareaRef.current;
+    const currentText = q.soal || '';
+    if (textarea) {
+      const start = textarea.selectionStart ?? currentText.length;
+      const end = textarea.selectionEnd ?? currentText.length;
+      const selectedText = currentText.substring(start, end);
+      const textToWrap = selectedText || defaultPlaceholder;
+      const before = currentText.substring(0, start);
+      const after = currentText.substring(end);
+
+      let insertPrefix = prefix;
+      let insertSuffix = suffix;
+      if (isBlock) {
+        if (before.length > 0 && !before.endsWith('\n')) insertPrefix = '\n\n' + insertPrefix;
+        if (after.length > 0 && !after.startsWith('\n')) insertSuffix = insertSuffix + '\n\n';
+      }
+
+      const newText = before + insertPrefix + textToWrap + insertSuffix + after;
+      handleFieldChange('soal', newText);
+      setTimeout(() => {
+        if (textarea) {
+          textarea.focus();
+          const selStart = before.length + insertPrefix.length;
+          const selEnd = selStart + textToWrap.length;
+          textarea.setSelectionRange(selStart, selEnd);
+        }
+      }, 50);
+    } else {
+      const textToWrap = defaultPlaceholder;
+      const newText = currentText
+        ? `${currentText}\n\n${prefix}${textToWrap}${suffix}`
+        : `${prefix}${textToWrap}${suffix}`;
       handleFieldChange('soal', newText);
     }
   };
@@ -378,46 +426,181 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
         <div>
           <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
             <label className="block text-xs font-bold text-slate-700">
-              Teks Pertanyaan (Mendukung Formula Math LaTeX $...$ & Posisi Gambar [Gambar 1])
+              Teks Stimulus & Pertanyaan (Judul Tengah, Tebal, Miring, Warna Font, & Rumus)
             </label>
             <span className="text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md font-mono">
-              {'Pecahan: $\\frac{a}{b}$ | Akar: $\\sqrt{x}$'}
+              {'LaTeX: $\\frac{a}{b}$ | Warna: [color=#0284c7]...[/color]'}
             </span>
           </div>
 
-          {/* Quick Insert Toolbar for Interspersed Images */}
-          {qImages.length > 0 && (
-            <div className="mb-2 p-2 bg-indigo-50/80 border border-indigo-200 rounded-xl flex flex-wrap items-center gap-2 text-xs">
-              <span className="font-bold text-indigo-900 flex items-center gap-1">
-                <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
-                Sisipkan ke Posisi Kursor:
-              </span>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {qImages.map((_, imgIdx) => (
+          {/* Comprehensive Rich Formatting Toolbar */}
+          <div className="mb-2 p-2 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              {/* Judul Stimulus */}
+              <button
+                type="button"
+                onClick={() => wrapSelectionOrInsert('[center]**_', '_**[/center]', 'Judul Stimulasi', true)}
+                className="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-2xs transition active:scale-95 flex items-center gap-1.5"
+                title="Sisipkan Judul Stimulasi di Tengah (Tebal & Miring)"
+              >
+                <Heading className="w-3.5 h-3.5" />
+                <span>+ Judul Stimulus</span>
+              </button>
+
+              {/* Rata Tengah */}
+              <button
+                type="button"
+                onClick={() => wrapSelectionOrInsert('[center]', '[/center]', 'Teks di Tengah', true)}
+                className="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs shadow-2xs transition active:scale-95 flex items-center gap-1"
+                title="Ratakan Teks ke Tengah [center]...[/center]"
+              >
+                <AlignCenter className="w-3.5 h-3.5" />
+                <span className="font-semibold">Tengah</span>
+              </button>
+
+              <div className="h-4 w-px bg-slate-300 mx-0.5" />
+
+              {/* Bold */}
+              <button
+                type="button"
+                onClick={() => wrapSelectionOrInsert('**', '**', 'teks tebal')}
+                className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 text-xs shadow-2xs transition active:scale-95 font-black"
+                title="Tebalkan Teks (Bold) **teks**"
+              >
+                <Bold className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Italic */}
+              <button
+                type="button"
+                onClick={() => wrapSelectionOrInsert('*', '*', 'teks miring')}
+                className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 text-xs shadow-2xs transition active:scale-95 italic"
+                title="Miringkan Teks (Italic) *teks*"
+              >
+                <Italic className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Underline */}
+              <button
+                type="button"
+                onClick={() => wrapSelectionOrInsert('<u>', '</u>', 'teks garis bawah')}
+                className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 text-xs shadow-2xs transition active:scale-95 underline"
+                title="Garis Bawah (Underline) <u>teks</u>"
+              >
+                <Underline className="w-3.5 h-3.5" />
+              </button>
+
+              <div className="h-4 w-px bg-slate-300 mx-0.5" />
+
+              {/* Font Colors */}
+              <div className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-lg border border-slate-300 shadow-2xs">
+                <span className="text-[11px] font-bold text-slate-600 flex items-center gap-1">
+                  <Palette className="w-3 h-3 text-indigo-600" />
+                  <span className="hidden sm:inline">Warna:</span>
+                </span>
+                {[
+                  { name: 'Biru', hex: '#0284c7', bg: 'bg-[#0284c7]' },
+                  { name: 'Merah', hex: '#dc2626', bg: 'bg-[#dc2626]' },
+                  { name: 'Hijau', hex: '#16a34a', bg: 'bg-[#16a34a]' },
+                  { name: 'Ungu', hex: '#9333ea', bg: 'bg-[#9333ea]' },
+                  { name: 'Oranye', hex: '#ea580c', bg: 'bg-[#ea580c]' },
+                ].map((c) => (
                   <button
-                    key={imgIdx}
+                    key={c.hex}
                     type="button"
-                    onClick={() => insertTagAtCursor(`[Gambar ${imgIdx + 1}]`)}
-                    className="px-2 py-1 rounded-lg bg-white hover:bg-indigo-600 hover:text-white border border-indigo-300 font-bold text-indigo-700 text-xs shadow-2xs transition active:scale-95 flex items-center gap-1"
-                    title={`Sisipkan tag [Gambar ${imgIdx + 1}] ke posisi kursor teks soal`}
-                  >
-                    <span>+ [Gambar {imgIdx + 1}]</span>
-                  </button>
+                    onClick={() => wrapSelectionOrInsert(`[color=${c.hex}]`, '[/color]', `teks ${c.name.toLowerCase()}`)}
+                    className={`w-4 h-4 rounded-full ${c.bg} border-2 border-white shadow-xs hover:scale-125 active:scale-95 transition`}
+                    title={`Ubah warna teks menjadi ${c.name} (${c.hex})`}
+                  />
                 ))}
+                {/* Custom Color input */}
+                <label className="relative flex items-center cursor-pointer ml-0.5" title="Pilih warna kustom lainnya">
+                  <input
+                    type="color"
+                    defaultValue="#0284c7"
+                    onChange={(e) => wrapSelectionOrInsert(`[color=${e.target.value}]`, '[/color]', 'teks berwarna')}
+                    className="w-4 h-4 rounded-full border border-slate-300 cursor-pointer p-0 opacity-0 absolute inset-0"
+                  />
+                  <span className="w-4 h-4 rounded-full border border-dashed border-slate-400 bg-gradient-to-tr from-pink-400 via-amber-300 to-indigo-500 shadow-xs flex items-center justify-center text-[9px] font-bold text-white hover:scale-125 transition">
+                    +
+                  </span>
+                </label>
               </div>
-              <span className="text-[11px] text-slate-500 italic ml-auto hidden md:inline">
-                Alur soal: Stimulus Cerita ➔ [Gambar 1] ➔ Stimulus Lanjutan / Soal
-              </span>
+
+              <div className="h-4 w-px bg-slate-300 mx-0.5" />
+
+              {/* Rumus Math */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => wrapSelectionOrInsert('$\\frac{', '}{b}$', 'a')}
+                  className="px-1.5 py-0.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-[11px] font-mono font-bold text-slate-700 shadow-2xs"
+                  title="Sisipkan Pecahan $\frac{a}{b}$"
+                >
+                  a/b
+                </button>
+                <button
+                  type="button"
+                  onClick={() => wrapSelectionOrInsert('$\\sqrt{', '}$', 'x')}
+                  className="px-1.5 py-0.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-[11px] font-mono font-bold text-slate-700 shadow-2xs"
+                  title="Sisipkan Akar $\sqrt{x}$"
+                >
+                  √x
+                </button>
+                <button
+                  type="button"
+                  onClick={() => wrapSelectionOrInsert('$x^{', '}$', '2')}
+                  className="px-1.5 py-0.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-[11px] font-mono font-bold text-slate-700 shadow-2xs"
+                  title="Sisipkan Pangkat $x^{2}$"
+                >
+                  x²
+                </button>
+              </div>
             </div>
-          )}
+
+            {/* Quick Insert Toolbar for Interspersed Images */}
+            {qImages.length > 0 && (
+              <div className="pt-2 border-t border-slate-200 flex flex-wrap items-center gap-2 text-xs">
+                <span className="font-bold text-indigo-950 flex items-center gap-1">
+                  <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
+                  Sisipkan Gambar ke Posisi Kursor:
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {qImages.map((_, imgIdx) => (
+                    <button
+                      key={imgIdx}
+                      type="button"
+                      onClick={() => insertTagAtCursor(`[Gambar ${imgIdx + 1}]`)}
+                      className="px-2 py-0.5 rounded-lg bg-white hover:bg-indigo-600 hover:text-white border border-indigo-300 font-bold text-indigo-700 text-xs shadow-2xs transition active:scale-95 flex items-center gap-1"
+                      title={`Sisipkan tag [Gambar ${imgIdx + 1}] ke posisi kursor teks soal`}
+                    >
+                      <span>+ [Gambar {imgIdx + 1}]</span>
+                    </button>
+                  ))}
+                </div>
+                <span className="text-[11px] text-slate-500 italic ml-auto hidden md:inline">
+                  Alur: Cerita ➔ [Gambar 1] ➔ Cerita ➔ [Gambar 2] ➔ Pertanyaan
+                </span>
+              </div>
+            )}
+          </div>
 
           <textarea
             ref={textareaRef}
             value={q.soal}
             onChange={(e) => handleFieldChange('soal', e.target.value)}
-            rows={4}
-            placeholder="Tuliskan stimulus atau cerita soal di sini. Gunakan tombol '+ [Gambar X]' di atas untuk menyisipkan gambar di antara paragraf teks..."
-            className="w-full text-xs sm:text-sm p-3 rounded-2xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none leading-relaxed"
+            rows={5}
+            placeholder={`Contoh penulisan stimulus:
+[center]**_Laundry Koin_**[/center]
+
+*Laundry* koin adalah tempat mencuci pakaian yang sangat mudah digunakan...
+
+[Gambar 1]
+
+Pada tanggal 10 Agustus 2024, Linda dan Vidya bertemu di tempat laundry tersebut...
+
+[color=#0284c7]Pilih semua jawaban benar! Jawaban benar lebih dari satu.[/color]`}
+            className="w-full text-xs sm:text-sm p-3.5 rounded-2xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none leading-relaxed font-normal"
             required
           />
 

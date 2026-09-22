@@ -50,7 +50,7 @@ export function formatMathForExport(
       processed = processed.replace(/\\sqrt(?:\[[^{}]+\])?\{[^{}]+\}/g, (m) => `$${m}$`);
     }
 
-    return processed.replace(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^\$\n]+?\$)/g, (match) => {
+    const renderedPrint = processed.replace(/(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^\$\n]+?\$)/g, (match) => {
       let code = match;
       const isDisplay = match.startsWith('$$') || match.startsWith('\\[');
       if (match.startsWith('$$') && match.endsWith('$$')) code = match.slice(2, -2);
@@ -67,6 +67,8 @@ export function formatMathForExport(
         return match;
       }
     });
+
+    return applyRichTextFormatting(renderedPrint, 'print');
   }
 
   // Word Document (.doc) mode
@@ -110,7 +112,88 @@ export function formatMathForExport(
   // E. Clean leftover $ signs
   text = text.replace(/\$/g, '');
 
-  return text;
+  return applyRichTextFormatting(text, mode);
+}
+
+/**
+ * Applies rich typography formatting for exported documents (Word and Print/PDF):
+ * Centered titles, text centering, font colors, bold, italic, and underline.
+ */
+function applyRichTextFormatting(content: string, mode: 'word' | 'print'): string {
+  if (!content) return '';
+  let s = content;
+
+  // 1. Stimulus Titles: [judul]...[/judul] or [title]...[/title]
+  const titleStyle = mode === 'print'
+    ? 'text-align: center; font-weight: bold; font-size: 15px; margin: 8px 0; color: #0f172a;'
+    : 'text-align: center; font-weight: bold; font-size: 13pt; margin: 6pt 0; color: #000000;';
+  s = s.replace(/\[(?:judul|title)\]([\s\S]*?)\[\/(?:judul|title)\]/gi, `<div style="${titleStyle}">$1</div>`);
+
+  // 2. Centered text blocks: [center]...[/center] or <center>...</center>
+  const centerStyle = mode === 'print'
+    ? 'text-align: center; margin: 6px 0;'
+    : 'text-align: center; margin: 4pt 0;';
+  s = s.replace(/\[center\]([\s\S]*?)\[\/center\]/gi, `<div style="${centerStyle}">$1</div>`);
+  s = s.replace(/<center>([\s\S]*?)<\/center>/gi, `<div style="${centerStyle}">$1</div>`);
+
+  // 3. Font colors: [color=blue], [color=#0284c7], [warna=red], <font color="...">
+  const colorMap: Record<string, string> = {
+    biru: '#0284c7',
+    blue: '#0284c7',
+    merah: '#dc2626',
+    red: '#dc2626',
+    hijau: '#16a34a',
+    green: '#16a34a',
+    kuning: '#ca8a04',
+    yellow: '#ca8a04',
+    ungu: '#9333ea',
+    purple: '#9333ea',
+    oranye: '#ea580c',
+    orange: '#ea580c',
+    abu: '#64748b',
+    gray: '#64748b',
+    grey: '#64748b',
+    hitam: '#0f172a',
+    black: '#0f172a',
+  };
+
+  s = s.replace(/\[(?:color|warna)=([#a-zA-Z0-9]+)\]([\s\S]*?)\[\/(?:color|warna)\]/gi, (_, col, inner) => {
+    const normalized = col.toLowerCase();
+    const finalColor = colorMap[normalized] || (col.startsWith('#') ? col : `#${col}`);
+    const safeColor = finalColor.replace(/[^#a-zA-Z0-9]/g, '');
+    return `<span style="color: ${safeColor};">${inner}</span>`;
+  });
+
+  s = s.replace(/<font\s+color=["']?([#a-zA-Z0-9]+)["']?>([\s\S]*?)<\/font>/gi, (_, col, inner) => {
+    const normalized = col.toLowerCase();
+    const finalColor = colorMap[normalized] || (col.startsWith('#') ? col : `#${col}`);
+    const safeColor = finalColor.replace(/[^#a-zA-Z0-9]/g, '');
+    return `<span style="color: ${safeColor};">${inner}</span>`;
+  });
+
+  // 4. Explicit formatting tags: [b], [i], [u], [s]
+  s = s.replace(/\[b\]([\s\S]*?)\[\/b\]/gi, '<strong>$1</strong>');
+  s = s.replace(/\[i\]([\s\S]*?)\[\/i\]/gi, '<em>$1</em>');
+  s = s.replace(/\[u\]([\s\S]*?)\[\/u\]/gi, '<u>$1</u>');
+  s = s.replace(/\[s\]([\s\S]*?)\[\/s\]/gi, '<del>$1</del>');
+
+  // 5. Markdown Formatting:
+  // Bold + Italic: ***text***, **_text_**, _**text**_
+  s = s.replace(/\*\*\*([^*\n\r]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+  s = s.replace(/\*\*\_([^_\n\r]+)\_\*\*/g, '<strong><em>$1</em></strong>');
+  s = s.replace(/\_\*\*([^*\n\r]+)\*\*\_/g, '<strong><em>$1</em></strong>');
+
+  // Bold: **text**
+  s = s.replace(/\*\*([^*\n\r]+)\*\*/g, '<strong>$1</strong>');
+
+  // Underline: __text__
+  s = s.replace(/__([^_]+)__/g, '<u>$1</u>');
+
+  // Italic: *text* and _text_
+  s = s.replace(/(^|[^\w*])\*([^*\n\r]+)\*([^\w*]|$)/g, '$1<em>$2</em>$3');
+  s = s.replace(/(^|[^\w_])_([^_\n\r]+)_([^\w_]|$)/g, '$1<em>$2</em>$3');
+
+  return s;
 }
 
 /**
