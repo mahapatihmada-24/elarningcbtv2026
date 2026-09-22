@@ -200,21 +200,73 @@ function saveLocalMateri(materi: Materi[]) {
   localStorage.setItem(STORAGE_KEY_MATERI, JSON.stringify(materi.map(normalizeMateri)));
 }
 
+let inMemoryUjianList: Ujian[] | null = null;
+
 function getLocalUjian(): Ujian[] {
+  if (inMemoryUjianList && inMemoryUjianList.length > 0) {
+    return inMemoryUjianList;
+  }
   ensureLocalDbInitialized();
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY_UJIAN) || '[]');
     if (Array.isArray(raw)) {
-      return raw.map(normalizeUjian);
+      const list = raw.map(normalizeUjian);
+      inMemoryUjianList = list;
+      return list;
     }
-    return INITIAL_UJIAN.map(normalizeUjian);
+    const list = INITIAL_UJIAN.map(normalizeUjian);
+    inMemoryUjianList = list;
+    return list;
   } catch {
-    return INITIAL_UJIAN.map(normalizeUjian);
+    const list = INITIAL_UJIAN.map(normalizeUjian);
+    inMemoryUjianList = list;
+    return list;
   }
 }
 
 function saveLocalUjian(ujian: Ujian[]) {
-  localStorage.setItem(STORAGE_KEY_UJIAN, JSON.stringify(ujian.map(normalizeUjian)));
+  inMemoryUjianList = ujian.map(normalizeUjian);
+  try {
+    localStorage.setItem(STORAGE_KEY_UJIAN, JSON.stringify(inMemoryUjianList));
+  } catch (err) {
+    console.warn('LocalStorage quota exceeded in saveLocalUjian. Applying safe storage prune.', err);
+    try {
+      // Clear old ephemeral logs
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('cbt_log_') || k.startsWith('cbt_temp_') || k.startsWith('cbt_draft_'))) {
+          localStorage.removeItem(k);
+        }
+      }
+      localStorage.setItem(STORAGE_KEY_UJIAN, JSON.stringify(inMemoryUjianList));
+    } catch {
+      // If still over quota, store lightweight metadata in localStorage while keeping full questions in memory
+      try {
+        const lightweight = inMemoryUjianList.map((u) => {
+          try {
+            const parsed = JSON.parse(u.Soal_JSON || '{}');
+            if (parsed && Array.isArray(parsed.questions)) {
+              const strippedQ = parsed.questions.map((q: any) => {
+                const copy = { ...q };
+                if (copy.gambar && copy.gambar.startsWith('data:image')) copy.gambar = '[Gambar Tersimpan]';
+                if (Array.isArray(copy.gambar_list)) {
+                  copy.gambar_list = copy.gambar_list.map((img: string) =>
+                    img.startsWith('data:image') ? '[Gambar Tersimpan]' : img
+                  );
+                }
+                return copy;
+              });
+              return { ...u, Soal_JSON: JSON.stringify({ ...parsed, questions: strippedQ }) };
+            }
+          } catch {}
+          return u;
+        });
+        localStorage.setItem(STORAGE_KEY_UJIAN, JSON.stringify(lightweight));
+      } catch (finalErr) {
+        console.warn('Cannot persist to localStorage:', finalErr);
+      }
+    }
+  }
 }
 
 function getLocalNilai(): Nilai[] {
@@ -955,8 +1007,14 @@ export const api = {
             Soal_JSON: soalJsonStr,
             Status: ujianData.Status || 'Aktif',
           });
-          const allUj = await firebaseService.getUjianList();
-          saveLocalUjian(allUj);
+          try {
+            const allUj = await firebaseService.getUjianList();
+            if (allUj && allUj.length > 0) {
+              saveLocalUjian(allUj);
+            }
+          } catch (fetchErr) {
+            console.warn('Could not refresh exam list from Firebase immediately:', fetchErr);
+          }
           return res;
         }
       } catch (err) {

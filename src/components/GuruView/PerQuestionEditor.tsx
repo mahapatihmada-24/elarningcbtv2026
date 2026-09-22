@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -13,8 +13,9 @@ import {
   HelpCircle,
   Layers,
   Sparkles,
+  Image as ImageIcon,
 } from 'lucide-react';
-import { Question, QuestionType, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori } from '../../types';
+import { Question, QuestionType, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, getQuestionImages } from '../../types';
 import { MathRenderer } from '../MathRenderer';
 import { OptionImageControl } from './OptionImageControl';
 import { QuestionImageManager } from './QuestionImageManager';
@@ -77,12 +78,40 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
 
   const activeIndex = Math.max(0, Math.min(currentIdx, questions.length - 1));
   const q = questions[activeIndex];
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const qImages = getQuestionImages(q);
 
   const handleFieldChange = (field: string, val: unknown) => {
     onUpdateQuestion(activeIndex, {
       ...q,
       [field]: val,
     } as Question);
+  };
+
+  const insertTagAtCursor = (tag: string) => {
+    const textarea = textareaRef.current;
+    const currentText = q.soal || '';
+    if (textarea) {
+      const start = textarea.selectionStart ?? currentText.length;
+      const end = textarea.selectionEnd ?? currentText.length;
+      const before = currentText.substring(0, start);
+      const after = currentText.substring(end);
+      const needsPrefixBreak = before.length > 0 && !before.endsWith('\n');
+      const needsSuffixBreak = after.length > 0 && !after.startsWith('\n');
+      const formattedTag = (needsPrefixBreak ? '\n\n' : '') + tag + (needsSuffixBreak ? '\n\n' : '');
+      const newText = before + formattedTag + after;
+      handleFieldChange('soal', newText);
+      setTimeout(() => {
+        if (textarea) {
+          textarea.focus();
+          const newPos = (before + formattedTag).length;
+          textarea.setSelectionRange(newPos, newPos);
+        }
+      }, 50);
+    } else {
+      const newText = currentText.trim() ? `${currentText}\n\n${tag}\n\n` : tag;
+      handleFieldChange('soal', newText);
+    }
   };
 
   const handleTypeChange = (newType: QuestionType) => {
@@ -347,28 +376,68 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
 
         {/* Question Text & Formula */}
         <div>
-          <div className="flex items-center justify-between mb-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
             <label className="block text-xs font-bold text-slate-700">
-              Teks Pertanyaan (Mendukung Formula Math LaTeX $...$)
+              Teks Pertanyaan (Mendukung Formula Math LaTeX $...$ & Posisi Gambar [Gambar 1])
             </label>
             <span className="text-[10px] text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md font-mono">
               {'Pecahan: $\\frac{a}{b}$ | Akar: $\\sqrt{x}$'}
             </span>
           </div>
+
+          {/* Quick Insert Toolbar for Interspersed Images */}
+          {qImages.length > 0 && (
+            <div className="mb-2 p-2 bg-indigo-50/80 border border-indigo-200 rounded-xl flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-bold text-indigo-900 flex items-center gap-1">
+                <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
+                Sisipkan ke Posisi Kursor:
+              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {qImages.map((_, imgIdx) => (
+                  <button
+                    key={imgIdx}
+                    type="button"
+                    onClick={() => insertTagAtCursor(`[Gambar ${imgIdx + 1}]`)}
+                    className="px-2 py-1 rounded-lg bg-white hover:bg-indigo-600 hover:text-white border border-indigo-300 font-bold text-indigo-700 text-xs shadow-2xs transition active:scale-95 flex items-center gap-1"
+                    title={`Sisipkan tag [Gambar ${imgIdx + 1}] ke posisi kursor teks soal`}
+                  >
+                    <span>+ [Gambar {imgIdx + 1}]</span>
+                  </button>
+                ))}
+              </div>
+              <span className="text-[11px] text-slate-500 italic ml-auto hidden md:inline">
+                Alur soal: Stimulus Cerita ➔ [Gambar 1] ➔ Stimulus Lanjutan / Soal
+              </span>
+            </div>
+          )}
+
           <textarea
+            ref={textareaRef}
             value={q.soal}
             onChange={(e) => handleFieldChange('soal', e.target.value)}
-            rows={3}
-            placeholder="Tuliskan soal di sini. Contoh: Nilai dari $\frac{1}{2} + \frac{2}{4}$ adalah..."
-            className="w-full text-xs sm:text-sm p-3 rounded-2xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            rows={4}
+            placeholder="Tuliskan stimulus atau cerita soal di sini. Gunakan tombol '+ [Gambar X]' di atas untuk menyisipkan gambar di antara paragraf teks..."
+            className="w-full text-xs sm:text-sm p-3 rounded-2xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none leading-relaxed"
             required
           />
-          {q.soal && (q.soal.includes('$') || q.soal.includes('\\frac')) && (
-            <div className="mt-2 p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl text-xs">
-              <span className="text-[10px] text-indigo-600 font-bold uppercase block mb-1">
-                Pratinjau Rumus Matematika:
-              </span>
-              <MathRenderer content={q.soal} className="text-slate-900 font-medium" />
+
+          {/* Live Preview of Question & Interspersed Images */}
+          {(q.soal || qImages.length > 0) && (
+            <div className="mt-2.5 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs space-y-2">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
+                <span className="text-[11px] text-indigo-700 font-bold uppercase tracking-wide flex items-center gap-1">
+                  <span>Pratinjau Soal & Posisi Gambar:</span>
+                </span>
+                <span className="text-[10px] text-slate-400">Tampilan persis dengan siswa & lembar cetak</span>
+              </div>
+              <div className="pt-1">
+                <MathRenderer
+                  content={q.soal || '(Belum ada teks soal)'}
+                  images={qImages}
+                  onViewImage={onViewImage}
+                  className="text-slate-900 font-medium text-xs sm:text-sm"
+                />
+              </div>
             </div>
           )}
         </div>
@@ -386,13 +455,7 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
             onUpdateQuestion(activeIndex, updated);
           }}
           onViewImage={onViewImage}
-          onInsertTag={(tag) => {
-            const currentText = q.soal || '';
-            const newText = currentText.trim()
-              ? `${currentText} ${tag}`
-              : tag;
-            handleFieldChange('soal', newText);
-          }}
+          onInsertTag={(tag) => insertTagAtCursor(tag)}
         />
 
         {/* TYPE 1: PILIHAN GANDA (PG) */}

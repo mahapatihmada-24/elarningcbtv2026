@@ -416,7 +416,7 @@ export const firebaseService = {
   async getUjianList(): Promise<Ujian[]> {
     if (isFirestoreOffline()) throw new Error('Firestore sedang offline');
     await ensureFirebaseSeeded().catch(() => {});
-    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.UJIAN)), 7000);
+    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.UJIAN)), 15000);
     const list: Ujian[] = [];
     snap.forEach((d) => {
       list.push(normalizeUjian(d.data()));
@@ -427,18 +427,18 @@ export const firebaseService = {
   async addUjian(ujian: Omit<Ujian, 'ID'> & { ID?: string }): Promise<ApiResponse> {
     const id = ujian.ID || 'UJN-' + Date.now();
     const payload = normalizeUjian({ ...ujian, ID: id });
-    await withTimeout(setDoc(doc(db, COLLECTIONS.UJIAN, id), payload), 5000);
+    await withTimeout(setDoc(doc(db, COLLECTIONS.UJIAN, id), payload), 30000);
     return { success: true, message: 'Paket Ujian berhasil disimpan ke Firebase!' };
   },
 
   async updateUjian(ujian: Ujian): Promise<ApiResponse> {
     const payload = normalizeUjian(ujian);
-    await withTimeout(setDoc(doc(db, COLLECTIONS.UJIAN, payload.ID), payload), 5000);
+    await withTimeout(setDoc(doc(db, COLLECTIONS.UJIAN, payload.ID), payload), 30000);
     return { success: true, message: 'Paket Ujian berhasil diperbarui di Firebase!' };
   },
 
   async deleteUjian(id: string): Promise<ApiResponse> {
-    await withTimeout(deleteDoc(doc(db, COLLECTIONS.UJIAN, id)), 5000);
+    await withTimeout(deleteDoc(doc(db, COLLECTIONS.UJIAN, id)), 10000);
     return { success: true, message: 'Paket Ujian berhasil dihapus dari Firebase!' };
   },
 

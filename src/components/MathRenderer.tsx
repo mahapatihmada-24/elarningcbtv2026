@@ -4,9 +4,16 @@ import katex from 'katex';
 interface MathRendererProps {
   content: string;
   className?: string;
+  images?: string[];
+  onViewImage?: (url: string, title?: string) => void;
 }
 
-export const MathRenderer: React.FC<MathRendererProps> = ({ content, className = '' }) => {
+export const MathRenderer: React.FC<MathRendererProps> = ({
+  content,
+  className = '',
+  images = [],
+  onViewImage,
+}) => {
   if (!content) return null;
 
   // Pre-process content: if content has \frac{a}{b} not enclosed in $, auto-wrap it for convenience
@@ -15,23 +22,73 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, className =
     processedContent = processedContent.replace(/\\frac\{[^{}]+\}\{[^{}]+\}/g, (m) => `$${m}$`);
   }
 
-  // Split by inline math ($...$, \(...\)) and display math ($$...$$, \[...\])
+  // Split by inline math ($...$, \(...\)), display math ($$...$$, \[...\]), and inline image tokens ([Gambar 1], [Gambar], etc.)
   const parts: React.ReactNode[] = [];
-  const regex = /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^\$\n]+?\$)/g;
+  const regex = /(\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$[^\$\n]+?\$|\[(?:Gambar|Gbr)\s*\d*\])/gi;
 
   let lastIndex = 0;
   let match: RegExpExecArray | null;
-
   let keyIndex = 0;
+  let autoImgCount = 0;
 
   while ((match = regex.exec(processedContent)) !== null) {
-    // Text before math
+    // Text before token
     if (match.index > lastIndex) {
       const textPart = processedContent.substring(lastIndex, match.index);
       parts.push(renderFormattedText(textPart, `text-${keyIndex++}`));
     }
 
-    const rawFormula = match[0];
+    const token = match[0];
+
+    // Check if it is an inline image token: [Gambar 1], [Gbr 2], [Gambar], etc.
+    const imgTagMatch = token.match(/^\[(?:Gambar|Gbr)\s*(\d*)\]$/i);
+    if (imgTagMatch) {
+      let imgIdx = imgTagMatch[1] ? parseInt(imgTagMatch[1], 10) - 1 : autoImgCount++;
+      if (imgIdx < 0) imgIdx = 0;
+      const targetImgUrl = images && images[imgIdx] ? images[imgIdx] : null;
+
+      if (targetImgUrl) {
+        parts.push(
+          <div key={`inline-img-${keyIndex++}`} className="my-3 block text-left">
+            <div className="inline-block max-w-full rounded-2xl border border-slate-200 bg-white p-2.5 shadow-2xs">
+              <img
+                src={targetImgUrl}
+                alt={`Gambar ${imgIdx + 1}`}
+                className="max-h-72 sm:max-h-80 max-w-full rounded-xl object-contain cursor-pointer hover:opacity-95 transition"
+                onClick={() => onViewImage && onViewImage(targetImgUrl, `Gambar ${imgIdx + 1}`)}
+              />
+              <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-500 font-medium px-1">
+                <span className="font-bold text-slate-700">Gambar {imgIdx + 1}</span>
+                {onViewImage && (
+                  <button
+                    type="button"
+                    onClick={() => onViewImage(targetImgUrl, `Gambar ${imgIdx + 1}`)}
+                    className="text-indigo-600 hover:text-indigo-800 font-bold hover:underline"
+                  >
+                    Perbesar
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      } else {
+        // Fallback badge if image is not yet uploaded/available
+        parts.push(
+          <span
+            key={`img-badge-${keyIndex++}`}
+            className="inline-flex items-center px-2 py-0.5 mx-1 rounded-md text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs font-sans"
+          >
+            📷 Gambar {imgIdx + 1}
+          </span>
+        );
+      }
+
+      lastIndex = regex.lastIndex;
+      continue;
+    }
+
+    const rawFormula = token;
     const isDisplay =
       (rawFormula.startsWith('$$') && rawFormula.endsWith('$$')) ||
       (rawFormula.startsWith('\\[') && rawFormula.endsWith('\\]'));
@@ -67,8 +124,8 @@ export const MathRenderer: React.FC<MathRendererProps> = ({ content, className =
   }
 
   // Remainder
-  if (lastIndex < content.length) {
-    const textPart = content.substring(lastIndex);
+  if (lastIndex < processedContent.length) {
+    const textPart = processedContent.substring(lastIndex);
     parts.push(renderFormattedText(textPart, `text-${keyIndex++}`));
   }
 

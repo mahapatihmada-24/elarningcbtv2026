@@ -9,10 +9,36 @@ const SCHOOL_ADDRESS = 'Jl. Raya Harjosari Kidul No. 01, Kec. Adiwerna, Kab. Teg
  * Formats mathematical formulas (LaTeX e.g. \frac{2}{4}, $\frac{3}{5}$, \sqrt, powers, symbols, etc.)
  * into clean, properly rendered visual representations for Word documents (.doc) and Printable views.
  */
-export function formatMathForExport(raw: string, mode: 'word' | 'print' = 'word'): string {
+export function formatMathForExport(
+  raw: string,
+  mode: 'word' | 'print' = 'word',
+  images: string[] = []
+): string {
   if (!raw) return '';
 
   let text = raw;
+
+  // Format [Gambar X] tag to clean inline image or badge
+  text = text.replace(/\[(?:Gambar|Gbr)\s*(\d*)\]/gi, (_, numStr) => {
+    const num = numStr ? parseInt(numStr, 10) : 1;
+    const imgIdx = num - 1;
+    const imgUrl = images && images[imgIdx] ? images[imgIdx] : null;
+
+    if (imgUrl) {
+      if (mode === 'print') {
+        return `<div style="margin: 8px 0; text-align: left;"><div style="display: inline-block; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px; background: #fff;"><img src="${imgUrl}" alt="Gambar ${num}" referrerpolicy="no-referrer" loading="eager" decoding="sync" style="max-height: 200px; max-width: 100%; object-fit: contain; display: block;" /><div style="font-size: 10px; color: #64748b; font-weight: bold; margin-top: 3px; text-align: center;">Gambar ${num}</div></div></div>`;
+      }
+      return `<div style="margin: 8pt 0; text-align: left;"><table style="border: 1pt solid #cbd5e1; background: #ffffff; padding: 4pt; border-collapse: collapse;"><tr><td style="text-align: center;"><img src="${imgUrl}" alt="Gambar ${num}" style="max-height: 160pt; max-width: 320pt; display: block; margin: 0 auto;" /><div style="font-size: 8.5pt; color: #475569; font-weight: bold; margin-top: 3pt;">Gambar ${num}</div></td></tr></table></div>`;
+    }
+
+    if (mode === 'print') {
+      return `<span style="display:inline-flex; align-items:center; padding:1px 6px; margin:0 3px; border-radius:4px; font-size:11px; font-weight:bold; background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe;">📷 Gambar ${num}</span>`;
+    }
+    return `<span style="background-color:#e0e7ff; color:#3730a3; font-weight:bold; font-size:9pt; border:1px solid #c7d2fe; padding:1pt 4pt;">[Gambar ${num}]</span>`;
+  });
+
+  // Preserve line breaks for multi-line problems/prompts
+  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n/g, '<br/>');
 
   if (mode === 'print') {
     // For print mode, browser has full CSS/DOM support. Render with KaTeX!
@@ -437,6 +463,69 @@ export function printMateri(materi: Materi): void {
 }
 
 /**
+ * Packages HTML document into MHTML (MIME multipart/related) format for Microsoft Word (.doc).
+ * This embeds all base64 and data URL images directly into the document structure, ensuring
+ * that Microsoft Word, WPS Office, and LibreOffice render question and option images reliably without
+ * security blocks or missing image placeholders (red X).
+ */
+function convertHtmlToMhtmlWord(htmlContent: string): Blob {
+  const boundary = '----=_NextPart_CBT_WORD_DOC_' + Date.now();
+  const mimeParts: string[] = [];
+  const imageMap = new Map<string, string>();
+  let imgCounter = 0;
+
+  // Replace data:image/... in src attributes with local Content-Location references
+  const transformedHtml = htmlContent.replace(
+    /src=["'](data:image\/([a-zA-Z0-9\+\-]+);base64,([^"'\s]+))["']/gi,
+    (_, fullDataUrl, rawFormat, base64Data) => {
+      let filename = imageMap.get(fullDataUrl);
+      if (!filename) {
+        let ext = rawFormat.toLowerCase();
+        if (ext === 'jpeg') ext = 'jpg';
+        if (ext === 'svg+xml') ext = 'svg';
+        filename = `cbt_image_${imgCounter++}.${ext}`;
+        imageMap.set(fullDataUrl, filename);
+
+        const mimeType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+        const cleanBase64 = base64Data.replace(/[\r\n\s]/g, '');
+        const chunkedBase64 = cleanBase64.match(/.{1,76}/g)?.join('\r\n') || cleanBase64;
+
+        mimeParts.push(
+          `------${boundary}\r\n` +
+          `Content-Type: ${mimeType}\r\n` +
+          `Content-Transfer-Encoding: base64\r\n` +
+          `Content-Location: ${filename}\r\n` +
+          `Content-ID: <${filename}>\r\n\r\n` +
+          chunkedBase64
+        );
+      }
+      return `src="${filename}"`;
+    }
+  );
+
+  if (mimeParts.length > 0) {
+    const mhtmlDoc =
+      `MIME-Version: 1.0\r\n` +
+      `Content-Type: multipart/related; boundary="${boundary}"; type="text/html"\r\n\r\n` +
+      `------${boundary}\r\n` +
+      `Content-Type: text/html; charset="utf-8"\r\n` +
+      `Content-Transfer-Encoding: 8bit\r\n\r\n` +
+      transformedHtml +
+      `\r\n\r\n` +
+      mimeParts.join('\r\n\r\n') +
+      `\r\n\r\n------${boundary}--\r\n`;
+
+    return new Blob([mhtmlDoc], {
+      type: 'application/msword;charset=utf-8',
+    });
+  }
+
+  return new Blob(['\ufeff' + htmlContent], {
+    type: 'application/msword;charset=utf-8',
+  });
+}
+
+/**
  * Formats and downloads Ujian CBT as an official student worksheet (LKS / Naskah Soal)
  */
 export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boolean } = {}): void {
@@ -456,13 +545,29 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
   questions.forEach((q, idx) => {
     const qNum = idx + 1;
     const qImages = getQuestionImages(q);
-    const imgHtml = qImages.length > 0
-      ? `<div style="margin: 6pt 0;">${qImages
+
+    // Identify which images are already placed inline via [Gambar X]
+    const referencedIndices = new Set<number>();
+    const regexImg = /\[(?:Gambar|Gbr)\s*(\d*)\]/gi;
+    let m;
+    let autoIdx = 0;
+    while ((m = regexImg.exec(q.soal)) !== null) {
+      const idxNum = m[1] ? parseInt(m[1], 10) - 1 : autoIdx++;
+      if (idxNum >= 0 && idxNum < qImages.length) {
+        referencedIndices.add(idxNum);
+      }
+    }
+    const unreferencedImages = qImages
+      .map((img, i) => ({ img, i }))
+      .filter(({ i }) => !referencedIndices.has(i));
+
+    const imgHtml = unreferencedImages.length > 0
+      ? `<div style="margin: 6pt 0;">${unreferencedImages
           .map(
-            (imgUrl, i) =>
+            ({ img: imgUrl, i: originalIdx }) =>
               `<div style="display: inline-block; margin: 4pt 6pt 4pt 0; vertical-align: top;"><img src="${imgUrl}" style="max-height: 200px; max-width: 380px; border: 1px solid #ccc; display: block;" />${
                 qImages.length > 1
-                  ? `<div style="font-size: 8pt; color: #666; text-align: center; margin-top: 2pt;">Gambar ${i + 1}</div>`
+                  ? `<div style="font-size: 8pt; color: #666; text-align: center; margin-top: 2pt;">Gambar ${originalIdx + 1}</div>`
                   : ''
               }</div>`
           )
@@ -500,19 +605,29 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
         choicesHtml += `<p style="font-size: 9pt; color: #15803d; font-weight: bold; margin-top: 4pt;">[Kunci Jawaban: ${q.kunci}]</p>`;
       }
     } else if (q.type === 'pgk_mcma') {
-      choicesHtml = `<p style="font-size: 9pt; font-style: italic; color: #555; margin: 3pt 0;">(Berikan tanda centang [✓] pada semua pilihan yang benar)</p>`;
+      choicesHtml = `<p style="font-size: 9pt; font-style: italic; color: #555; margin: 3pt 0;">(Pilihan Ganda Kompleks: Berikan tanda centang [✓] pada semua pilihan yang benar)</p>`;
       choicesHtml += `<table style="width: 100%; border: none; margin-top: 4pt; border-collapse: collapse;">`;
-      q.options.forEach((opt, oIdx) => {
-        const isCorrect = options.includeAnswers && opt.isKey;
+      const opts = Array.isArray(q.options) ? q.options : [];
+      opts.forEach((opt: any, oIdx: number) => {
+        const letter = String.fromCharCode(65 + oIdx);
+        const isCorrect = options.includeAnswers && Boolean(opt?.isKey);
         const marker = isCorrect ? ' style="font-weight: bold; color: #15803d; background-color: #dcfce7;"' : '';
-        const imgMarkup = opt.img
-          ? `<div style="margin-top: 3pt;"><img src="${opt.img}" alt="Gambar Opsi ${oIdx + 1}" style="max-height: 120px; max-width: 260px; border: 1px solid #cbd5e1; border-radius: 4px;" /></div>`
+        const optText = typeof opt === 'string' ? opt : (opt?.text || '');
+        const optImg = (opt && typeof opt === 'object')
+          ? (opt.img || opt.gambar || opt.image || opt.url)
+          : (q as any)[`${letter.toLowerCase()}_img`];
+        const imgMarkup = optImg
+          ? `<div style="margin-top: 4pt;"><img src="${optImg}" alt="Gambar Opsi ${letter}" style="max-height: 120px; max-width: 280px; border: 1px solid #cbd5e1; border-radius: 4px;" /></div>`
           : '';
         choicesHtml += `
           <tr>
-            <td width="30pt" valign="top" style="border: none; padding: 3pt 4pt;"${marker}>[ &nbsp; ]</td>
+            <td width="28pt" valign="top" style="border: none; padding: 3pt 2pt;"${marker}>
+              <span style="display:inline-block; width:14pt; height:14pt; border:1.5pt solid #334155; text-align:center; line-height:14pt; font-size:10pt;">
+                ${isCorrect ? '✓' : '&nbsp;'}
+              </span>
+            </td>
             <td valign="top" style="border: none; padding: 3pt 4pt;"${marker}>
-              ${opt.text ? formatMathForExport(opt.text, 'word') : ''} ${isCorrect ? '<strong>(BENAR)</strong>' : ''}
+              <strong>${letter}.</strong> ${optText ? formatMathForExport(optText, 'word') : `<span style="color:#888;">(Pilihan ${letter})</span>`} ${isCorrect ? '<strong>(KUNCI BENAR)</strong>' : ''}
               ${imgMarkup}
             </td>
           </tr>
@@ -535,9 +650,16 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
       q.rows.forEach((r) => {
         const isCol1 = options.includeAnswers && r.key === 'col1';
         const isCol2 = options.includeAnswers && r.key === 'col2';
+        const rowImg = r.img || (r as any).gambar || (r as any).image || (r as any).url;
+        const rowImgMarkup = rowImg
+          ? `<div style="margin-top: 4pt;"><img src="${rowImg}" alt="Gambar Pernyataan" style="max-height: 100pt; max-width: 220pt; border: 1pt solid #cbd5e1; display: block;" /></div>`
+          : '';
         choicesHtml += `
           <tr>
-            <td style="border: 1px solid #94a3b8; padding: 4pt 8pt;">${formatMathForExport(r.text, 'word')}</td>
+            <td style="border: 1px solid #94a3b8; padding: 4pt 8pt;">
+              <div>${formatMathForExport(r.text, 'word')}</div>
+              ${rowImgMarkup}
+            </td>
             <td style="border: 1px solid #94a3b8; padding: 4pt 8pt; text-align: center;">${isCol1 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
             <td style="border: 1px solid #94a3b8; padding: 4pt 8pt; text-align: center;">${isCol2 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
           </tr>
@@ -552,7 +674,7 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
           <tr>
             <td width="24pt" valign="top" style="border: none; padding: 0; font-weight: bold;">${qNum}.</td>
             <td valign="top" style="border: none; padding: 0; text-align: justify;">
-              ${formatMathForExport(q.soal, 'word')}
+              ${formatMathForExport(q.soal, 'word', qImages)}
               ${imgHtml}
               ${choicesHtml}
             </td>
@@ -713,9 +835,7 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
 </html>
   `;
 
-  const blob = new Blob(['\ufeff' + htmlContent], {
-    type: 'application/msword;charset=utf-8',
-  });
+  const blob = convertHtmlToMhtmlWord(htmlContent);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -748,13 +868,29 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
   questions.forEach((q, idx) => {
     const qNum = idx + 1;
     const qImages = getQuestionImages(q);
-    const imgHtml = qImages.length > 0
-      ? `<div style="margin: 8px 0; display: flex; flex-wrap: wrap; gap: 8px;">${qImages
+
+    // Identify which images are already placed inline via [Gambar X]
+    const referencedIndices = new Set<number>();
+    const regexImg = /\[(?:Gambar|Gbr)\s*(\d*)\]/gi;
+    let m;
+    let autoIdx = 0;
+    while ((m = regexImg.exec(q.soal)) !== null) {
+      const idxNum = m[1] ? parseInt(m[1], 10) - 1 : autoIdx++;
+      if (idxNum >= 0 && idxNum < qImages.length) {
+        referencedIndices.add(idxNum);
+      }
+    }
+    const unreferencedImages = qImages
+      .map((img, i) => ({ img, i }))
+      .filter(({ i }) => !referencedIndices.has(i));
+
+    const imgHtml = unreferencedImages.length > 0
+      ? `<div style="margin: 8px 0; display: flex; flex-wrap: wrap; gap: 8px;">${unreferencedImages
           .map(
-            (imgUrl, i) =>
-              `<div style="display: inline-block; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px; background: #f8fafc;"><img src="${imgUrl}" style="max-height: 200px; max-width: 100%; border-radius: 4px; display: block;" />${
+            ({ img: imgUrl, i: originalIdx }) =>
+              `<div style="display: inline-block; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px; background: #f8fafc;"><img src="${imgUrl}" alt="Gambar Soal ${originalIdx + 1}" referrerpolicy="no-referrer" loading="eager" decoding="sync" style="max-height: 200px; max-width: 100%; border-radius: 4px; display: block;" />${
                 qImages.length > 1
-                  ? `<div style="font-size: 11px; color: #64748b; font-weight: bold; text-align: center; margin-top: 3px;">Gambar ${i + 1}</div>`
+                  ? `<div style="font-size: 11px; color: #64748b; font-weight: bold; text-align: center; margin-top: 3px;">Gambar ${originalIdx + 1}</div>`
                   : ''
               }</div>`
           )
@@ -774,7 +910,7 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
           const isCorrect = options.includeAnswers && q.kunci === k.toUpperCase();
           const badge = isCorrect ? ' background-color: #dcfce7; font-weight: bold; border: 1px solid #86efac;' : '';
           const imgMarkup = optImg
-            ? `<div style="margin-top: 4px;"><img src="${optImg}" alt="Gambar ${k.toUpperCase()}" style="max-height: 110px; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; object-fit: contain;" /></div>`
+            ? `<div style="margin-top: 4px;"><img src="${optImg}" alt="Gambar ${k.toUpperCase()}" referrerpolicy="no-referrer" loading="eager" decoding="sync" style="max-height: 110px; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; object-fit: contain; display: block;" /></div>`
             : '';
           choicesHtml += `
             <div style="padding: 4px 8px; border-radius: 4px; font-size: 13px;${badge}">
@@ -789,18 +925,31 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
         choicesHtml += `<div style="font-size: 11px; color: #15803d; font-weight: bold; margin-top: 4px;">Kunci Jawaban: ${q.kunci}</div>`;
       }
     } else if (q.type === 'pgk_mcma') {
-      choicesHtml = `<div style="font-size: 11px; color: #64748b; font-style: italic; margin-top: 4px;">Pilihan Ganda Kompleks (Centang pilihan yang benar):</div>`;
-      choicesHtml += `<div style="margin-top: 4px;">`;
-      q.options.forEach((opt, oIdx) => {
-        const isCorrect = options.includeAnswers && opt.isKey;
-        const badge = isCorrect ? ' color: #15803d; font-weight: bold;' : '';
-        const imgMarkup = opt.img
-          ? `<div style="margin-top: 4px;"><img src="${opt.img}" alt="Gambar Opsi ${oIdx + 1}" style="max-height: 110px; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; object-fit: contain;" /></div>`
+      choicesHtml = `<div style="font-size: 11px; color: #64748b; font-style: italic; margin-top: 6px;">Pilihan Ganda Kompleks (Centang satu atau lebih pilihan yang benar):</div>`;
+      choicesHtml += `<div style="margin-top: 6px; display: flex; flex-direction: column; gap: 6px;">`;
+      const opts = Array.isArray(q.options) ? q.options : [];
+      opts.forEach((opt: any, oIdx: number) => {
+        const letter = String.fromCharCode(65 + oIdx);
+        const isCorrect = options.includeAnswers && Boolean(opt?.isKey);
+        const badge = isCorrect ? ' background-color: #dcfce7; border: 1px solid #86efac;' : ' background-color: #ffffff; border: 1px solid #e2e8f0;';
+        const optText = typeof opt === 'string' ? opt : (opt?.text || '');
+        const optImg = (opt && typeof opt === 'object')
+          ? (opt.img || opt.gambar || opt.image || opt.url)
+          : (q as any)[`${letter.toLowerCase()}_img`];
+        const imgMarkup = optImg
+          ? `<div style="margin-top: 6px;"><img src="${optImg}" alt="Gambar Opsi ${letter}" referrerpolicy="no-referrer" loading="eager" decoding="sync" style="max-height: 120px; max-width: 280px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #fff; object-fit: contain; display: block;" /></div>`
           : '';
         choicesHtml += `
-          <div style="padding: 3px 0; font-size: 13px;${badge}">
-            [ &nbsp; ] ${opt.text ? formatMathForExport(opt.text, 'print') : ''} ${isCorrect ? '<strong>✓ (KUNCI BENAR)</strong>' : ''}
-            ${imgMarkup}
+          <div style="display: flex; align-items: flex-start; gap: 8px; padding: 6px 10px; border-radius: 6px; font-size: 13px;${badge}">
+            <div style="display: inline-block; min-width: 18px; height: 18px; border: 1.5px solid #475569; border-radius: 3px; text-align: center; line-height: 16px; font-weight: bold; font-size: 11px; margin-top: 2px; background: #fff;">
+              ${isCorrect ? '✓' : '&nbsp;'}
+            </div>
+            <div style="flex: 1;">
+              <strong style="margin-right: 4px;">${letter}.</strong>
+              <span>${optText ? formatMathForExport(optText, 'print') : `<span style="color:#94a3b8; font-style:italic;">Opsi ${letter}</span>`}</span>
+              ${isCorrect ? ' <span style="color: #15803d; font-weight: bold; font-size: 11px;">[KUNCI BENAR]</span>' : ''}
+              ${imgMarkup}
+            </div>
           </div>
         `;
       });
@@ -820,9 +969,16 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
       q.rows.forEach((r) => {
         const isCol1 = options.includeAnswers && r.key === 'col1';
         const isCol2 = options.includeAnswers && r.key === 'col2';
+        const rowImg = r.img || (r as any).gambar || (r as any).image || (r as any).url;
+        const rowImgMarkup = rowImg
+          ? `<div style="margin-top: 6px;"><img src="${rowImg}" alt="Gambar Pernyataan" referrerpolicy="no-referrer" loading="eager" decoding="sync" style="max-height: 120px; max-width: 260px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #fff; object-fit: contain; display: block;" /></div>`
+          : '';
         choicesHtml += `
           <tr>
-            <td style="border: 1px solid #cbd5e1; padding: 6px 10px;">${formatMathForExport(r.text, 'print')}</td>
+            <td style="border: 1px solid #cbd5e1; padding: 6px 10px;">
+              <div>${formatMathForExport(r.text, 'print')}</div>
+              ${rowImgMarkup}
+            </td>
             <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center;">${isCol1 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
             <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center;">${isCol2 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
           </tr>
@@ -836,7 +992,7 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
         <div style="display: flex; gap: 8px; align-items: flex-start;">
           <div style="font-weight: bold; width: 22px;">${qNum}.</div>
           <div style="flex: 1;">
-            <div style="font-size: 13.5px; line-height: 1.6;">${formatMathForExport(q.soal, 'print')}</div>
+            <div style="font-size: 13.5px; line-height: 1.6;">${formatMathForExport(q.soal, 'print', qImages)}</div>
             ${imgHtml}
             ${choicesHtml}
           </div>
@@ -845,19 +1001,18 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
     `;
   });
 
-  const printWindow = window.open('', '_blank', 'width=900,height=800');
-  if (!printWindow) return;
-
-  printWindow.document.write(`
+  const htmlContent = `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
+  <meta name="referrer" content="no-referrer">
   <title>Naskah Soal - ${ujian.Judul_Ujian}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
   <style>
+    * { box-sizing: border-box; }
     @media print {
-      body { margin: 0; padding: 12mm; font-size: 11pt; }
+      body { margin: 0; padding: 12mm; font-size: 11pt; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
       .no-print { display: none !important; }
       @page { size: A4; margin: 12mm; }
     }
@@ -869,6 +1024,12 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
       max-width: 820px;
       margin: 0 auto;
       background: #fff;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    img {
+      max-width: 100% !important;
+      page-break-inside: avoid !important;
     }
     .kop {
       text-align: center;
@@ -902,6 +1063,10 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
       font-weight: bold;
       cursor: pointer;
       box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      z-index: 99999;
+    }
+    .btn-print:hover {
+      background: #4338ca;
     }
   </style>
 </head>
@@ -945,14 +1110,68 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
   </div>
 
   <script>
-    window.onload = function() {
-      setTimeout(function() { window.print(); }, 500);
-    };
+    function waitForImagesAndPrint() {
+      var images = Array.prototype.slice.call(document.querySelectorAll('img'));
+      var total = images.length;
+      if (total === 0) {
+        setTimeout(function() { window.print(); }, 250);
+        return;
+      }
+      var loaded = 0;
+      var hasPrinted = false;
+      function done() {
+        loaded++;
+        if (loaded >= total && !hasPrinted) {
+          hasPrinted = true;
+          setTimeout(function() { window.print(); }, 350);
+        }
+      }
+      images.forEach(function(img) {
+        if (img.complete && img.naturalWidth > 0) {
+          done();
+        } else {
+          img.addEventListener('load', done);
+          img.addEventListener('error', done);
+        }
+      });
+      setTimeout(function() {
+        if (!hasPrinted) {
+          hasPrinted = true;
+          window.print();
+        }
+      }, 3500);
+    }
+    if (document.readyState === 'complete') {
+      waitForImagesAndPrint();
+    } else {
+      window.addEventListener('load', waitForImagesAndPrint);
+    }
   </script>
 </body>
 </html>
-  `);
-  printWindow.document.close();
+  `;
+
+  const printWindow = window.open('', '_blank', 'width=900,height=800');
+  if (printWindow) {
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+  } else {
+    // Fallback: create hidden iframe for printing if popup is blocked
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (doc) {
+      doc.open();
+      doc.write(htmlContent);
+      doc.close();
+    }
+  }
 }
 
 /**

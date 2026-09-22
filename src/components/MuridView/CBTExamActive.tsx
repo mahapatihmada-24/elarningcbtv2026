@@ -518,95 +518,134 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                 </div>
               </div>
 
-              {/* Question Images (Single or Multiple) */}
+              {/* Question Content: Stimulus, Inline Images & Text */}
               {(() => {
                 const questionImages = getQuestionImages(q);
-                if (questionImages.length === 0) return null;
-
-                if (questionImages.length === 1) {
-                  return (
-                    <div className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-50 max-w-lg mx-auto">
-                      <img
-                        src={questionImages[0]}
-                        alt={`Gambar Soal ${idx + 1}`}
-                        className="max-h-64 w-full object-contain p-2 cursor-pointer"
-                        onClick={() => onViewImage(questionImages[0], `Gambar Soal Nomor ${idx + 1}`)}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => onViewImage(questionImages[0], `Gambar Soal Nomor ${idx + 1}`)}
-                        className="absolute bottom-2 right-2 flex items-center gap-1 bg-black/75 hover:bg-black text-white text-xs px-2.5 py-1 rounded-lg backdrop-blur-sm transition"
-                      >
-                        <Eye className="w-3.5 h-3.5" /> Perbesar
-                      </button>
-                    </div>
-                  );
+                // Check which images are referenced by [Gambar X] in q.soal
+                const referencedIndices = new Set<number>();
+                const regexImg = /\[(?:Gambar|Gbr)\s*(\d*)\]/gi;
+                let m;
+                let autoIdx = 0;
+                while ((m = regexImg.exec(q.soal)) !== null) {
+                  const idxNum = m[1] ? parseInt(m[1], 10) - 1 : autoIdx++;
+                  if (idxNum >= 0 && idxNum < questionImages.length) {
+                    referencedIndices.add(idxNum);
+                  }
                 }
 
+                const unreferencedImages = questionImages
+                  .map((img, i) => ({ img, i }))
+                  .filter(({ i }) => !referencedIndices.has(i));
+
                 return (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                      <span className="flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-indigo-600" />
-                        Lampiran Gambar Soal ({questionImages.length} Gambar):
-                      </span>
-                      <span className="text-[11px] text-slate-400 font-normal">Klik gambar untuk memperbesar</span>
-                    </div>
-                    <div
-                      className={`grid gap-3 ${
-                        questionImages.length === 2
-                          ? 'grid-cols-1 sm:grid-cols-2'
-                          : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3'
-                      }`}
-                    >
-                      {questionImages.map((imgUrl, imgIdx) => (
-                        <div
-                          key={imgIdx}
-                          className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex flex-col justify-between"
-                        >
-                          <div className="px-2.5 py-1 bg-white/95 border-b border-slate-200 flex items-center justify-between text-[11px] font-bold text-indigo-900">
-                            <span>Gambar {imgIdx + 1}</span>
-                            <span className="text-[10px] text-slate-500 font-medium">Zoom</span>
-                          </div>
-                          <div
-                            className="h-44 sm:h-40 flex items-center justify-center p-2 cursor-pointer"
-                            onClick={() =>
-                              onViewImage(
-                                imgUrl,
-                                `Gambar ${imgIdx + 1} - Soal Nomor ${idx + 1}`
-                              )
-                            }
-                          >
+                  <div className="space-y-4">
+                    {/* Only show top gallery if there are unreferenced images and no inline image tags */}
+                    {unreferencedImages.length > 0 && referencedIndices.size === 0 && (
+                      <div className="space-y-2">
+                        {unreferencedImages.length === 1 ? (
+                          <div className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-50 max-w-lg mx-auto">
                             <img
-                              src={imgUrl}
-                              alt={`Gambar ${imgIdx + 1} Soal ${idx + 1}`}
-                              className="max-h-full max-w-full object-contain group-hover:scale-105 transition duration-200"
+                              src={unreferencedImages[0].img}
+                              alt={`Gambar Soal ${idx + 1}`}
+                              className="max-h-64 w-full object-contain p-2 cursor-pointer"
+                              onClick={() =>
+                                onViewImage(unreferencedImages[0].img, `Gambar Soal Nomor ${idx + 1}`)
+                              }
                             />
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onViewImage(unreferencedImages[0].img, `Gambar Soal Nomor ${idx + 1}`)
+                              }
+                              className="absolute bottom-2 right-2 flex items-center gap-1 bg-black/75 hover:bg-black text-white text-xs px-2.5 py-1 rounded-lg backdrop-blur-sm transition"
+                            >
+                              <Eye className="w-3.5 h-3.5" /> Perbesar
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onViewImage(
-                                imgUrl,
-                                `Gambar ${imgIdx + 1} - Soal Nomor ${idx + 1}`
-                              )
-                            }
-                            className="w-full py-1.5 bg-slate-100 group-hover:bg-indigo-600 text-slate-700 group-hover:text-white text-[11px] font-bold transition flex items-center justify-center gap-1"
+                        ) : (
+                          <div
+                            className={`grid gap-3 ${
+                              unreferencedImages.length === 2
+                                ? 'grid-cols-1 sm:grid-cols-2'
+                                : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3'
+                            }`}
                           >
-                            <Eye className="w-3 h-3" />
-                            <span>Perbesar Gambar {imgIdx + 1}</span>
-                          </button>
-                        </div>
-                      ))}
+                            {unreferencedImages.map(({ img: imgUrl, i: originalIdx }) => (
+                              <div
+                                key={originalIdx}
+                                className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex flex-col justify-between"
+                              >
+                                <div className="px-2.5 py-1 bg-white/95 border-b border-slate-200 flex items-center justify-between text-[11px] font-bold text-indigo-900">
+                                  <span>Gambar {originalIdx + 1}</span>
+                                  <span className="text-[10px] text-slate-500 font-medium">Zoom</span>
+                                </div>
+                                <div
+                                  className="h-44 sm:h-40 flex items-center justify-center p-2 cursor-pointer"
+                                  onClick={() =>
+                                    onViewImage(
+                                      imgUrl,
+                                      `Gambar ${originalIdx + 1} - Soal Nomor ${idx + 1}`
+                                    )
+                                  }
+                                >
+                                  <img
+                                    src={imgUrl}
+                                    alt={`Gambar ${originalIdx + 1} Soal ${idx + 1}`}
+                                    className="max-h-full max-w-full object-contain group-hover:scale-105 transition duration-200"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    onViewImage(
+                                      imgUrl,
+                                      `Gambar ${originalIdx + 1} - Soal Nomor ${idx + 1}`
+                                    )
+                                  }
+                                  className="w-full py-1.5 bg-slate-100 group-hover:bg-indigo-600 text-slate-700 group-hover:text-white text-[11px] font-bold transition flex items-center justify-center gap-1"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  <span>Perbesar Gambar {originalIdx + 1}</span>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Question Text with Interspersed Math & Inline Images */}
+                    <div className="text-sm sm:text-base text-slate-800 leading-relaxed font-medium">
+                      <MathRenderer
+                        content={q.soal}
+                        images={questionImages}
+                        onViewImage={onViewImage}
+                      />
                     </div>
+
+                    {/* If some images were referenced inline and some were not, show remaining unreferenced images below */}
+                    {referencedIndices.size > 0 && unreferencedImages.length > 0 && (
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                        <div className="text-xs font-bold text-slate-700">Lampiran Tambahan:</div>
+                        <div className="flex flex-wrap gap-3">
+                          {unreferencedImages.map(({ img: imgUrl, i: originalIdx }) => (
+                            <div
+                              key={originalIdx}
+                              className="border border-slate-200 rounded-lg p-1.5 bg-white cursor-pointer"
+                              onClick={() =>
+                                onViewImage(imgUrl, `Gambar ${originalIdx + 1} - Soal Nomor ${idx + 1}`)
+                              }
+                            >
+                              <img src={imgUrl} alt={`Gambar ${originalIdx + 1}`} className="max-h-24 rounded object-contain" />
+                              <div className="text-[10px] text-center font-bold text-slate-500 mt-1">Gambar {originalIdx + 1}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
-
-              {/* Question Text */}
-              <div className="text-sm sm:text-base text-slate-800 leading-relaxed font-medium">
-                <MathRenderer content={q.soal} />
-              </div>
 
               {/* Options by Question Type */}
 
@@ -797,11 +836,30 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                               <td className="p-3 font-medium text-slate-800">
                                 <MathRenderer content={row.text} />
                                 {row.img && (
-                                  <img
-                                    src={row.img}
-                                    alt="Ilustrasi"
-                                    className="max-h-20 rounded border object-contain mt-1"
-                                  />
+                                  <div className="relative group/rowimg inline-block mt-1.5">
+                                    <img
+                                      src={row.img}
+                                      alt={`Gambar Pernyataan ${rIdx + 1}`}
+                                      className="max-h-24 rounded-lg border border-slate-200 object-contain bg-white p-1 cursor-pointer hover:border-indigo-400 transition"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onViewImage(row.img!, `Pernyataan ${rIdx + 1} - Soal Nomor ${idx + 1}`);
+                                      }}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        onViewImage(row.img!, `Pernyataan ${rIdx + 1} - Soal Nomor ${idx + 1}`);
+                                      }}
+                                      className="absolute bottom-1 right-1 opacity-0 group-hover/rowimg:opacity-100 bg-black/75 hover:bg-black text-white p-1 rounded-md text-[10px] flex items-center gap-0.5 transition shadow"
+                                      title="Perbesar gambar"
+                                    >
+                                      <Eye className="w-3 h-3" />
+                                    </button>
+                                  </div>
                                 )}
                               </td>
 

@@ -81,12 +81,24 @@ export function getQuestionImages(q?: { gambar?: string; gambar_list?: string[] 
   if (Array.isArray(q.gambar_list) && q.gambar_list.length > 0) {
     for (const item of q.gambar_list) {
       if (typeof item === 'string' && item.trim()) {
-        list.push(item.trim());
+        if (item.includes('|')) {
+          item.split('|').forEach((s) => {
+            if (s.trim()) list.push(s.trim());
+          });
+        } else {
+          list.push(item.trim());
+        }
       }
     }
   }
   if (list.length === 0 && q.gambar && typeof q.gambar === 'string' && q.gambar.trim()) {
-    list.push(q.gambar.trim());
+    if (q.gambar.includes('|')) {
+      q.gambar.split('|').forEach((s) => {
+        if (s.trim()) list.push(s.trim());
+      });
+    } else {
+      list.push(q.gambar.trim());
+    }
   }
   return list;
 }

@@ -7,8 +7,15 @@ export function parseQuickTextQuestions(rawText: string): Question[] {
   if (!rawText || !rawText.trim()) return [];
 
   const questions: Question[] = [];
-  // Split by double newline or numbered items like "1.", "2.", "No. 1", "Soal 1:"
-  const blocks = rawText
+
+  // Normalize line endings and ensure first question number is preceded by \n for reliable splitting
+  const normalizedText = rawText
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/^(\s*(?:No\.?\s*|\bSoal\s*)?\d+[\.\)]\s*)/i, '\n$1');
+
+  // Split by newline followed by numbered items like "1.", "2.", "No. 1", "Soal 1:"
+  const blocks = normalizedText
     .split(/\n\s*(?:(?:No\.?\s*|\bSoal\s*)?\d+[\.\)]\s*)/i)
     .map((b) => b.trim())
     .filter((b) => b.length > 0);
@@ -17,7 +24,7 @@ export function parseQuickTextQuestions(rawText: string): Question[] {
   let actualBlocks = blocks;
   if (blocks.length <= 1) {
     // Try splitting by double newline
-    actualBlocks = rawText
+    actualBlocks = normalizedText
       .split(/\n\s*\n+/)
       .map((b) => b.trim())
       .filter((b) => b.length > 0);
@@ -28,17 +35,16 @@ export function parseQuickTextQuestions(rawText: string): Question[] {
     if (lines.length < 2) continue;
 
     // Check for Type indicator
-    const firstLine = lines[0].replace(/^(?:No\.?\s*|\bSoal\s*)?\d+[\.\)]\s*/i, '').trim();
     const isCategory = /\[(?:TABEL|KATEGORI)\]/i.test(block) || lines.some((l) => /\[(?:Benar|Salah|Sebelum|Sesudah)\]/i.test(l));
-    const isMcma = /\[(?:PGK|CENTANG|MCMA)\]/i.test(block) || /Kunci\s*:\s*[A-D]\s*,\s*[A-D]/i.test(block);
+    const isMcma = /\[(?:PGK|CENTANG|MCMA)\]/i.test(block) || /Kunci\s*:\s*[A-E]\s*,\s*[A-E]/i.test(block);
 
     // Extract Kunci and Bobot
     let kunciRaw = 'A';
     let bobot = 1;
-    let filteredLines: string[] = [];
+    const filteredLines: string[] = [];
 
     for (const line of lines) {
-      const kunciMatch = line.match(/^Kunci(?:\s*Jawaban)?\s*[:\-=]\s*([A-D,\s]+)/i);
+      const kunciMatch = line.match(/^Kunci(?:\s*Jawaban)?\s*[:\-=]\s*([A-E,\s]+)/i);
       if (kunciMatch) {
         kunciRaw = kunciMatch[1].trim().toUpperCase();
         continue;
@@ -54,16 +60,16 @@ export function parseQuickTextQuestions(rawText: string): Question[] {
     if (filteredLines.length === 0) continue;
 
     // Question stem is the top lines before options
-    let soalLines: string[] = [];
-    const optionMap: Record<string, string> = { a: '', b: '', c: '', d: '' };
+    const soalLines: string[] = [];
+    const optionMap: Record<string, string> = { a: '', b: '', c: '', d: '', e: '' };
     const optionLines: { key: string; text: string }[] = [];
     const categoryRows: { text: string; key: 'col1' | 'col2' }[] = [];
 
     let isParsingOptions = false;
 
     for (const line of filteredLines) {
-      // Check for A. / A) / [A]
-      const optMatch = line.match(/^[\(\[]?([A-D])[\)\]\.\-:]\s*(.*)/i);
+      // Check for A. / A) / [A] up to E
+      const optMatch = line.match(/^[\(\[]?([A-E])[\)\]\.\-:]\s*(.*)/i);
       if (optMatch) {
         isParsingOptions = true;
         const key = optMatch[1].toLowerCase();
@@ -139,9 +145,9 @@ export function parseQuickTextQuestions(rawText: string): Question[] {
     } else {
       // Standard Multiple Choice PG
       const cleanKey = kunciRaw.charAt(0).toUpperCase();
-      const validKey: 'A' | 'B' | 'C' | 'D' =
-        cleanKey === 'A' || cleanKey === 'B' || cleanKey === 'C' || cleanKey === 'D'
-          ? cleanKey
+      const validKey: 'A' | 'B' | 'C' | 'D' | 'E' =
+        cleanKey === 'A' || cleanKey === 'B' || cleanKey === 'C' || cleanKey === 'D' || cleanKey === 'E'
+          ? (cleanKey as 'A' | 'B' | 'C' | 'D' | 'E')
           : 'A';
 
       const qPg: QuestionPG = {
@@ -152,6 +158,7 @@ export function parseQuickTextQuestions(rawText: string): Question[] {
         b: optionMap.b || optionLines[1]?.text || '',
         c: optionMap.c || optionLines[2]?.text || '',
         d: optionMap.d || optionLines[3]?.text || '',
+        ...(optionMap.e || optionLines[4]?.text ? { e: optionMap.e || optionLines[4]?.text } : {}),
         kunci: validKey,
       };
       questions.push(qPg);
