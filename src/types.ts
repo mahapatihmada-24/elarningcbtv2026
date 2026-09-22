@@ -27,6 +27,7 @@ export interface QuestionPG {
   bobot: number;
   soal: string;
   gambar?: string;
+  gambar_list?: string[];
   a: string;
   a_img?: string;
   b: string;
@@ -51,6 +52,7 @@ export interface QuestionPGKMCMA {
   bobot: number;
   soal: string;
   gambar?: string;
+  gambar_list?: string[];
   options: McmaOption[];
 }
 
@@ -65,12 +67,29 @@ export interface QuestionPGKKategori {
   bobot: number;
   soal: string;
   gambar?: string;
+  gambar_list?: string[];
   col1: string; // e.g. "Benar" or "Sebelum"
   col2: string; // e.g. "Salah" or "Sesudah"
   rows: KategoriRow[];
 }
 
 export type Question = QuestionPG | QuestionPGKMCMA | QuestionPGKKategori;
+
+export function getQuestionImages(q?: { gambar?: string; gambar_list?: string[] } | null): string[] {
+  if (!q) return [];
+  const list: string[] = [];
+  if (Array.isArray(q.gambar_list) && q.gambar_list.length > 0) {
+    for (const item of q.gambar_list) {
+      if (typeof item === 'string' && item.trim()) {
+        list.push(item.trim());
+      }
+    }
+  }
+  if (list.length === 0 && q.gambar && typeof q.gambar === 'string' && q.gambar.trim()) {
+    list.push(q.gambar.trim());
+  }
+  return list;
+}
 
 export interface KisiKisiItem {
   no: number;

@@ -84,6 +84,12 @@ export function formatPreservedHtml(raw: string): string {
     '<div class="my-4 text-center block"><img src="$2" alt="$1" class="max-h-80 mx-auto rounded-xl shadow-sm border border-slate-200 object-contain" /><p class="text-xs text-slate-500 mt-1.5 italic font-medium">$1</p></div>'
   );
 
+  // 1b. Format [Gambar X] references into a prominent visual reference badge
+  res = res.replace(
+    /\[Gambar\s+(\d+)\]/gi,
+    '<span class="inline-flex items-center px-2 py-0.5 mx-1 rounded-md text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs font-sans">📷 Gambar $1</span>'
+  );
+
   // 2. Normalize line endings
   res = res.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 

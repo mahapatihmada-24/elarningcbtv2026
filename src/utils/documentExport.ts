@@ -1,4 +1,4 @@
-import { Materi, Ujian, Question } from '../types';
+import { Materi, Ujian, Question, getQuestionImages } from '../types';
 import katex from 'katex';
 
 const SCHOOL_NAME = 'SD NEGERI HARJOSARI KIDUL 01';
@@ -455,8 +455,18 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
   let questionsHtml = '';
   questions.forEach((q, idx) => {
     const qNum = idx + 1;
-    const imgHtml = q.gambar
-      ? `<div style="margin: 6pt 0;"><img src="${q.gambar}" style="max-height: 200px; max-width: 400px; border: 1px solid #ccc;" /></div>`
+    const qImages = getQuestionImages(q);
+    const imgHtml = qImages.length > 0
+      ? `<div style="margin: 6pt 0;">${qImages
+          .map(
+            (imgUrl, i) =>
+              `<div style="display: inline-block; margin: 4pt 6pt 4pt 0; vertical-align: top;"><img src="${imgUrl}" style="max-height: 200px; max-width: 380px; border: 1px solid #ccc; display: block;" />${
+                qImages.length > 1
+                  ? `<div style="font-size: 8pt; color: #666; text-align: center; margin-top: 2pt;">Gambar ${i + 1}</div>`
+                  : ''
+              }</div>`
+          )
+          .join('')}</div>`
       : '';
 
     let choicesHtml = '';
@@ -737,8 +747,18 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
   let questionsHtml = '';
   questions.forEach((q, idx) => {
     const qNum = idx + 1;
-    const imgHtml = q.gambar
-      ? `<div style="margin: 8px 0;"><img src="${q.gambar}" style="max-height: 220px; max-width: 100%; border: 1px solid #e2e8f0; border-radius: 6px;" /></div>`
+    const qImages = getQuestionImages(q);
+    const imgHtml = qImages.length > 0
+      ? `<div style="margin: 8px 0; display: flex; flex-wrap: wrap; gap: 8px;">${qImages
+          .map(
+            (imgUrl, i) =>
+              `<div style="display: inline-block; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px; background: #f8fafc;"><img src="${imgUrl}" style="max-height: 200px; max-width: 100%; border-radius: 4px; display: block;" />${
+                qImages.length > 1
+                  ? `<div style="font-size: 11px; color: #64748b; font-weight: bold; text-align: center; margin-top: 3px;">Gambar ${i + 1}</div>`
+                  : ''
+              }</div>`
+          )
+          .join('')}</div>`
       : '';
 
     let choicesHtml = '';

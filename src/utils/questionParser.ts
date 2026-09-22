@@ -224,6 +224,14 @@ export function parseCsvQuestions(csvText: string): Question[] {
     const rawKunci = (idxKunci !== -1 ? row[idxKunci]?.trim() : row[6]?.trim() || 'A').toUpperCase();
     const rawBobot = parseInt(idxBobot !== -1 ? row[idxBobot]?.trim() : row[7]?.trim() || '1', 10) || 1;
     const rawGambar = idxGambar !== -1 ? row[idxGambar]?.trim() : row[8]?.trim() || '';
+    const rawGambarList = rawGambar
+      ? rawGambar
+          .split(/[|\n]/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    const gambarMain = rawGambarList[0] || (rawGambar || undefined);
+    const gambarList = rawGambarList.length > 0 ? rawGambarList : undefined;
 
     if (rawType.includes('mcma') || rawType.includes('centang')) {
       // Options can be semicolon separated in A or standard A,B,C,D
@@ -247,7 +255,8 @@ export function parseCsvQuestions(csvText: string): Question[] {
         type: 'pgk_mcma',
         bobot: rawBobot > 1 ? rawBobot : 2,
         soal: rawSoal,
-        gambar: rawGambar || undefined,
+        gambar: gambarMain,
+        gambar_list: gambarList,
         options: opts,
       });
     } else if (rawType.includes('tabel') || rawType.includes('kategori')) {
@@ -272,7 +281,8 @@ export function parseCsvQuestions(csvText: string): Question[] {
         type: 'pgk_kategori',
         bobot: rawBobot > 1 ? rawBobot : 2,
         soal: rawSoal,
-        gambar: rawGambar || undefined,
+        gambar: gambarMain,
+        gambar_list: gambarList,
         col1: col1Name,
         col2: col2Name,
         rows: catRows,
@@ -289,7 +299,8 @@ export function parseCsvQuestions(csvText: string): Question[] {
         type: 'pg',
         bobot: rawBobot || 1,
         soal: rawSoal,
-        gambar: rawGambar || undefined,
+        gambar: gambarMain,
+        gambar_list: gambarList,
         a: rawA,
         b: rawB,
         c: rawC,

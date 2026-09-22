@@ -137,7 +137,7 @@ export function downloadExamExcelTemplate(): void {
     ['Kunci Jawaban', 'Wajib', 'Untuk PG: isi satu huruf (misal: "B"). Untuk PGK: isi beberapa huruf dipisah koma (misal: "A,B,C" atau "A,C")'],
     ['Bobot Nilai', 'Opsional', 'Angka bulat bobot nilai soal (default: 1 jika kosong)'],
     ['Pilihan E', 'Opsional', 'Opsi pilihan E (opsional jika memiliki 5 opsi pilihan)'],
-    ['Link/URL Gambar', 'Opsional', 'Tautan gambar ilustrasi soal utama (URL https://... atau format base64)'],
+    ['Link/URL Gambar', 'Opsional', 'Tautan gambar ilustrasi soal utama (URL https://... atau base64). Jika lebih dari 1 gambar, pisahkan dengan tanda "|" (contoh: url1 | url2)'],
     ['Gambar Opsi A - E', 'Opsional', 'Tautan URL gambar untuk opsi jawaban A s/d E (opsional, untuk soal dengan opsi bergambar)'],
     [],
     ['CATATAN TAMBAHAN:'],
@@ -196,6 +196,11 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
   ];
 
   const rows = questions.map((q, idx) => {
+    const qImgs =
+      q.gambar_list && q.gambar_list.length > 0
+        ? q.gambar_list.join(' | ')
+        : q.gambar || '';
+
     if (q.type === 'pg') {
       return [
         idx + 1,
@@ -208,7 +213,7 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
         q.kunci,
         q.bobot || 1,
         q.e || '',
-        q.gambar || '',
+        qImgs,
         q.a_img || '',
         q.b_img || '',
         q.c_img || '',
@@ -233,7 +238,7 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
         keys || 'A',
         q.bobot || 1,
         opts[4]?.text || '',
-        q.gambar || '',
+        qImgs,
         opts[0]?.img || '',
         opts[1]?.img || '',
         opts[2]?.img || '',
@@ -255,7 +260,7 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
         'Tabel Kategori',
         q.bobot || 1,
         '',
-        q.gambar || '',
+        qImgs,
         q.rows?.[0]?.img || '',
         q.rows?.[1]?.img || '',
         q.rows?.[2]?.img || '',
@@ -616,8 +621,16 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
     const rawBobot = bobotIdx >= 0 ? Number(row[bobotIdx]) : Number(row[soalIdx + 6]);
     const bobot = !isNaN(rawBobot) && rawBobot > 0 ? rawBobot : 1;
 
-    // Resolve Gambar
-    const gambarUrl = gambarIdx >= 0 ? String(row[gambarIdx] ?? '').trim() : undefined;
+    // Resolve Gambar (Single or Multiple separated by | or newline)
+    const rawGambarStr = gambarIdx >= 0 ? String(row[gambarIdx] ?? '').trim() : '';
+    const parsedGambarList = rawGambarStr
+      ? rawGambarStr
+          .split(/[|\n]/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+      : [];
+    const gambarUrl = parsedGambarList[0] || (rawGambarStr || undefined);
+    const gambarList = parsedGambarList.length > 0 ? parsedGambarList : undefined;
 
     // Resolve Question Type
     const rawJenis = jenisIdx >= 0 ? String(row[jenisIdx] ?? '').trim().toUpperCase() : '';
@@ -672,6 +685,7 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
         bobot,
         soal: soalText,
         gambar: gambarUrl || undefined,
+        gambar_list: gambarList,
         options,
       };
       parsedQuestions.push(q);
@@ -682,6 +696,7 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
         bobot,
         soal: soalText,
         gambar: gambarUrl || undefined,
+        gambar_list: gambarList,
         col1: 'Benar',
         col2: 'Salah',
         rows: [
@@ -706,6 +721,7 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
         bobot,
         soal: soalText,
         gambar: gambarUrl || undefined,
+        gambar_list: gambarList,
         a: optA || (optAImg ? '' : '-'),
         a_img: optAImg || undefined,
         b: optB || (optBImg ? '' : '-'),

@@ -17,6 +17,7 @@ import {
 import { Question, QuestionType, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori } from '../../types';
 import { MathRenderer } from '../MathRenderer';
 import { OptionImageControl } from './OptionImageControl';
+import { QuestionImageManager } from './QuestionImageManager';
 
 interface PerQuestionEditorProps {
   examCode: string;
@@ -103,6 +104,7 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
         bobot: q.bobot || 1,
         soal: q.soal,
         gambar: q.gambar,
+        gambar_list: q.gambar_list,
         a: existingOpts[0]?.text || '',
         a_img: existingOpts[0]?.img,
         b: existingOpts[1]?.text || '',
@@ -132,6 +134,7 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
         bobot: q.bobot || 1,
         soal: q.soal,
         gambar: q.gambar,
+        gambar_list: q.gambar_list,
         options:
           existingOpts.length > 0
             ? existingOpts
@@ -148,6 +151,7 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
         bobot: q.bobot || 1,
         soal: q.soal,
         gambar: q.gambar,
+        gambar_list: q.gambar_list,
         col1: 'Benar',
         col2: 'Salah',
         rows: [
@@ -369,51 +373,27 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
           )}
         </div>
 
-        {/* Question Image */}
-        <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1">
-            Gambar Ilustrasi Soal (Opsional)
-          </label>
-          <div className="flex items-center gap-2">
-            <label className="px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs">
-              <Upload className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Unggah Gambar</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) =>
-                  handleUploadImage(e, (dataUrl) => handleFieldChange('gambar', dataUrl))
-                }
-                className="hidden"
-              />
-            </label>
-            <input
-              type="url"
-              value={q.gambar?.startsWith('data:') ? '' : q.gambar || ''}
-              onChange={(e) => handleFieldChange('gambar', e.target.value)}
-              placeholder="Atau tempelkan link URL Gambar (https://...)"
-              className="flex-1 text-xs p-2 rounded-xl border border-slate-300 bg-white focus:outline-indigo-600"
-            />
-          </div>
-          {q.gambar && (
-            <div className="relative mt-2 p-1.5 bg-slate-50 border border-slate-200 rounded-xl max-w-xs group">
-              <img
-                src={q.gambar}
-                alt="Ilustrasi Soal"
-                className="max-h-32 rounded-lg object-contain mx-auto cursor-pointer"
-                onClick={() => onViewImage(q.gambar!, `Soal No. ${activeIndex + 1}`)}
-              />
-              <button
-                type="button"
-                onClick={() => handleFieldChange('gambar', '')}
-                className="absolute top-2 right-2 p-1 bg-rose-600 text-white rounded-lg text-xs hover:bg-rose-700 shadow-md"
-                title="Hapus Gambar"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Question Images (Support Multiple Images) */}
+        <QuestionImageManager
+          gambar={q.gambar}
+          gambarList={q.gambar_list}
+          onChange={(newImages) => {
+            const updated = {
+              ...q,
+              gambar: newImages[0] || undefined,
+              gambar_list: newImages,
+            };
+            onUpdateQuestion(activeIndex, updated);
+          }}
+          onViewImage={onViewImage}
+          onInsertTag={(tag) => {
+            const currentText = q.soal || '';
+            const newText = currentText.trim()
+              ? `${currentText} ${tag}`
+              : tag;
+            handleFieldChange('soal', newText);
+          }}
+        />
 
         {/* TYPE 1: PILIHAN GANDA (PG) */}
         {q.type === 'pg' && (

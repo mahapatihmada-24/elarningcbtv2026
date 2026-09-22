@@ -17,7 +17,7 @@ import {
   User as UserIcon,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Ujian, Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, User } from '../../types';
+import { Ujian, Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, User, getQuestionImages } from '../../types';
 import { api } from '../../services/api';
 import { MathRenderer } from '../MathRenderer';
 import { ModalState } from '../ConfirmModal';
@@ -518,22 +518,90 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                 </div>
               </div>
 
-              {/* Question Image if present */}
-              {q.gambar && (
-                <div className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-50 max-w-lg mx-auto">
-                  <img
-                    src={q.gambar}
-                    alt={`Gambar Soal ${idx + 1}`}
-                    className="max-h-64 w-full object-contain p-2"
-                  />
-                  <button
-                    onClick={() => onViewImage(q.gambar!, `Gambar Soal Nomor ${idx + 1}`)}
-                    className="absolute bottom-2 right-2 flex items-center gap-1 bg-black/75 text-white text-xs px-2.5 py-1 rounded-lg backdrop-blur-sm"
-                  >
-                    <Eye className="w-3.5 h-3.5" /> Perbesar
-                  </button>
-                </div>
-              )}
+              {/* Question Images (Single or Multiple) */}
+              {(() => {
+                const questionImages = getQuestionImages(q);
+                if (questionImages.length === 0) return null;
+
+                if (questionImages.length === 1) {
+                  return (
+                    <div className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-50 max-w-lg mx-auto">
+                      <img
+                        src={questionImages[0]}
+                        alt={`Gambar Soal ${idx + 1}`}
+                        className="max-h-64 w-full object-contain p-2 cursor-pointer"
+                        onClick={() => onViewImage(questionImages[0], `Gambar Soal Nomor ${idx + 1}`)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => onViewImage(questionImages[0], `Gambar Soal Nomor ${idx + 1}`)}
+                        className="absolute bottom-2 right-2 flex items-center gap-1 bg-black/75 hover:bg-black text-white text-xs px-2.5 py-1 rounded-lg backdrop-blur-sm transition"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> Perbesar
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                        Lampiran Gambar Soal ({questionImages.length} Gambar):
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-normal">Klik gambar untuk memperbesar</span>
+                    </div>
+                    <div
+                      className={`grid gap-3 ${
+                        questionImages.length === 2
+                          ? 'grid-cols-1 sm:grid-cols-2'
+                          : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3'
+                      }`}
+                    >
+                      {questionImages.map((imgUrl, imgIdx) => (
+                        <div
+                          key={imgIdx}
+                          className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-50 flex flex-col justify-between"
+                        >
+                          <div className="px-2.5 py-1 bg-white/95 border-b border-slate-200 flex items-center justify-between text-[11px] font-bold text-indigo-900">
+                            <span>Gambar {imgIdx + 1}</span>
+                            <span className="text-[10px] text-slate-500 font-medium">Zoom</span>
+                          </div>
+                          <div
+                            className="h-44 sm:h-40 flex items-center justify-center p-2 cursor-pointer"
+                            onClick={() =>
+                              onViewImage(
+                                imgUrl,
+                                `Gambar ${imgIdx + 1} - Soal Nomor ${idx + 1}`
+                              )
+                            }
+                          >
+                            <img
+                              src={imgUrl}
+                              alt={`Gambar ${imgIdx + 1} Soal ${idx + 1}`}
+                              className="max-h-full max-w-full object-contain group-hover:scale-105 transition duration-200"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onViewImage(
+                                imgUrl,
+                                `Gambar ${imgIdx + 1} - Soal Nomor ${idx + 1}`
+                              )
+                            }
+                            className="w-full py-1.5 bg-slate-100 group-hover:bg-indigo-600 text-slate-700 group-hover:text-white text-[11px] font-bold transition flex items-center justify-center gap-1"
+                          >
+                            <Eye className="w-3 h-3" />
+                            <span>Perbesar Gambar {imgIdx + 1}</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Question Text */}
               <div className="text-sm sm:text-base text-slate-800 leading-relaxed font-medium">
