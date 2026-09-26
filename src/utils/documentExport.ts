@@ -6,6 +6,190 @@ const SCHOOL_SUBTITLE = 'DINAS PENDIDIKAN DAN KEBUDAYAAN KABUPATEN TEGAL';
 const SCHOOL_ADDRESS = 'Jl. Raya Harjosari Kidul No. 01, Kec. Adiwerna, Kab. Tegal, Jawa Tengah 52194';
 
 /**
+ * Extracts original pixel dimensions from a base64 data URL (PNG, JPEG, GIF) or loaded DOM image,
+ * and computes proportionally scaled width & height attributes so Microsoft Word renders images
+ * at the exact intended size (since MS Word ignores CSS max-width / max-height).
+ */
+function getScaledImageDimensions(
+  imgUrl: string,
+  maxWidth: number,
+  maxHeight: number
+): { width: number; height: number } | null {
+  if (!imgUrl) return null;
+
+  let origW = 0;
+  let origH = 0;
+
+  // 1. Check if image is already loaded in DOM
+  if (typeof document !== 'undefined') {
+    const domImgs = document.querySelectorAll('img');
+    for (let i = 0; i < domImgs.length; i++) {
+      const el = domImgs[i];
+      if (el.src === imgUrl && el.naturalWidth > 0 && el.naturalHeight > 0) {
+        origW = el.naturalWidth;
+        origH = el.naturalHeight;
+        break;
+      }
+    }
+  }
+
+  // 2. Parse binary header from base64 data URL if not found in DOM
+  if ((origW === 0 || origH === 0) && imgUrl.startsWith('data:image/')) {
+    try {
+      const commaIdx = imgUrl.indexOf(',');
+      if (commaIdx !== -1) {
+        const meta = imgUrl.slice(0, commaIdx).toLowerCase();
+        const b64 = imgUrl.slice(commaIdx + 1, commaIdx + 1 + 32768).replace(/[\r\n\s]/g, '');
+        const bin = atob(b64);
+        const len = bin.length;
+
+        if (meta.includes('image/png') && len >= 24) {
+          origW =
+            ((bin.charCodeAt(16) & 0xff) << 24) |
+            ((bin.charCodeAt(17) & 0xff) << 16) |
+            ((bin.charCodeAt(18) & 0xff) << 8) |
+            (bin.charCodeAt(19) & 0xff);
+          origH =
+            ((bin.charCodeAt(20) & 0xff) << 24) |
+            ((bin.charCodeAt(21) & 0xff) << 16) |
+            ((bin.charCodeAt(22) & 0xff) << 8) |
+            (bin.charCodeAt(23) & 0xff);
+        } else if (meta.includes('image/gif') && len >= 10) {
+          origW = (bin.charCodeAt(6) & 0xff) | ((bin.charCodeAt(7) & 0xff) << 8);
+          origH = (bin.charCodeAt(8) & 0xff) | ((bin.charCodeAt(9) & 0xff) << 8);
+        } else if (meta.includes('image/jpeg') || meta.includes('image/jpg')) {
+          let offset = 2;
+          while (offset + 9 < len) {
+            if ((bin.charCodeAt(offset) & 0xff) !== 0xff) {
+              offset++;
+              continue;
+            }
+            const marker = bin.charCodeAt(offset + 1) & 0xff;
+            if (marker === 0xff) {
+              offset++;
+              continue;
+            }
+            // SOF0, SOF1, SOF2 markers
+            if (marker >= 0xc0 && marker <= 0xc3) {
+              origH = ((bin.charCodeAt(offset + 5) & 0xff) << 8) | (bin.charCodeAt(offset + 6) & 0xff);
+              origW = ((bin.charCodeAt(offset + 7) & 0xff) << 8) | (bin.charCodeAt(offset + 8) & 0xff);
+              break;
+            }
+            const blockLen = ((bin.charCodeAt(offset + 2) & 0xff) << 8) | (bin.charCodeAt(offset + 3) & 0xff);
+            if (blockLen < 2) break;
+            offset += 2 + blockLen;
+          }
+        }
+      }
+    } catch {
+      // ignore decoding errors and use fallback
+    }
+  }
+
+  if (origW > 0 && origH > 0) {
+    let w = origW;
+    let h = origH;
+    if (w > maxWidth) {
+      h = Math.round((h * maxWidth) / w);
+      w = maxWidth;
+    }
+    if (h > maxHeight) {
+      w = Math.round((w * maxHeight) / h);
+      h = maxHeight;
+    }
+    return { width: Math.max(1, w), height: Math.max(1, h) };
+  }
+
+  return null;
+}
+
+function buildWordImgTag(
+  imgUrl: string,
+  alt: string,
+  maxWidth: number,
+  maxHeight: number,
+  extraStyle = ''
+): string {
+  const dims = getScaledImageDimensions(imgUrl, maxWidth, maxHeight);
+  if (dims) {
+    return `<img src="${imgUrl}" alt="${alt}" width="${dims.width}" height="${dims.height}" style="width: ${dims.width}px; height: ${dims.height}px; display: block; ${extraStyle}" />`;
+  }
+  const fallbackH = Math.min(maxHeight, 150);
+  return `<img src="${imgUrl}" alt="${alt}" height="${fallbackH}" style="max-height: ${maxHeight}px; max-width: ${maxWidth}px; height: ${fallbackH}px; width: auto; display: block; ${extraStyle}" />`;
+}
+
+/**
+ * Renders a stacked mathematical fraction (with optional leading whole number, e.g. 1 3/5 or 2/4)
+ * into a crisp 3x-DPI inline PNG image for Microsoft Word (.doc) so fractions match KaTeX in PDF.
+ */
+function renderFractionForWord(whole: string, num: string, den: string): string {
+  const cleanWhole = (whole || '').trim();
+  const cleanNum = (num || '').trim();
+  const cleanDen = (den || '').trim();
+
+  if (typeof document !== 'undefined') {
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const scale = 3;
+        const fontFamily = "'Segoe UI', Tahoma, Calibri, sans-serif";
+        const numDenFont = `600 11px ${fontFamily}`;
+        const wholeFont = `600 13.5px ${fontFamily}`;
+
+        ctx.font = numDenFont;
+        const numW = Math.ceil(ctx.measureText(cleanNum).width);
+        const denW = Math.ceil(ctx.measureText(cleanDen).width);
+        const fracW = Math.max(numW, denW, 10) + 8;
+
+        let wholeW = 0;
+        if (cleanWhole) {
+          ctx.font = wholeFont;
+          wholeW = Math.ceil(ctx.measureText(cleanWhole).width) + 4;
+        }
+
+        const totalW = wholeW + fracW + 4;
+        const totalH = 30;
+
+        canvas.width = totalW * scale;
+        canvas.height = totalH * scale;
+        ctx.scale(scale, scale);
+
+        ctx.fillStyle = '#0f172a';
+        ctx.textBaseline = 'middle';
+
+        if (cleanWhole) {
+          ctx.font = wholeFont;
+          ctx.textAlign = 'left';
+          ctx.fillText(cleanWhole, 2, totalH / 2 + 1);
+        }
+
+        const fracCenterX = wholeW + 2 + fracW / 2;
+        ctx.font = numDenFont;
+        ctx.textAlign = 'center';
+        ctx.fillText(cleanNum, fracCenterX, 8);
+        ctx.fillText(cleanDen, fracCenterX, 23);
+
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(wholeW + 4, 15.5);
+        ctx.lineTo(wholeW + fracW, 15.5);
+        ctx.stroke();
+
+        const dataUrl = canvas.toDataURL('image/png');
+        const altText = `${cleanWhole ? cleanWhole + ' ' : ''}${cleanNum}/${cleanDen}`;
+        return `<img src="${dataUrl}" alt="${altText}" width="${totalW}" height="${totalH}" style="width: ${totalW}px; height: ${totalH}px; vertical-align: middle; display: inline;" />`;
+      }
+    } catch {
+      // Fallback below
+    }
+  }
+
+  return `${cleanWhole ? cleanWhole + ' ' : ''}<sup>${cleanNum}</sup>&frasl;<sub>${cleanDen}</sub>`;
+}
+
+/**
  * Formats mathematical formulas (LaTeX e.g. \frac{2}{4}, $\frac{3}{5}$, \sqrt, powers, symbols, etc.)
  * into clean, properly rendered visual representations for Word documents (.doc) and Printable views.
  */
@@ -19,8 +203,9 @@ export function formatMathForExport(
   let text = raw;
 
   // Format [Gambar X] tag to clean inline image or badge
+  let autoImgCounter = 0;
   text = text.replace(/\[(?:Gambar|Gbr)\s*(\d*)\]/gi, (_, numStr) => {
-    const num = numStr ? parseInt(numStr, 10) : 1;
+    const num = numStr ? parseInt(numStr, 10) : ++autoImgCounter;
     const imgIdx = num - 1;
     const imgUrl = images && images[imgIdx] ? images[imgIdx] : null;
 
@@ -28,19 +213,20 @@ export function formatMathForExport(
       if (mode === 'print') {
         return `<div style="margin: 8px 0; text-align: left;"><div style="display: inline-block; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px; background: #fff;"><img src="${imgUrl}" alt="Gambar ${num}" referrerpolicy="no-referrer" loading="eager" decoding="sync" style="max-height: 200px; max-width: 100%; object-fit: contain; display: block;" /><div style="font-size: 10px; color: #64748b; font-weight: bold; margin-top: 3px; text-align: center;">Gambar ${num}</div></div></div>`;
       }
-      return `<div style="margin: 8pt 0; text-align: left;"><table style="border: 1pt solid #cbd5e1; background: #ffffff; padding: 4pt; border-collapse: collapse;"><tr><td style="text-align: center;"><img src="${imgUrl}" alt="Gambar ${num}" style="max-height: 160pt; max-width: 320pt; display: block; margin: 0 auto;" /><div style="font-size: 8.5pt; color: #475569; font-weight: bold; margin-top: 3pt;">Gambar ${num}</div></td></tr></table></div>`;
+      return `<div style="margin: 6pt 0; text-align: left;"><table style="border: 1pt solid #cbd5e1; background-color: #ffffff; border-collapse: collapse;"><tr><td style="padding: 4pt; text-align: center; border: 1pt solid #cbd5e1;">${buildWordImgTag(imgUrl, `Gambar ${num}`, 340, 200, 'margin: 0 auto;')}<div style="font-size: 8pt; color: #64748b; font-weight: bold; margin-top: 3pt; text-align: center;">Gambar ${num}</div></td></tr></table></div>`;
     }
 
     if (mode === 'print') {
       return `<span style="display:inline-flex; align-items:center; padding:1px 6px; margin:0 3px; border-radius:4px; font-size:11px; font-weight:bold; background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe;">📷 Gambar ${num}</span>`;
     }
-    return `<span style="background-color:#e0e7ff; color:#3730a3; font-weight:bold; font-size:9pt; border:1px solid #c7d2fe; padding:1pt 4pt;">[Gambar ${num}]</span>`;
+    return `<span style="background-color:#e0e7ff; color:#3730a3; font-weight:bold; font-size:8.5pt; border:1pt solid #c7d2fe; padding:1pt 4pt;">[Gambar ${num}]</span>`;
   });
 
-  // Preserve line breaks for multi-line problems/prompts
-  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n/g, '<br/>');
+  // Normalize line breaks
+  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
   if (mode === 'print') {
+    text = text.replace(/\n/g, '<br/>');
     // For print mode, browser has full CSS/DOM support. Render with KaTeX!
     let processed = text;
     if (processed.includes('\\frac') && !processed.includes('$')) {
@@ -72,21 +258,24 @@ export function formatMathForExport(
   }
 
   // Word Document (.doc) mode
-  // A. Fractions: \frac{num}{den} with or without $
-  // Add space if immediately followed by words (e.g. $\frac{3}{5}$karung -> fraction + " karung")
-  text = text.replace(/\$?(\\frac\{([^{}]+)\}\{([^{}]+)\})\$?(?=[a-zA-Z0-9])/g, (_, __, num, den) => {
-    return `<span class="math-frac" style="display:inline-block; vertical-align:middle; text-align:center; font-family:'Calibri','Times New Roman',serif; margin:0 2pt; font-size:95%; line-height:1.1;"><span class="math-num" style="display:block; border-bottom:1pt solid windowtext; padding:0 2pt;">${num}</span><span class="math-den" style="display:block; padding:0 2pt;">${den}</span></span> `;
-  });
-  text = text.replace(/\$?(\\frac\{([^{}]+)\}\{([^{}]+)\})\$?(\s*)/g, (_, __, num, den, space) => {
-    return `<span class="math-frac" style="display:inline-block; vertical-align:middle; text-align:center; font-family:'Calibri','Times New Roman',serif; margin:0 2pt; font-size:95%; line-height:1.1;"><span class="math-num" style="display:block; border-bottom:1pt solid windowtext; padding:0 2pt;">${num}</span><span class="math-den" style="display:block; padding:0 2pt;">${den}</span></span>${space || ''}`;
-  });
+  text = text.replace(/\n/g, '<br/>');
+
+  // A. Fractions: Mixed fractions e.g. 1\frac{2}{4} or $1\frac{2}{4}$ or 1$\frac{2}{4}$ and regular \frac{num}{den}
+  text = text.replace(
+    /(\b\d+\s*)?\$?\\frac\{([^{}]+)\}\{([^{}]+)\}\$?(?=[a-zA-Z0-9])/g,
+    (_, whole, num, den) => `${renderFractionForWord(whole || '', num, den)} `
+  );
+  text = text.replace(
+    /(\b\d+\s*)?\$?\\frac\{([^{}]+)\}\{([^{}]+)\}\$?(\s*)/g,
+    (_, whole, num, den, space) => `${renderFractionForWord(whole || '', num, den)}${space || ''}`
+  );
 
   // B. Roots: \sqrt[n]{x} and \sqrt{x}
   text = text.replace(/\$?(\\sqrt\[([^{}]+)\]\{([^{}]+)\})\$?(\s*)/g, (_, __, n, x, space) => {
-    return `<sup>${n}</sup>√<span style="text-decoration:overline; font-family:'Calibri','Times New Roman',serif;">${x}</span>${space || ''}`;
+    return `<sup>${n}</sup>√<span style="text-decoration:overline;">${x}</span>${space || ''}`;
   });
   text = text.replace(/\$?(\\sqrt\{([^{}]+)\})\$?(\s*)/g, (_, __, x, space) => {
-    return `√<span style="text-decoration:overline; font-family:'Calibri','Times New Roman',serif;">${x}</span>${space || ''}`;
+    return `√<span style="text-decoration:overline;">${x}</span>${space || ''}`;
   });
 
   // C. Math symbols
@@ -126,15 +315,24 @@ function applyRichTextFormatting(content: string, mode: 'word' | 'print'): strin
   // 1. Stimulus Titles: [judul]...[/judul] or [title]...[/title]
   const titleStyle = mode === 'print'
     ? 'text-align: center; font-weight: bold; font-size: 15px; margin: 8px 0; color: #0f172a;'
-    : 'text-align: center; font-weight: bold; font-size: 13pt; margin: 6pt 0; color: #000000;';
-  s = s.replace(/\[(?:judul|title)\]([\s\S]*?)\[\/(?:judul|title)\]/gi, `<div style="${titleStyle}">$1</div>`);
+    : 'text-align: center; font-weight: bold; font-size: 11.5pt; margin: 6pt 0; color: #0f172a;';
+  s = s.replace(
+    /(?:<br\s*\/?>\s*)*\[(?:judul|title)\]([\s\S]*?)\[\/(?:judul|title)\](?:\s*<br\s*\/?>)*/gi,
+    (_, inner) => `<div align="center" style="${titleStyle}">${inner.replace(/^(?:<br\s*\/?>)+|(?:<br\s*\/?>)+$/gi, '').trim()}</div>`
+  );
 
   // 2. Centered text blocks: [center]...[/center] or <center>...</center>
   const centerStyle = mode === 'print'
     ? 'text-align: center; margin: 6px 0;'
     : 'text-align: center; margin: 4pt 0;';
-  s = s.replace(/\[center\]([\s\S]*?)\[\/center\]/gi, `<div style="${centerStyle}">$1</div>`);
-  s = s.replace(/<center>([\s\S]*?)<\/center>/gi, `<div style="${centerStyle}">$1</div>`);
+  s = s.replace(
+    /(?:<br\s*\/?>\s*)*\[center\]([\s\S]*?)\[\/center\](?:\s*<br\s*\/?>)*/gi,
+    (_, inner) => `<div align="center" style="${centerStyle}">${inner.replace(/^(?:<br\s*\/?>)+|(?:<br\s*\/?>)+$/gi, '').trim()}</div>`
+  );
+  s = s.replace(
+    /(?:<br\s*\/?>\s*)*<center>([\s\S]*?)<\/center>(?:\s*<br\s*\/?>)*/gi,
+    (_, inner) => `<div align="center" style="${centerStyle}">${inner.replace(/^(?:<br\s*\/?>)+|(?:<br\s*\/?>)+$/gi, '').trim()}</div>`
+  );
 
   // 3. Font colors: [color=blue], [color=#0284c7], [warna=red], <font color="...">
   const colorMap: Record<string, string> = {
@@ -232,15 +430,14 @@ export function downloadMateriWord(materi: Materi): void {
   const rawContent = (materi as any).Konten || materi.Konten_Link || '';
   const sanitizedBody = formatMathForExport(sanitizeContentForWord(rawContent), 'word');
   const imageHtml = materi.Gambar_URL
-    ? `<div style="text-align: center; margin: 15pt 0;">
-        <img src="${materi.Gambar_URL}" alt="${materi.Judul}" style="max-width: 500px; height: auto; border: 1px solid #ddd; border-radius: 6px;" />
+    ? `<div align="center" style="text-align: center; margin: 15pt 0;">
+        ${buildWordImgTag(materi.Gambar_URL, materi.Judul, 500, 360, 'margin: 0 auto; border: 1pt solid #ddd;')}
         <p style="font-size: 9pt; color: #666; font-style: italic; margin-top: 4pt;">Ilustrasi Materi: ${materi.Judul}</p>
       </div>`
     : '';
 
-  const htmlContent = `
-<!DOCTYPE html>
-<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+  const htmlContent = `<!DOCTYPE html>
+<html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns:m="http://schemas.microsoft.com/office/2004/12/omml" xmlns="http://www.w3.org/TR/REC-html40">
 <head>
   <meta charset="utf-8">
   <title>${materi.Judul}</title>
@@ -254,58 +451,43 @@ export function downloadMateriWord(materi: Materi): void {
   </xml>
   <![endif]-->
   <style>
-    @page {
-      size: A4;
-      margin: 2.5cm 2.5cm 2.5cm 2.5cm;
+    @page Section1 {
+      size: 21cm 29.7cm;
+      margin: 2cm 2cm 2cm 2cm;
       mso-page-orientation: portrait;
     }
+    div.Section1 {
+      page: Section1;
+    }
     body {
-      font-family: 'Calibri', 'Times New Roman', serif;
-      font-size: 11pt;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-size: 10.5pt;
       line-height: 1.6;
-      color: #222;
-    }
-    .math-frac {
-      display: inline-block;
-      vertical-align: middle;
-      text-align: center;
-      font-family: 'Calibri', 'Times New Roman', serif;
-      margin: 0 2pt;
-      font-size: 95%;
-      line-height: 1.1;
-    }
-    .math-num {
-      display: block;
-      border-bottom: 1pt solid windowtext;
-      padding: 0 2pt;
-    }
-    .math-den {
-      display: block;
-      padding: 0 2pt;
+      color: #1e293b;
     }
     .kop-surat {
       text-align: center;
-      border-bottom: 3px double #111;
+      border-bottom: 2.25pt double #0f172a;
       padding-bottom: 8pt;
-      margin-bottom: 18pt;
+      margin-bottom: 16pt;
     }
     .kop-sub {
-      font-size: 11pt;
+      font-size: 10pt;
       font-weight: bold;
       text-transform: uppercase;
       letter-spacing: 0.5pt;
-      color: #333;
+      color: #475569;
     }
     .kop-main {
       font-size: 15pt;
       font-weight: bold;
       text-transform: uppercase;
       margin: 3pt 0;
-      color: #0b2559;
+      color: #1e3a8a;
     }
     .kop-addr {
-      font-size: 9pt;
-      color: #555;
+      font-size: 8.5pt;
+      color: #64748b;
       font-style: italic;
     }
     .doc-meta {
@@ -313,24 +495,23 @@ export function downloadMateriWord(materi: Materi): void {
       border-collapse: collapse;
       margin-bottom: 14pt;
       background-color: #f8fafc;
-      border: 1px solid #e2e8f0;
+      border: 1pt solid #e2e8f0;
     }
     .doc-meta td {
       padding: 6pt 10pt;
-      font-size: 10pt;
-      border-bottom: 1px solid #e2e8f0;
+      font-size: 9.5pt;
+      border: 1pt solid #e2e8f0;
     }
     .materi-title {
-      font-size: 16pt;
+      font-size: 15pt;
       font-weight: bold;
-      color: #1e293b;
-      margin: 10pt 0 6pt 0;
+      color: #0f172a;
+      margin: 10pt 0 8pt 0;
       text-align: center;
       text-transform: uppercase;
     }
     .content-body {
       text-align: justify;
-      text-justify: inter-word;
       line-height: 1.7;
     }
     table {
@@ -339,7 +520,7 @@ export function downloadMateriWord(materi: Materi): void {
       margin: 12pt 0;
     }
     table, th, td {
-      border: 1px solid #94a3b8;
+      border: 1pt solid #cbd5e1;
       padding: 6pt 8pt;
     }
     th {
@@ -348,56 +529,53 @@ export function downloadMateriWord(materi: Materi): void {
     }
     .doc-footer {
       margin-top: 30pt;
-      padding-top: 10pt;
-      border-top: 1px solid #cbd5e1;
-      font-size: 9pt;
-      color: #64748b;
-      display: flex;
-      justify-content: space-between;
+      padding-top: 8pt;
+      border-top: 1pt solid #e2e8f0;
+      font-size: 8.5pt;
+      color: #94a3b8;
+      text-align: center;
     }
   </style>
 </head>
 <body>
-  <div class="kop-surat">
-    <div class="kop-sub">${SCHOOL_SUBTITLE}</div>
-    <div class="kop-main">${SCHOOL_NAME}</div>
-    <div class="kop-addr">${SCHOOL_ADDRESS}</div>
-  </div>
+  <div class="Section1">
+    <div class="kop-surat">
+      <div class="kop-sub">${SCHOOL_SUBTITLE}</div>
+      <div class="kop-main">${SCHOOL_NAME}</div>
+      <div class="kop-addr">${SCHOOL_ADDRESS}</div>
+    </div>
 
-  <table class="doc-meta">
-    <tr>
-      <td width="20%"><strong>Mata Pelajaran</strong></td>
-      <td width="30%">: ${materi.Mapel}</td>
-      <td width="20%"><strong>Target Kelas</strong></td>
-      <td width="30%">: ${materi.Kelas}</td>
-    </tr>
-    <tr>
-      <td><strong>Penyusun / Guru</strong></td>
-      <td>: ${materi.Nama_Guru}</td>
-      <td><strong>Sumber Rujukan</strong></td>
-      <td>: ${materi.Sumber || 'Materi Guru'}</td>
-    </tr>
-  </table>
+    <table class="doc-meta">
+      <tr>
+        <td width="20%"><strong>Mata Pelajaran</strong></td>
+        <td width="30%">: ${materi.Mapel}</td>
+        <td width="20%"><strong>Kelas</strong></td>
+        <td width="30%">: ${materi.Kelas}</td>
+      </tr>
+      <tr>
+        <td><strong>Guru Pengajar</strong></td>
+        <td>: ${materi.Nama_Guru}</td>
+        <td><strong>Sumber Buku</strong></td>
+        <td>: ${materi.Sumber || 'Materi Pembelajaran Guru'}</td>
+      </tr>
+    </table>
 
-  <h2 class="materi-title">${materi.Judul}</h2>
+    <h2 align="center" class="materi-title">${materi.Judul}</h2>
 
-  ${imageHtml}
+    ${imageHtml}
 
-  <div class="content-body">
-    ${sanitizedBody}
-  </div>
+    <div class="content-body">
+      ${sanitizedBody}
+    </div>
 
-  <div class="doc-footer">
-    <p><em>Dicetak melalui Sistem Pembelajaran Digital & CBT ${SCHOOL_NAME}</em></p>
-    <p>Tanggal: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+    <div class="doc-footer">
+      Lembar Bahan Ajar Siswa • ${SCHOOL_NAME}
+    </div>
   </div>
 </body>
-</html>
-  `;
+</html>`;
 
-  const blob = new Blob(['\ufeff' + htmlContent], {
-    type: 'application/msword;charset=utf-8',
-  });
+  const blob = convertHtmlToMhtmlWord(htmlContent);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -546,70 +724,76 @@ export function printMateri(materi: Materi): void {
 }
 
 /**
- * Packages HTML document into MHTML (MIME multipart/related) format for Microsoft Word (.doc).
- * This embeds all base64 and data URL images directly into the document structure, ensuring
- * that Microsoft Word, WPS Office, and LibreOffice render question and option images reliably without
- * security blocks or missing image placeholders (red X).
+ * Packages HTML document into standard Microsoft Word MHTML (MIME multipart/related) format (.doc).
+ * Uses RFC 2557 / MS Word-compliant --boundary delimiters and file:///C:/CBT_Doc/ Content-Location
+ * headers so Microsoft Word opens the document cleanly without corruption errors and renders all
+ * embedded base64 images and math formulas accurately.
  */
 function convertHtmlToMhtmlWord(htmlContent: string): Blob {
-  const boundary = '----=_NextPart_CBT_WORD_DOC_' + Date.now();
+  const boundary = 'NextPart_CBT_WORD_DOC_' + Date.now();
+  const baseLocation = 'file:///C:/CBT_Doc/';
   const mimeParts: string[] = [];
   const imageMap = new Map<string, string>();
   let imgCounter = 0;
 
-  // Replace data:image/... in src attributes with local Content-Location references
-  const transformedHtml = htmlContent.replace(
+  const trimmedHtml = htmlContent.trim();
+
+  // Replace data:image/... in src attributes with Content-Location references matching MIME parts
+  const transformedHtml = trimmedHtml.replace(
     /src=["'](data:image\/([a-zA-Z0-9\+\-]+);base64,([^"'\s]+))["']/gi,
     (_, fullDataUrl, rawFormat, base64Data) => {
-      let filename = imageMap.get(fullDataUrl);
-      if (!filename) {
+      let fileLocation = imageMap.get(fullDataUrl);
+      if (!fileLocation) {
         let ext = rawFormat.toLowerCase();
         if (ext === 'jpeg') ext = 'jpg';
         if (ext === 'svg+xml') ext = 'svg';
-        filename = `cbt_image_${imgCounter++}.${ext}`;
-        imageMap.set(fullDataUrl, filename);
+        const filename = `cbt_image_${imgCounter++}.${ext}`;
+        fileLocation = `${baseLocation}${filename}`;
+        imageMap.set(fullDataUrl, fileLocation);
 
         const mimeType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
         const cleanBase64 = base64Data.replace(/[\r\n\s]/g, '');
         const chunkedBase64 = cleanBase64.match(/.{1,76}/g)?.join('\r\n') || cleanBase64;
 
         mimeParts.push(
-          `------${boundary}\r\n` +
-          `Content-Type: ${mimeType}\r\n` +
+          `--${boundary}\r\n` +
+          `Content-Location: ${fileLocation}\r\n` +
           `Content-Transfer-Encoding: base64\r\n` +
-          `Content-Location: ${filename}\r\n` +
-          `Content-ID: <${filename}>\r\n\r\n` +
+          `Content-Type: ${mimeType}\r\n\r\n` +
           chunkedBase64
         );
       }
-      return `src="${filename}"`;
+      return `src="${fileLocation}"`;
     }
   );
 
   if (mimeParts.length > 0) {
     const mhtmlDoc =
       `MIME-Version: 1.0\r\n` +
-      `Content-Type: multipart/related; boundary="${boundary}"; type="text/html"\r\n\r\n` +
-      `------${boundary}\r\n` +
-      `Content-Type: text/html; charset="utf-8"\r\n` +
-      `Content-Transfer-Encoding: 8bit\r\n\r\n` +
+      `Content-Base: ${baseLocation}\r\n` +
+      `Content-Type: Multipart/related; boundary="${boundary}"; type="text/html"\r\n\r\n` +
+      `--${boundary}\r\n` +
+      `Content-Location: ${baseLocation}document.html\r\n` +
+      `Content-Transfer-Encoding: 8bit\r\n` +
+      `Content-Type: text/html; charset="utf-8"\r\n\r\n` +
       transformedHtml +
       `\r\n\r\n` +
       mimeParts.join('\r\n\r\n') +
-      `\r\n\r\n------${boundary}--\r\n`;
+      `\r\n\r\n--${boundary}--\r\n`;
 
     return new Blob([mhtmlDoc], {
       type: 'application/msword;charset=utf-8',
     });
   }
 
-  return new Blob(['\ufeff' + htmlContent], {
+  return new Blob(['\ufeff' + trimmedHtml], {
     type: 'application/msword;charset=utf-8',
   });
 }
 
 /**
- * Formats and downloads Ujian CBT as an official student worksheet (LKS / Naskah Soal)
+ * Formats and downloads Ujian CBT as an official student worksheet (.doc)
+ * with layout, typography, images, math formulas, and options matching the PDF export 100%.
  */
 export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boolean } = {}): void {
   let questions: Question[] = [];
@@ -645,16 +829,22 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
       .filter(({ i }) => !referencedIndices.has(i));
 
     const imgHtml = unreferencedImages.length > 0
-      ? `<div style="margin: 6pt 0;">${unreferencedImages
+      ? `<div style="margin: 6pt 0;"><table style="border: none; border-collapse: collapse;"><tr>${unreferencedImages
           .map(
             ({ img: imgUrl, i: originalIdx }) =>
-              `<div style="display: inline-block; margin: 4pt 6pt 4pt 0; vertical-align: top;"><img src="${imgUrl}" style="max-height: 200px; max-width: 380px; border: 1px solid #ccc; display: block;" />${
+              `<td valign="top" style="border: none; padding: 0 6pt 4pt 0;"><table style="border: 1pt solid #e2e8f0; background-color: #f8fafc; border-collapse: collapse;"><tr><td style="padding: 3pt; text-align: center; border: 1pt solid #e2e8f0;">${buildWordImgTag(
+                imgUrl,
+                `Gambar Soal ${originalIdx + 1}`,
+                340,
+                200,
+                'margin: 0 auto;'
+              )}${
                 qImages.length > 1
-                  ? `<div style="font-size: 8pt; color: #666; text-align: center; margin-top: 2pt;">Gambar ${originalIdx + 1}</div>`
+                  ? `<div style="font-size: 8.5pt; color: #64748b; font-weight: bold; text-align: center; margin-top: 2pt;">Gambar ${originalIdx + 1}</div>`
                   : ''
-              }</div>`
+              }</td></tr></table></td>`
           )
-          .join('')}</div>`
+          .join('')}</tr></table></div>`
       : '';
 
     let choicesHtml = '';
@@ -662,70 +852,87 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
       const keys: ('a' | 'b' | 'c' | 'd' | 'e')[] = q.e !== undefined
         ? ['a', 'b', 'c', 'd', 'e']
         : ['a', 'b', 'c', 'd'];
-      choicesHtml = `<table style="width: 100%; border: none; margin-top: 4pt; border-collapse: collapse;">`;
-      keys.forEach((k) => {
-        const optText = q[k];
-        const optImg = (q as any)[`${k}_img`];
-        if (optText || optImg) {
-          const isCorrect = options.includeAnswers && q.kunci === k.toUpperCase();
-          const marker = isCorrect ? ' style="font-weight: bold; color: #15803d; background-color: #dcfce7;"' : '';
-          const imgMarkup = optImg
-            ? `<div style="margin-top: 3pt;"><img src="${optImg}" alt="Gambar ${k.toUpperCase()}" style="max-height: 120px; max-width: 260px; border: 1px solid #cbd5e1; border-radius: 4px;" /></div>`
+
+      const validOptions = keys
+        .map((k) => ({
+          key: k,
+          text: q[k],
+          img: (q as any)[`${k}_img`],
+        }))
+        .filter((item) => item.text || item.img);
+
+      // Render in 2-column table grid matching PDF's grid-template-columns: 1fr 1fr
+      choicesHtml = `<table style="width: 100%; border: none; margin-top: 4.5pt; border-collapse: collapse;">`;
+      for (let i = 0; i < validOptions.length; i += 2) {
+        const pair = [validOptions[i], validOptions[i + 1]];
+        choicesHtml += `<tr>`;
+        pair.forEach((opt) => {
+          if (!opt) {
+            choicesHtml += `<td width="50%" valign="top" style="border: none; padding: 3pt 6pt;">&nbsp;</td>`;
+            return;
+          }
+          const isCorrect = options.includeAnswers && q.kunci === opt.key.toUpperCase();
+          const cellStyle = isCorrect
+            ? 'border: 1pt solid #86efac; background-color: #dcfce7; font-weight: bold; padding: 3pt 6pt; font-size: 10pt; color: #0f172a;'
+            : 'border: none; padding: 3pt 6pt; font-size: 10pt; color: #0f172a;';
+          const imgMarkup = opt.img
+            ? `<div style="margin-top: 3pt;">${buildWordImgTag(opt.img, `Gambar ${opt.key.toUpperCase()}`, 220, 110, 'border: 1pt solid #cbd5e1;')}</div>`
             : '';
           choicesHtml += `
-            <tr>
-              <td width="30pt" valign="top" style="border: none; padding: 3pt 4pt;"${marker}>${k.toUpperCase()}.</td>
-              <td valign="top" style="border: none; padding: 3pt 4pt;"${marker}>
-                ${optText ? formatMathForExport(optText, 'word') : ''}
-                ${imgMarkup}
-              </td>
-            </tr>
+            <td width="50%" valign="top" style="${cellStyle}">
+              <strong>${opt.key.toUpperCase()}.</strong> ${opt.text ? formatMathForExport(opt.text, 'word') : ''}
+              ${imgMarkup}
+            </td>
           `;
-        }
-      });
+        });
+        choicesHtml += `</tr>`;
+      }
       choicesHtml += `</table>`;
       if (options.includeAnswers) {
-        choicesHtml += `<p style="font-size: 9pt; color: #15803d; font-weight: bold; margin-top: 4pt;">[Kunci Jawaban: ${q.kunci}]</p>`;
+        choicesHtml += `<div style="font-size: 8.5pt; color: #15803d; font-weight: bold; margin-top: 3pt;">Kunci Jawaban: ${q.kunci}</div>`;
       }
     } else if (q.type === 'pgk_mcma') {
-      choicesHtml = `<p style="font-size: 9pt; font-style: italic; color: #555; margin: 3pt 0;">(Pilihan Ganda Kompleks: Berikan tanda centang [✓] pada semua pilihan yang benar)</p>`;
-      choicesHtml += `<table style="width: 100%; border: none; margin-top: 4pt; border-collapse: collapse;">`;
+      choicesHtml = `<div style="font-size: 8.5pt; color: #64748b; font-style: italic; margin-top: 4.5pt; margin-bottom: 4.5pt;">Pilihan Ganda Kompleks (Centang satu atau lebih pilihan yang benar):</div>`;
       const opts = Array.isArray(q.options) ? q.options : [];
       opts.forEach((opt: any, oIdx: number) => {
         const letter = String.fromCharCode(65 + oIdx);
         const isCorrect = options.includeAnswers && Boolean(opt?.isKey);
-        const marker = isCorrect ? ' style="font-weight: bold; color: #15803d; background-color: #dcfce7;"' : '';
+        const boxBorder = isCorrect ? '1pt solid #86efac' : '1pt solid #e2e8f0';
+        const boxBg = isCorrect ? '#dcfce7' : '#ffffff';
         const optText = typeof opt === 'string' ? opt : (opt?.text || '');
         const optImg = (opt && typeof opt === 'object')
           ? (opt.img || opt.gambar || opt.image || opt.url)
           : (q as any)[`${letter.toLowerCase()}_img`];
         const imgMarkup = optImg
-          ? `<div style="margin-top: 4pt;"><img src="${optImg}" alt="Gambar Opsi ${oIdx + 1}" style="max-height: 120px; max-width: 280px; border: 1px solid #cbd5e1; border-radius: 4px;" /></div>`
+          ? `<div style="margin-top: 4.5pt;">${buildWordImgTag(optImg, `Gambar Opsi ${oIdx + 1}`, 280, 120, 'border: 1pt solid #cbd5e1; padding: 1.5pt; background-color: #ffffff;')}</div>`
           : '';
         choicesHtml += `
-          <tr>
-            <td width="28pt" valign="top" style="border: none; padding: 3pt 2pt;"${marker}>
-              <span style="display:inline-block; width:14pt; height:14pt; border:1.5pt solid #334155; text-align:center; line-height:14pt; font-size:10pt;">
-                ${isCorrect ? '✓' : '&nbsp;'}
-              </span>
-            </td>
-            <td valign="top" style="border: none; padding: 3pt 4pt;"${marker}>
-              ${optText ? formatMathForExport(optText, 'word') : `<span style="color:#888;">(Pilihan ${oIdx + 1})</span>`} ${isCorrect ? '<strong>(KUNCI BENAR)</strong>' : ''}
-              ${imgMarkup}
-            </td>
-          </tr>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 4.5pt; border: ${boxBorder}; background-color: ${boxBg};">
+            <tr>
+              <td width="22pt" valign="top" style="border: none; padding: 5pt 4pt 5pt 7.5pt;">
+                <table style="width: 13.5pt; height: 13.5pt; border-collapse: collapse; border: 1.2pt solid #475569; background-color: #ffffff;">
+                  <tr>
+                    <td align="center" valign="middle" style="width: 13.5pt; height: 13.5pt; padding: 0; font-size: 8.5pt; font-weight: bold; line-height: 1; text-align: center; border: 1.2pt solid #475569;">${isCorrect ? '✓' : '&nbsp;'}</td>
+                  </tr>
+                </table>
+              </td>
+              <td valign="top" style="border: none; padding: 4.5pt 7.5pt 4.5pt 2pt; font-size: 10pt; color: #0f172a;">
+                <span>${optText ? formatMathForExport(optText, 'word') : `<span style="color:#94a3b8; font-style:italic;">Opsi ${oIdx + 1}</span>`}</span>
+                ${isCorrect ? ' <span style="color: #15803d; font-weight: bold; font-size: 8.5pt;">[KUNCI BENAR]</span>' : ''}
+                ${imgMarkup}
+              </td>
+            </tr>
+          </table>
         `;
       });
-      choicesHtml += `</table>`;
     } else if (q.type === 'pgk_kategori') {
-      choicesHtml = `<p style="font-size: 9pt; font-style: italic; color: #555; margin: 3pt 0;">(Berikan tanda centang [✓] pada kolom yang sesuai)</p>`;
-      choicesHtml += `
-        <table style="width: 100%; border-collapse: collapse; margin-top: 6pt; border: 1px solid #94a3b8;">
+      choicesHtml = `
+        <table style="width: 100%; border-collapse: collapse; margin-top: 6pt; border: 1pt solid #cbd5e1; font-size: 9pt;">
           <thead>
-            <tr style="background-color: #f1f5f9;">
-              <th style="border: 1px solid #94a3b8; padding: 4pt 8pt; text-align: left;">Pernyataan</th>
-              <th style="border: 1px solid #94a3b8; padding: 4pt 8pt; width: 80pt; text-align: center;">${formatMathForExport(q.col1, 'word')}</th>
-              <th style="border: 1px solid #94a3b8; padding: 4pt 8pt; width: 80pt; text-align: center;">${formatMathForExport(q.col2, 'word')}</th>
+            <tr style="background-color: #f8fafc;">
+              <th align="left" style="border: 1pt solid #cbd5e1; padding: 4.5pt 7.5pt; text-align: left; font-weight: bold; background-color: #f8fafc;">Pernyataan</th>
+              <th align="center" width="70pt" style="border: 1pt solid #cbd5e1; padding: 4.5pt 7.5pt; width: 70pt; text-align: center; font-weight: bold; background-color: #f8fafc;">${formatMathForExport(q.col1, 'word')}</th>
+              <th align="center" width="70pt" style="border: 1pt solid #cbd5e1; padding: 4.5pt 7.5pt; width: 70pt; text-align: center; font-weight: bold; background-color: #f8fafc;">${formatMathForExport(q.col2, 'word')}</th>
             </tr>
           </thead>
           <tbody>
@@ -735,16 +942,16 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
         const isCol2 = options.includeAnswers && r.key === 'col2';
         const rowImg = r.img || (r as any).gambar || (r as any).image || (r as any).url;
         const rowImgMarkup = rowImg
-          ? `<div style="margin-top: 4pt;"><img src="${rowImg}" alt="Gambar Pernyataan" style="max-height: 100pt; max-width: 220pt; border: 1pt solid #cbd5e1; display: block;" /></div>`
+          ? `<div style="margin-top: 4.5pt;">${buildWordImgTag(rowImg, 'Gambar Pernyataan', 260, 120, 'border: 1pt solid #cbd5e1; padding: 1.5pt; background-color: #ffffff;')}</div>`
           : '';
         choicesHtml += `
           <tr>
-            <td style="border: 1px solid #94a3b8; padding: 4pt 8pt;">
+            <td style="border: 1pt solid #cbd5e1; padding: 4.5pt 7.5pt; color: #0f172a;">
               <div>${formatMathForExport(r.text, 'word')}</div>
               ${rowImgMarkup}
             </td>
-            <td style="border: 1px solid #94a3b8; padding: 4pt 8pt; text-align: center;">${isCol1 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
-            <td style="border: 1px solid #94a3b8; padding: 4pt 8pt; text-align: center;">${isCol2 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
+            <td align="center" style="border: 1pt solid #cbd5e1; padding: 4.5pt 7.5pt; text-align: center;">${isCol1 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
+            <td align="center" style="border: 1pt solid #cbd5e1; padding: 4.5pt 7.5pt; text-align: center;">${isCol2 ? '<strong>✓ (Kunci)</strong>' : '[ &nbsp; ]'}</td>
           </tr>
         `;
       });
@@ -752,12 +959,12 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
     }
 
     questionsHtml += `
-      <div style="margin-bottom: 14pt; page-break-inside: avoid;">
+      <div style="margin-bottom: 12pt; page-break-inside: avoid;">
         <table style="width: 100%; border: none; border-collapse: collapse;">
           <tr>
-            <td width="24pt" valign="top" style="border: none; padding: 0; font-weight: bold;">${qNum}.</td>
-            <td valign="top" style="border: none; padding: 0; text-align: justify;">
-              ${formatMathForExport(q.soal, 'word', qImages)}
+            <td width="18pt" valign="top" style="border: none; padding: 0; font-weight: bold; font-size: 10pt; color: #0f172a; line-height: 1.6;">${qNum}.</td>
+            <td valign="top" style="border: none; padding: 0; font-size: 10pt; color: #0f172a; line-height: 1.6;">
+              <div>${formatMathForExport(q.soal, 'word', qImages)}</div>
               ${imgHtml}
               ${choicesHtml}
             </td>
@@ -767,12 +974,11 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
     `;
   });
 
-  const htmlContent = `
-<!DOCTYPE html>
-<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+  const htmlContent = `<!DOCTYPE html>
+<html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns:m="http://schemas.microsoft.com/office/2004/12/omml" xmlns="http://www.w3.org/TR/REC-html40">
 <head>
   <meta charset="utf-8">
-  <title>${ujian.Judul_Ujian}</title>
+  <title>Naskah Soal - ${ujian.Judul_Ujian}</title>
   <!--[if gte mso 9]>
   <xml>
     <w:WordDocument>
@@ -783,140 +989,114 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
   </xml>
   <![endif]-->
   <style>
-    @page {
-      size: A4;
-      margin: 2cm 2cm 2cm 2cm;
+    @page Section1 {
+      size: 21cm 29.7cm;
+      margin: 1.2cm 1.2cm 1.2cm 1.2cm;
       mso-page-orientation: portrait;
     }
+    div.Section1 {
+      page: Section1;
+    }
     body {
-      font-family: 'Calibri', 'Times New Roman', serif;
-      font-size: 11pt;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #0f172a;
       line-height: 1.5;
-      color: #111;
-    }
-    .math-frac {
-      display: inline-block;
-      vertical-align: middle;
-      text-align: center;
-      font-family: 'Calibri', 'Times New Roman', serif;
-      margin: 0 2pt;
-      font-size: 95%;
-      line-height: 1.1;
-    }
-    .math-num {
-      display: block;
-      border-bottom: 1pt solid windowtext;
-      padding: 0 2pt;
-    }
-    .math-den {
-      display: block;
-      padding: 0 2pt;
-    }
-    .kop-surat {
-      text-align: center;
-      border-bottom: 3px double #111;
-      padding-bottom: 6pt;
-      margin-bottom: 12pt;
-    }
-    .kop-sub {
       font-size: 10pt;
-      font-weight: bold;
-      text-transform: uppercase;
+      background-color: #ffffff;
+      margin: 0;
+      padding: 0;
     }
-    .kop-main {
-      font-size: 14pt;
-      font-weight: bold;
-      text-transform: uppercase;
-      margin: 2pt 0;
-      color: #0b2559;
-    }
-    .kop-addr {
-      font-size: 8.5pt;
-      color: #444;
-      font-style: italic;
-    }
-    .identitas-table {
+    .kop-table {
       width: 100%;
       border-collapse: collapse;
+      border: none;
+      border-bottom: 2.25pt double #0f172a;
       margin-bottom: 12pt;
-      border: 1px solid #64748b;
     }
-    .identitas-table td {
-      padding: 4pt 8pt;
-      font-size: 10pt;
-      border: 1px solid #94a3b8;
+    .kop-table td {
+      border: none;
+      border-bottom: 2.25pt double #0f172a;
+      padding: 0 0 7.5pt 0;
+      text-align: center;
     }
-    .petunjuk {
-      background-color: #f8fafc;
-      border: 1px dashed #94a3b8;
-      padding: 6pt 10pt;
+    .kop-sub {
+      margin: 0;
       font-size: 9pt;
-      margin-bottom: 14pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      color: #475569;
     }
-    .petunjuk ol {
-      margin: 2pt 0 2pt 14pt;
-      padding: 0;
+    .kop-main {
+      margin: 2pt 0;
+      font-size: 13.5pt;
+      font-weight: bold;
+      color: #1e3a8a;
+      text-transform: uppercase;
+    }
+    .kop-addr {
+      margin: 0;
+      font-size: 7.5pt;
+      color: #64748b;
+      font-style: italic;
+    }
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1pt solid #cbd5e1;
+      margin-bottom: 11pt;
+      font-size: 8.5pt;
+      color: #0f172a;
+    }
+    .meta-table td {
+      border: 1pt solid #cbd5e1;
+      padding: 4pt 6pt;
     }
   </style>
 </head>
 <body>
-  <div class="kop-surat">
-    <div class="kop-sub">${SCHOOL_SUBTITLE}</div>
-    <div class="kop-main">${SCHOOL_NAME}</div>
-    <div class="kop-addr">${SCHOOL_ADDRESS}</div>
-  </div>
+  <div class="Section1">
+    <table class="kop-table">
+      <tr>
+        <td align="center">
+          <div class="kop-sub">${SCHOOL_SUBTITLE}</div>
+          <div class="kop-main">${SCHOOL_NAME}</div>
+          <div class="kop-addr">${SCHOOL_ADDRESS}</div>
+        </td>
+      </tr>
+    </table>
 
-  <div style="text-align: center; font-weight: bold; font-size: 13pt; margin-bottom: 10pt; text-transform: uppercase;">
-    LEMBAR NASKAH SOAL / LATIHAN CBT SISWA
-    <br/>
-    <span style="font-size: 11pt; font-weight: normal;">${ujian.Judul_Ujian}</span>
-  </div>
+    <div align="center" style="text-align: center; font-weight: bold; font-size: 11.5pt; margin-bottom: 9pt; text-transform: uppercase; color: #0f172a;">
+      LEMBAR NASKAH SOAL CBT SISWA
+      <div style="font-size: 10pt; font-weight: bold; color: #4338ca; margin-top: 1.5pt;">${ujian.Judul_Ujian}</div>
+    </div>
 
-  <table class="identitas-table">
-    <tr>
-      <td width="18%"><strong>Nama Siswa</strong></td>
-      <td width="32%">: .....................................................</td>
-      <td width="18%"><strong>Hari / Tanggal</strong></td>
-      <td width="32%">: .....................................................</td>
-    </tr>
-    <tr>
-      <td><strong>Mata Pelajaran</strong></td>
-      <td>: ${ujian.Mapel}</td>
-      <td><strong>Target Kelas</strong></td>
-      <td>: ${ujian.Kelas}</td>
-    </tr>
-    <tr>
-      <td><strong>No. Absen</strong></td>
-      <td>: .....................................................</td>
-      <td><strong>Alokasi Waktu</strong></td>
-      <td>: ${ujian.Durasi_Menit} Menit</td>
-    </tr>
-  </table>
+    <table class="meta-table">
+      <tr>
+        <td width="18%"><strong>Nama Siswa</strong></td>
+        <td width="32%">: .....................................................</td>
+        <td width="18%"><strong>Hari / Tanggal</strong></td>
+        <td width="32%">: .....................................................</td>
+      </tr>
+      <tr>
+        <td><strong>Mata Pelajaran</strong></td>
+        <td>: ${ujian.Mapel}</td>
+        <td><strong>Target Kelas</strong></td>
+        <td>: ${ujian.Kelas}</td>
+      </tr>
+      <tr>
+        <td><strong>No. Absen</strong></td>
+        <td>: .....................................................</td>
+        <td><strong>Alokasi Waktu</strong></td>
+        <td>: ${ujian.Durasi_Menit} Menit</td>
+      </tr>
+    </table>
 
-  <div class="petunjuk">
-    <strong>PETUNJUK PENGERJAAN:</strong>
-    <ol>
-      <li>Berdoalah sebelum memulai mengerjakan soal.</li>
-      <li>Tuliskan identitas nama, kelas, dan nomor absen pada lembar naskah soal.</li>
-      <li>Bacalah setiap butir pertanyaan dengan cermat dan teliti.</li>
-      <li>Pilihlah salah satu jawaban yang paling tepat dengan menyilang atau mencentang opsi yang tersedia.</li>
-      <li>Periksa kembali seluruh lembar jawaban sebelum dikumpulkan.</li>
-    </ol>
-  </div>
-
-  <div style="font-weight: bold; margin-bottom: 10pt; border-bottom: 1px solid #111; padding-bottom: 2pt;">
-    I. JAWABLAH PERTANYAAN-PERTANYAAN DI BAWAH INI DENGAN TEPAT!
-  </div>
-
-  ${questionsHtml}
-
-  <div style="margin-top: 30pt; border-top: 1px dashed #64748b; padding-top: 8pt; font-size: 9pt; text-align: center; color: #64748b;">
-    --- Selamat Mengerjakan & Tetap Percaya Diri ---<br/>
-    <em>Dicetak dari Bank Soal CBT ${SCHOOL_NAME}</em>
+    <div style="margin-top: 12pt;">
+      ${questionsHtml}
+    </div>
   </div>
 </body>
-</html>
-  `;
+</html>`;
 
   const blob = convertHtmlToMhtmlWord(htmlContent);
   const url = URL.createObjectURL(blob);
