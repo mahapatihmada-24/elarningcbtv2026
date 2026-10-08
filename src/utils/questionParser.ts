@@ -38,9 +38,10 @@ export function parseQuickTextQuestions(rawText: string): Question[] {
     const isCategory = /\[(?:TABEL|KATEGORI)\]/i.test(block) || lines.some((l) => /\[(?:Benar|Salah|Sebelum|Sesudah)\]/i.test(l));
     const isMcma = /\[(?:PGK|CENTANG|MCMA)\]/i.test(block) || /Kunci\s*:\s*[A-E]\s*,\s*[A-E]/i.test(block);
 
-    // Extract Kunci and Bobot
+    // Extract Kunci and Bobot and Pembahasan
     let kunciRaw = 'A';
     let bobot = 1;
+    let pembahasan: string | undefined = undefined;
     const filteredLines: string[] = [];
 
     for (const line of lines) {
@@ -52,6 +53,12 @@ export function parseQuickTextQuestions(rawText: string): Question[] {
       const bobotMatch = line.match(/^Bobot\s*[:\-=]\s*(\d+)/i);
       if (bobotMatch) {
         bobot = parseInt(bobotMatch[1], 10) || 1;
+        continue;
+      }
+      const pembahasanMatch = line.match(/^Pembahasan(?:\s*Soal)?\s*[:\-=]\s*(.*)/i);
+      if (pembahasanMatch) {
+        const val = pembahasanMatch[1].trim();
+        pembahasan = (pembahasan ? pembahasan + '\n' : '') + val;
         continue;
       }
       filteredLines.push(line);
@@ -117,6 +124,7 @@ export function parseQuickTextQuestions(rawText: string): Question[] {
         col1: 'Benar',
         col2: 'Salah',
         rows: categoryRows,
+        pembahasan: pembahasan || undefined,
       };
       questions.push(qKategori);
     } else if (isMcma || kunciRaw.includes(',')) {
@@ -140,6 +148,7 @@ export function parseQuickTextQuestions(rawText: string): Question[] {
           { text: optionMap.a || 'Pilihan 1', isKey: true },
           { text: optionMap.b || 'Pilihan 2', isKey: false },
         ],
+        pembahasan: pembahasan || undefined,
       };
       questions.push(qMcma);
     } else {
@@ -160,6 +169,7 @@ export function parseQuickTextQuestions(rawText: string): Question[] {
         d: optionMap.d || optionLines[3]?.text || '',
         ...(optionMap.e || optionLines[4]?.text ? { e: optionMap.e || optionLines[4]?.text } : {}),
         kunci: validKey,
+        pembahasan: pembahasan || undefined,
       };
       questions.push(qPg);
     }
@@ -213,6 +223,7 @@ export function parseCsvQuestions(csvText: string): Question[] {
   const idxKunci = getIdx(['kunci', 'jawaban', 'key', 'kuncijawaban']);
   const idxBobot = getIdx(['bobot', 'poin', 'score']);
   const idxGambar = getIdx(['gambar', 'image', 'linkgambar', 'img']);
+  const idxPembahasan = getIdx(['pembahasan', 'penjelasan', 'solusi', 'explanation']);
 
   const questions: Question[] = [];
 
@@ -231,6 +242,7 @@ export function parseCsvQuestions(csvText: string): Question[] {
     const rawKunci = (idxKunci !== -1 ? row[idxKunci]?.trim() : row[6]?.trim() || 'A').toUpperCase();
     const rawBobot = parseInt(idxBobot !== -1 ? row[idxBobot]?.trim() : row[7]?.trim() || '1', 10) || 1;
     const rawGambar = idxGambar !== -1 ? row[idxGambar]?.trim() : row[8]?.trim() || '';
+    const rawPembahasan = idxPembahasan !== -1 ? row[idxPembahasan]?.trim() : '';
     const rawGambarList = rawGambar
       ? rawGambar
           .split(/[|\n]/)
@@ -265,6 +277,7 @@ export function parseCsvQuestions(csvText: string): Question[] {
         gambar: gambarMain,
         gambar_list: gambarList,
         options: opts,
+        pembahasan: rawPembahasan || undefined,
       });
     } else if (rawType.includes('tabel') || rawType.includes('kategori')) {
       // Row items semicolon separated in rawA, e.g. "Pernyataan 1:col1;Pernyataan 2:col2"
@@ -293,6 +306,7 @@ export function parseCsvQuestions(csvText: string): Question[] {
         col1: col1Name,
         col2: col2Name,
         rows: catRows,
+        pembahasan: rawPembahasan || undefined,
       });
     } else {
       // Pilihan Ganda (PG)
@@ -313,6 +327,7 @@ export function parseCsvQuestions(csvText: string): Question[] {
         c: rawC,
         d: rawD,
         kunci: validKey,
+        pembahasan: rawPembahasan || undefined,
       });
     }
   }

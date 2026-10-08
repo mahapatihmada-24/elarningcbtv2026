@@ -795,7 +795,10 @@ function convertHtmlToMhtmlWord(htmlContent: string): Blob {
  * Formats and downloads Ujian CBT as an official student worksheet (.doc)
  * with layout, typography, images, math formulas, and options matching the PDF export 100%.
  */
-export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boolean } = {}): void {
+export function downloadExamWord(
+  ujian: Ujian,
+  options: { includeAnswers?: boolean; includePembahasan?: boolean } = {}
+): void {
   let questions: Question[] = [];
   try {
     const parsed = JSON.parse(ujian.Soal_JSON || '{}');
@@ -871,7 +874,7 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
             choicesHtml += `<td width="50%" valign="top" style="border: none; padding: 3pt 6pt;">&nbsp;</td>`;
             return;
           }
-          const isCorrect = options.includeAnswers && q.kunci === opt.key.toUpperCase();
+          const isCorrect = (options.includeAnswers || options.includePembahasan) && q.kunci === opt.key.toUpperCase();
           const cellStyle = isCorrect
             ? 'border: 1pt solid #86efac; background-color: #dcfce7; font-weight: bold; padding: 3pt 6pt; font-size: 10pt; color: #0f172a;'
             : 'border: none; padding: 3pt 6pt; font-size: 10pt; color: #0f172a;';
@@ -888,7 +891,7 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
         choicesHtml += `</tr>`;
       }
       choicesHtml += `</table>`;
-      if (options.includeAnswers) {
+      if (options.includeAnswers || options.includePembahasan) {
         choicesHtml += `<div style="font-size: 8.5pt; color: #15803d; font-weight: bold; margin-top: 3pt;">Kunci Jawaban: ${q.kunci}</div>`;
       }
     } else if (q.type === 'pgk_mcma') {
@@ -896,7 +899,7 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
       const opts = Array.isArray(q.options) ? q.options : [];
       opts.forEach((opt: any, oIdx: number) => {
         const letter = String.fromCharCode(65 + oIdx);
-        const isCorrect = options.includeAnswers && Boolean(opt?.isKey);
+        const isCorrect = (options.includeAnswers || options.includePembahasan) && Boolean(opt?.isKey);
         const boxBorder = isCorrect ? '1pt solid #86efac' : '1pt solid #e2e8f0';
         const boxBg = isCorrect ? '#dcfce7' : '#ffffff';
         const optText = typeof opt === 'string' ? opt : (opt?.text || '');
@@ -938,8 +941,8 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
           <tbody>
       `;
       q.rows.forEach((r) => {
-        const isCol1 = options.includeAnswers && r.key === 'col1';
-        const isCol2 = options.includeAnswers && r.key === 'col2';
+        const isCol1 = (options.includeAnswers || options.includePembahasan) && r.key === 'col1';
+        const isCol2 = (options.includeAnswers || options.includePembahasan) && r.key === 'col2';
         const rowImg = r.img || (r as any).gambar || (r as any).image || (r as any).url;
         const rowImgMarkup = rowImg
           ? `<div style="margin-top: 4.5pt;">${buildWordImgTag(rowImg, 'Gambar Pernyataan', 260, 120, 'border: 1pt solid #cbd5e1; padding: 1.5pt; background-color: #ffffff;')}</div>`
@@ -958,6 +961,17 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
       choicesHtml += `</tbody></table>`;
     }
 
+    const pembahasanWordHtml = (options.includePembahasan && q.pembahasan && q.pembahasan.trim())
+      ? `<table style="width: 100%; border-collapse: collapse; margin-top: 6pt; border: 1pt solid #86efac; background-color: #f0fdf4;">
+          <tr>
+            <td style="padding: 6pt 8pt; font-size: 9.5pt; color: #166534; border: 1pt solid #86efac;">
+              <div style="font-weight: bold; margin-bottom: 2pt;">💡 Pembahasan Soal:</div>
+              <div style="color: #1e293b; line-height: 1.5;">${formatMathForExport(q.pembahasan, 'word')}</div>
+            </td>
+          </tr>
+        </table>`
+      : '';
+
     questionsHtml += `
       <div style="margin-bottom: 12pt; page-break-inside: avoid;">
         <table style="width: 100%; border: none; border-collapse: collapse;">
@@ -967,12 +981,19 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
               <div>${formatMathForExport(q.soal, 'word', qImages)}</div>
               ${imgHtml}
               ${choicesHtml}
+              ${pembahasanWordHtml}
             </td>
           </tr>
         </table>
       </div>
     `;
   });
+
+  const docTitleText = options.includePembahasan
+    ? 'LEMBAR SOAL, KUNCI JAWABAN & PEMBAHASAN CBT'
+    : options.includeAnswers
+    ? 'LEMBAR SOAL & KUNCI JAWABAN CBT GURU'
+    : 'LEMBAR NASKAH SOAL CBT SISWA';
 
   const htmlContent = `<!DOCTYPE html>
 <html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns:m="http://schemas.microsoft.com/office/2004/12/omml" xmlns="http://www.w3.org/TR/REC-html40">
@@ -1066,7 +1087,7 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
     </table>
 
     <div align="center" style="text-align: center; font-weight: bold; font-size: 11.5pt; margin-bottom: 9pt; text-transform: uppercase; color: #0f172a;">
-      LEMBAR NASKAH SOAL CBT SISWA
+      ${docTitleText}
       <div style="font-size: 10pt; font-weight: bold; color: #4338ca; margin-top: 1.5pt;">${ujian.Judul_Ujian}</div>
     </div>
 
@@ -1103,7 +1124,11 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
   const a = document.createElement('a');
   a.href = url;
   const safeTitle = ujian.Judul_Ujian.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim() || 'Soal';
-  const tag = options.includeAnswers ? '[Kunci_Jawaban_Guru]' : '[Naskah_Soal_Siswa]';
+  const tag = options.includePembahasan
+    ? '[Soal_Kunci_Pembahasan]'
+    : options.includeAnswers
+    ? '[Kunci_Jawaban_Guru]'
+    : '[Naskah_Soal_Siswa]';
   a.download = `${tag} ${safeTitle}.doc`;
   document.body.appendChild(a);
   a.click();
@@ -1114,7 +1139,10 @@ export function downloadExamWord(ujian: Ujian, options: { includeAnswers?: boole
 /**
  * Prints Ujian CBT or opens Printable dialog
  */
-export function printExamDocument(ujian: Ujian, options: { includeAnswers?: boolean } = {}): void {
+export function printExamDocument(
+  ujian: Ujian,
+  options: { includeAnswers?: boolean; includePembahasan?: boolean } = {}
+): void {
   let questions: Question[] = [];
   try {
     const parsed = JSON.parse(ujian.Soal_JSON || '{}');
@@ -1170,7 +1198,7 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
         const optText = q[k];
         const optImg = (q as any)[`${k}_img`];
         if (optText || optImg) {
-          const isCorrect = options.includeAnswers && q.kunci === k.toUpperCase();
+          const isCorrect = (options.includeAnswers || options.includePembahasan) && q.kunci === k.toUpperCase();
           const badge = isCorrect ? ' background-color: #dcfce7; font-weight: bold; border: 1px solid #86efac;' : '';
           const imgMarkup = optImg
             ? `<div style="margin-top: 4px;"><img src="${optImg}" alt="Gambar ${k.toUpperCase()}" referrerpolicy="no-referrer" loading="eager" decoding="sync" style="max-height: 110px; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 4px; object-fit: contain; display: block;" /></div>`
@@ -1184,7 +1212,7 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
         }
       });
       choicesHtml += `</div>`;
-      if (options.includeAnswers) {
+      if (options.includeAnswers || options.includePembahasan) {
         choicesHtml += `<div style="font-size: 11px; color: #15803d; font-weight: bold; margin-top: 4px;">Kunci Jawaban: ${q.kunci}</div>`;
       }
     } else if (q.type === 'pgk_mcma') {
@@ -1193,7 +1221,7 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
       const opts = Array.isArray(q.options) ? q.options : [];
       opts.forEach((opt: any, oIdx: number) => {
         const letter = String.fromCharCode(65 + oIdx);
-        const isCorrect = options.includeAnswers && Boolean(opt?.isKey);
+        const isCorrect = (options.includeAnswers || options.includePembahasan) && Boolean(opt?.isKey);
         const badge = isCorrect ? ' background-color: #dcfce7; border: 1px solid #86efac;' : ' background-color: #ffffff; border: 1px solid #e2e8f0;';
         const optText = typeof opt === 'string' ? opt : (opt?.text || '');
         const optImg = (opt && typeof opt === 'object')
@@ -1229,8 +1257,8 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
           <tbody>
       `;
       q.rows.forEach((r) => {
-        const isCol1 = options.includeAnswers && r.key === 'col1';
-        const isCol2 = options.includeAnswers && r.key === 'col2';
+        const isCol1 = (options.includeAnswers || options.includePembahasan) && r.key === 'col1';
+        const isCol2 = (options.includeAnswers || options.includePembahasan) && r.key === 'col2';
         const rowImg = r.img || (r as any).gambar || (r as any).image || (r as any).url;
         const rowImgMarkup = rowImg
           ? `<div style="margin-top: 6px;"><img src="${rowImg}" alt="Gambar Pernyataan" referrerpolicy="no-referrer" loading="eager" decoding="sync" style="max-height: 120px; max-width: 260px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px; background: #fff; object-fit: contain; display: block;" /></div>`
@@ -1249,6 +1277,13 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
       choicesHtml += `</tbody></table>`;
     }
 
+    const pembahasanPrintHtml = (options.includePembahasan && q.pembahasan && q.pembahasan.trim())
+      ? `<div style="margin-top: 8px; border: 1px solid #86efac; background-color: #f0fdf4; border-radius: 6px; padding: 8px 12px; font-size: 12px;">
+          <div style="font-weight: bold; color: #166534; margin-bottom: 3px;">💡 Pembahasan Soal:</div>
+          <div style="color: #1e293b; line-height: 1.6;">${formatMathForExport(q.pembahasan, 'print')}</div>
+        </div>`
+      : '';
+
     questionsHtml += `
       <div style="margin-bottom: 16px; page-break-inside: avoid;">
         <div style="display: flex; gap: 8px; align-items: flex-start;">
@@ -1257,11 +1292,18 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
             <div style="font-size: 13.5px; line-height: 1.6;">${formatMathForExport(q.soal, 'print', qImages)}</div>
             ${imgHtml}
             ${choicesHtml}
+            ${pembahasanPrintHtml}
           </div>
         </div>
       </div>
     `;
   });
+
+  const docTitleText = options.includePembahasan
+    ? 'LEMBAR SOAL, KUNCI JAWABAN & PEMBAHASAN CBT'
+    : options.includeAnswers
+    ? 'LEMBAR SOAL & KUNCI JAWABAN CBT GURU'
+    : 'LEMBAR NASKAH SOAL CBT SISWA';
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -1342,7 +1384,7 @@ export function printExamDocument(ujian: Ujian, options: { includeAnswers?: bool
   </div>
 
   <div style="text-align: center; font-weight: 800; font-size: 15px; margin-bottom: 12px; text-transform: uppercase;">
-    LEMBAR NASKAH SOAL CBT SISWA
+    ${docTitleText}
     <div style="font-size: 13px; font-weight: 600; color: #4338ca;">${ujian.Judul_Ujian}</div>
   </div>
 

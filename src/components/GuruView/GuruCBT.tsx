@@ -23,6 +23,7 @@ import {
   Sparkles,
   Copy,
   BookOpen,
+  Lightbulb,
 } from 'lucide-react';
 import {
   Ujian,
@@ -42,6 +43,8 @@ import { BulkQuestionModal } from './BulkQuestionModal';
 import { PerQuestionEditor } from './PerQuestionEditor';
 import { KisiKisiModal } from '../KisiKisiModal';
 import { GenerateSoalKisiKisiModal } from './GenerateSoalKisiKisiModal';
+import { ExportExamModal } from '../ExportExamModal';
+import { ExamReviewModal } from '../ExamReviewModal';
 import {
   downloadExamWord,
   printExamDocument,
@@ -103,6 +106,8 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
   const [kisiModalQuestions, setKisiModalQuestions] = useState<Question[] | undefined>(undefined);
   const [isKisiModalOpen, setIsKisiModalOpen] = useState(false);
   const [isGenerateSoalModalOpen, setIsGenerateSoalModalOpen] = useState(false);
+  const [exportModalExam, setExportModalExam] = useState<Ujian | null>(null);
+  const [reviewModalExam, setReviewModalExam] = useState<Ujian | null>(null);
 
   const generateRandomToken = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -995,6 +1000,34 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                   <p className="text-xs font-medium text-slate-700 line-clamp-2">
                     {q.soal || '(Belum ada teks pertanyaan)'}
                   </p>
+
+                  {/* Kunci Jawaban & Pembahasan Badge */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
+                    <span className="px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold flex items-center gap-1">
+                      <KeyRound className="w-3 h-3 text-indigo-600" />
+                      <span>
+                        Kunci:{' '}
+                        {q.type === 'pg'
+                          ? `Opsi ${(q as QuestionPG).kunci || 'A'}`
+                          : q.type === 'pgk_mcma'
+                          ? `${((q as QuestionPGKMCMA).options || []).filter((o) => o.isKey).length} Opsi`
+                          : `${(q as QuestionPGKKategori).rows?.length || 0} Pernyataan`}
+                      </span>
+                    </span>
+
+                    {q.pembahasan && q.pembahasan.trim() ? (
+                      <span className="px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 font-bold flex items-center gap-1">
+                        <Lightbulb className="w-3 h-3 text-amber-600" />
+                        <span className="line-clamp-1 max-w-[280px]">
+                          Pembahasan: {q.pembahasan}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 italic">
+                        (Belum ada pembahasan)
+                      </span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1109,18 +1142,20 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                         <span className="hidden sm:inline">Kisi-Kisi</span>
                       </button>
                       <button
-                        onClick={() => downloadExamWord(u, { includeAnswers: false })}
-                        className="p-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition"
-                        title="Unduh Lembar Naskah Soal Siswa (.doc)"
+                        onClick={() => setExportModalExam(u)}
+                        className="p-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition flex items-center gap-1 font-semibold text-xs px-2"
+                        title="Cetak & Unduh Dokumen (PDF & Word: Naskah / Kunci / Pembahasan)"
                       >
-                        <Download className="w-4 h-4" />
+                        <Printer className="w-4 h-4 text-indigo-600" />
+                        <span className="hidden sm:inline">Cetak/Word</span>
                       </button>
                       <button
-                        onClick={() => printExamDocument(u, { includeAnswers: false })}
-                        className="p-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 transition"
-                        title="Cetak Naskah Soal / Simpan PDF"
+                        onClick={() => setReviewModalExam(u)}
+                        className="p-1.5 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 transition flex items-center gap-1 font-semibold text-xs px-2"
+                        title="Review Kunci Jawaban & Pembahasan Soal"
                       >
-                        <Printer className="w-4 h-4" />
+                        <Lightbulb className="w-4 h-4 text-amber-600" />
+                        <span className="hidden sm:inline">Pembahasan</span>
                       </button>
                       <button
                         onClick={() => handleEditUjian(u)}
@@ -1204,6 +1239,29 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
           kelas={kelas}
           onApplyQuestions={handleApplyGeneratedQuestions}
           onUpdateKisiKisi={(newItems) => setCurrentKisiKisi(newItems)}
+        />
+      )}
+
+      {/* Export / Cetak Exam Modal */}
+      {exportModalExam && (
+        <ExportExamModal
+          isOpen={Boolean(exportModalExam)}
+          onClose={() => setExportModalExam(null)}
+          ujian={exportModalExam}
+          userRole="guru"
+          isStudent={false}
+        />
+      )}
+
+      {/* Review Soal & Pembahasan Modal */}
+      {reviewModalExam && (
+        <ExamReviewModal
+          isOpen={Boolean(reviewModalExam)}
+          onClose={() => setReviewModalExam(null)}
+          ujian={reviewModalExam}
+          onViewImage={onViewImage}
+          userRole="guru"
+          isTeacher={true}
         />
       )}
     </div>

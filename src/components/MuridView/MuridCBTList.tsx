@@ -16,11 +16,15 @@ import {
   X,
   AlertTriangle,
   BookOpen,
+  Lightbulb,
+  Lock,
 } from 'lucide-react';
-import { Ujian, Nilai, User, SchoolProfile } from '../../types';
+import { Ujian, Nilai, User, SchoolProfile, Question } from '../../types';
 import { api } from '../../services/api';
 import { downloadExamWord, printExamDocument } from '../../utils/documentExport';
 import { KisiKisiModal } from '../KisiKisiModal';
+import { ExamReviewModal } from '../ExamReviewModal';
+import { ExportExamModal } from '../ExportExamModal';
 
 interface MuridCBTListProps {
   currentUser: User;
@@ -41,6 +45,16 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
   const [tokenModalExam, setTokenModalExam] = useState<Ujian | null>(null);
   const [tokenInput, setTokenInput] = useState('');
   const [tokenError, setTokenError] = useState('');
+
+  // Review & Export Modals
+  const [reviewModalExam, setReviewModalExam] = useState<{ exam: Ujian; nilai?: Nilai | null } | null>(null);
+  const [exportModalExam, setExportModalExam] = useState<Ujian | null>(null);
+  const [lockedNotice, setLockedNotice] = useState<{
+    title: string;
+    message: string;
+    total: number;
+    answered: number;
+  } | null>(null);
 
   const isAdmin = currentUser.role === 'admin';
 
@@ -218,10 +232,37 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
             const studentSubmissions = hasilList.filter((h) => h.ID_Ujian === u.ID);
             const attemptsCount = studentSubmissions.length;
             const isCompletedAndLocked = maxAttempts > 0 && attemptsCount >= maxAttempts;
-            const latestScore =
+            const latestSubmission =
               studentSubmissions.length > 0
-                ? studentSubmissions[studentSubmissions.length - 1].Nilai
+                ? studentSubmissions[studentSubmissions.length - 1]
                 : null;
+            const latestScore = latestSubmission ? latestSubmission.Nilai : null;
+
+            // Hitung butir soal yang telah dijawab siswa pada pengerjaan terakhir
+            let studentAnsweredCount = 0;
+            if (latestSubmission?.Jawaban_JSON) {
+              try {
+                const rawAnswers = JSON.parse(latestSubmission.Jawaban_JSON);
+                let parsedQList: Question[] = [];
+                try {
+                  const p = JSON.parse(u.Soal_JSON || '{}');
+                  parsedQList = p.questions || (Array.isArray(p) ? p : []);
+                } catch {}
+
+                studentAnsweredCount = parsedQList.filter((q, idx) => {
+                  const a = rawAnswers[idx];
+                  if (a === undefined || a === null || a === '') return false;
+                  if (q.type === 'pg') return typeof a === 'string' && a.length > 0;
+                  if (q.type === 'pgk_mcma') return Array.isArray(a) && a.some((v: any) => v === true);
+                  if (q.type === 'pgk_kategori') {
+                    const rows = q.rows || [];
+                    return typeof a === 'object' && Object.keys(a).length === rows.length;
+                  }
+                  return true;
+                }).length;
+              } catch {}
+            }
+            const isAllAnswered = questionCount > 0 && studentAnsweredCount >= questionCount;
 
             // Schedule check
             const now = new Date();
@@ -345,6 +386,37 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
                     </button>
                   )}
 
+                  {attemptsCount > 0 &&
+                    (isAllAnswered ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReviewModalExam({ exam: u, nilai: latestSubmission });
+                        }}
+                        className="w-full py-2.5 px-3 rounded-xl bg-purple-50 hover:bg-purple-100 active:scale-98 text-purple-700 font-bold text-xs border border-purple-200 transition flex items-center justify-center gap-1.5 shadow-2xs"
+                      >
+                        <Lightbulb className="w-4 h-4 text-purple-600" />
+                        <span>Review Kunci & Pembahasan Soal</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLockedNotice({
+                            title: 'Review & Pembahasan Terkunci',
+                            message: `Kunci jawaban dan pembahasan soal baru dapat terbuka jika Anda telah menjawab dan mengumpulkan seluruh butir soal (${questionCount} butir). Pada ujian ini, Anda baru menyelesaikan ${studentAnsweredCount} dari ${questionCount} butir soal.`,
+                            total: questionCount,
+                            answered: studentAnsweredCount,
+                          });
+                        }}
+                        className="w-full py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold text-xs border border-slate-200 transition flex items-center justify-center gap-1.5 cursor-not-allowed opacity-85"
+                        title={`Kunci & pembahasan terkunci (baru terjawab: ${studentAnsweredCount}/${questionCount} butir)`}
+                      >
+                        <Lock className="w-4 h-4 text-slate-400" />
+                        <span>Kunci & Pembahasan Terkunci ({studentAnsweredCount}/{questionCount})</span>
+                      </button>
+                    ))}
+
                   {/* Student Question Sheet Download & Print & Kisi-Kisi */}
                   <div className="flex items-center gap-1.5 pt-1">
                     <button
@@ -359,22 +431,12 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
 
                     <button
                       type="button"
-                      onClick={() => downloadExamWord(u, { includeAnswers: false })}
-                      className="flex-1 py-1.5 px-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-[11px] border border-blue-200 transition flex items-center justify-center gap-1.5"
-                      title="Unduh lembar naskah soal LKS untuk belajar dan mengulang"
+                      onClick={() => setExportModalExam(u)}
+                      className="flex-1 py-1.5 px-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] border border-indigo-200 transition flex items-center justify-center gap-1.5"
+                      title="Cetak atau Unduh Dokumen Soal (PDF / Word, Naskah / Kunci / Pembahasan)"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>Unduh Soal (.doc)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => printExamDocument(u, { includeAnswers: false })}
-                      className="py-1.5 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] border border-slate-200 transition flex items-center justify-center gap-1"
-                      title="Cetak atau simpan soal sebagai PDF"
-                    >
-                      <Printer className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">Cetak</span>
+                      <span>Cetak / Unduh (.doc & PDF)</span>
                     </button>
                   </div>
                 </div>
@@ -454,6 +516,53 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
           schoolProfile={schoolProfile}
           readOnly={true}
         />
+      )}
+
+      {/* REVIEW HASIL & PEMBAHASAN MODAL */}
+      {reviewModalExam && (
+        <ExamReviewModal
+          isOpen={Boolean(reviewModalExam)}
+          onClose={() => setReviewModalExam(null)}
+          ujian={reviewModalExam.exam}
+          nilai={reviewModalExam.nilai}
+          userRole="murid"
+          isTeacher={false}
+        />
+      )}
+
+      {/* EXPORT / CETAK EXAM MODAL: Terkunci khusus naskah soal siswa saja */}
+      {exportModalExam && (
+        <ExportExamModal
+          isOpen={Boolean(exportModalExam)}
+          onClose={() => setExportModalExam(null)}
+          ujian={exportModalExam}
+          userRole="murid"
+          isStudent={true}
+        />
+      )}
+
+      {/* MODAL PERINGATAN REVIEW TERKUNCI KARENA BELUM SEMUA SOAL TERJAWAB */}
+      {lockedNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-700 mx-auto flex items-center justify-center shadow-inner">
+              <Lock className="w-7 h-7" />
+            </div>
+            <div className="space-y-1.5">
+              <h4 className="font-black text-slate-800 text-base">{lockedNotice.title}</h4>
+              <p className="text-xs text-slate-600 leading-relaxed text-left">{lockedNotice.message}</p>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 font-bold text-left">
+                Pengerjaan: {lockedNotice.answered} dari {lockedNotice.total} Butir Soal ({lockedNotice.total - lockedNotice.answered} belum dijawab)
+              </div>
+            </div>
+            <button
+              onClick={() => setLockedNotice(null)}
+              className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-sm active:scale-98"
+            >
+              Saya Mengerti
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

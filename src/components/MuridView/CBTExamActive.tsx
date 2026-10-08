@@ -15,12 +15,14 @@ import {
   ListFilter,
   X,
   User as UserIcon,
+  Lock,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Ujian, Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, User, getQuestionImages } from '../../types';
+import { Ujian, Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, User, Nilai, getQuestionImages } from '../../types';
 import { api } from '../../services/api';
 import { MathRenderer } from '../MathRenderer';
 import { ModalState } from '../ConfirmModal';
+import { ExamReviewModal } from '../ExamReviewModal';
 
 interface CBTExamActiveProps {
   exam: Ujian;
@@ -53,6 +55,8 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isDaftarSoalOpen, setIsDaftarSoalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [submittedNilai, setSubmittedNilai] = useState<Nilai | null>(null);
 
   // Student answers state
   // Key: question index => value
@@ -146,37 +150,47 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Prevent accidental page leave
+    // Proteksi Keamanan: Siswa tidak bisa menutup tab atau navigasi keluar sebelum waktu selesai
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (!isSubmittingRef.current) {
         e.preventDefault();
-        e.returnValue = '';
+        e.returnValue = 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.';
+        return 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.';
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
 
+    // Kunci riwayat browser agar tidak bisa tekan tombol 'Back' untuk keluar
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      if (!isSubmittingRef.current) {
+        window.history.pushState(null, '', window.location.href);
+        onShowModal({
+          isOpen: true,
+          title: 'Peringatan Keamanan Ujian',
+          message: 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.',
+          type: 'warning',
+          isConfirm: false,
+          okText: 'Saya Mengerti, Lanjutkan Ujian',
+        });
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('popstate', handlePopState);
     };
   }, []);
 
-  // Timer interval
+  // Timer interval: Pengakhiran otomatis tepat ketika timer menyentuh angka 00:00
   useEffect(() => {
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          onShowModal({
-            isOpen: true,
-            title: 'Waktu Ujian Habis!',
-            message: 'Waktu pengerjaan telah berakhir. Jawaban Anda akan otomatis dikirim ke server.',
-            type: 'info',
-            isConfirm: false,
-            onConfirm: () => {
-              handleSubmitExam(true);
-            },
-          });
+          // Pengakhiran Otomatis Saat Timer Habis (00:00)
           handleSubmitExam(true);
           return 0;
         }
@@ -314,9 +328,22 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
       kelas: currentUser.kelas,
       nilai: finalScoreNum,
       pelanggaran: cheatCountRef.current,
+      jawaban_json: JSON.stringify(answers),
     };
 
     await api.submitHasilUjian(payload);
+
+    setSubmittedNilai({
+      ID: 'NILAI-' + Date.now(),
+      ID_Ujian: exam.ID,
+      Judul_Ujian: exam.Judul_Ujian,
+      Nama_Murid: currentUser.nama,
+      Kelas: currentUser.kelas,
+      Nilai: finalScoreNum,
+      Pelanggaran: cheatCountRef.current,
+      Waktu_Submit: new Date().toISOString(),
+      Jawaban_JSON: JSON.stringify(answers),
+    });
 
     if (finalScoreNum >= 75) {
       try {
@@ -329,41 +356,65 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     }
 
     const isViolationLimit = cheatCountRef.current >= 3;
+    const isAllQuestionsAnswered = answeredCount >= activeQuestions.length;
 
-    onShowModal({
-      isOpen: true,
-      title: isViolationLimit ? 'Ujian Dihentikan (3x Pelanggaran)' : 'Ujian Selesai!',
-      message: isViolationLimit
-        ? `Ujian telah dihentikan secara otomatis oleh sistem karena Anda telah mencapai batas maksimal 3 kali pelanggaran (meninggalkan halaman ujian).\n\nLembar jawaban Anda telah tersimpan dan terkirim ke server guru.\n\nNilai Murni: ${rawScoreStr}\nPenalti Pelanggaran (3x): -${penaltyStr}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100,00`
-        : `Selamat, Anda telah menyelesaikan ujian!\n\nNilai Murni: ${rawScoreStr}${penaltyVal > 0 ? `\nPenalti Pindah Tab (${cheatCountRef.current}x): -${penaltyStr}` : ''}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100,00`,
-      type: isViolationLimit ? 'danger' : finalScoreNum >= 75 ? 'success' : 'info',
-      isConfirm: false,
-      okText: 'Kembali ke Menu Utama',
-      onConfirm: () => {
-        onFinishExam();
-      },
-    });
+    let finishMsg = '';
+    if (isViolationLimit) {
+      finishMsg = `Ujian telah dihentikan secara otomatis oleh sistem karena Anda telah mencapai batas maksimal 3 kali pelanggaran (meninggalkan halaman ujian).\n\nLembar jawaban Anda telah tersimpan dan terkirim ke server guru.\n\nNilai Murni: ${rawScoreStr}\nPenalti Pelanggaran (3x): -${penaltyStr}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100,00`;
+    } else {
+      finishMsg = `Waktu pengerjaan ujian telah berakhir (00:00). Sistem telah mengumpulkan lembar jawaban Anda secara otomatis ke server guru.\n\nNilai Murni: ${rawScoreStr}${penaltyVal > 0 ? `\nPenalti Pindah Tab (${cheatCountRef.current}x): -${penaltyStr}` : ''}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100,00`;
+    }
+
+    if (isAllQuestionsAnswered) {
+      onShowModal({
+        isOpen: true,
+        title: isViolationLimit ? 'Ujian Dihentikan (3x Pelanggaran)' : 'Ujian Selesai Otomatis!',
+        message: `${finishMsg}\n\nSeluruh soal telah Anda jawab lengkap (${activeQuestions.length} butir).\nKlik "Lihat Review & Pembahasan" untuk meninjau kunci jawaban dan pembahasan soal.`,
+        type: isViolationLimit ? 'danger' : finalScoreNum >= 75 ? 'success' : 'info',
+        isConfirm: true,
+        okText: 'Lihat Review & Pembahasan',
+        cancelText: 'Kembali ke Menu Utama',
+        onConfirm: () => {
+          setIsReviewOpen(true);
+        },
+        onCancel: () => {
+          onFinishExam();
+        },
+      });
+    } else {
+      // Syarat Kemunculan Review: Jika soal belum lengkap, sistem menolak dan menyembunyikan tampilan review, kunci jawaban, serta pembahasan!
+      onShowModal({
+        isOpen: true,
+        title: isViolationLimit ? 'Ujian Dihentikan (3x Pelanggaran)' : 'Ujian Selesai Otomatis!',
+        message: `${finishMsg}\n\n⚠️ Kunci & Pembahasan Terkunci:\nAnda baru menjawab ${answeredCount} dari ${activeQuestions.length} butir soal. Sesuai ketentuan sistem CBT, review hasil, kunci jawaban, dan pembahasan hanya dapat dibuka jika seluruh butir soal (${activeQuestions.length} butir) telah selesai dikerjakan lengkap.`,
+        type: isViolationLimit ? 'danger' : 'info',
+        isConfirm: false,
+        okText: 'Kembali ke Menu Utama',
+        onConfirm: () => {
+          onFinishExam();
+        },
+      });
+    }
   };
 
   const confirmSubmit = () => {
-    const unanswered = activeQuestions.length - answeredCount;
-    let confirmMsg = 'Apakah Anda yakin ingin menyelesaikan dan mengirimkan jawaban ujian ini sekarang?';
-    if (unanswered > 0) {
-      confirmMsg = `Masih ada ${unanswered} soal yang BELUM dijawab!\n\nApakah Anda tetap ingin mengirimkan lembar ujian sekarang?`;
+    // Kunci Fitur Selesai Ujian Sebelum Waktu Habis:
+    // Tombol 'Selesai Ujian' atau 'Kumpulkan' milik siswa harus di-nonaktifkan (disabled) atau disembunyikan selama timer durasi ujian masih berjalan.
+    // Siswa tidak diperbolehkan keluar secara mandiri atau menyelesaikan ujian lebih awal sebelum waktu habis, meskipun seluruh soal sudah diisi.
+    // Tampilkan pesan peringatan jika siswa mencoba keluar: 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.'
+    if (timeLeft > 0) {
+      onShowModal({
+        isOpen: true,
+        title: 'Ujian Tidak Dapat Diakhiri',
+        message: 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.',
+        type: 'warning',
+        isConfirm: false,
+        okText: 'Saya Mengerti, Periksa Kembali',
+      });
+      return;
     }
 
-    onShowModal({
-      isOpen: true,
-      title: 'Konfirmasi Pengumpulan Jawaban',
-      message: confirmMsg,
-      type: unanswered > 0 ? 'warning' : 'question',
-      isConfirm: true,
-      okText: 'Ya, Kumpulkan Jawaban',
-      cancelText: 'Lanjutkan Mengerjakan',
-      onConfirm: () => {
-        handleSubmitExam(false);
-      },
-    });
+    handleSubmitExam(true);
   };
 
   // Format MM:SS
@@ -447,13 +498,31 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
 
-            {/* Submit */}
+            {/* Submit: Dikunci selama timer berjalan */}
             <button
               onClick={confirmSubmit}
-              className="flex items-center gap-1 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-sm transition active:scale-95"
+              className={`flex items-center gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-lg font-bold text-xs sm:text-sm transition ${
+                timeLeft > 0
+                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed opacity-90'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm active:scale-95'
+              }`}
+              title={
+                timeLeft > 0
+                  ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.'
+                  : 'Kirimkan Lembar Ujian'
+              }
             >
-              <Send className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Kirim</span>
+              {timeLeft > 0 ? (
+                <>
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="hidden sm:inline">Kumpulkan (Terkunci)</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Kirim</span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -944,10 +1013,28 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                   ) : (
                     <button
                       onClick={confirmSubmit}
-                      className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition active:scale-95"
+                      className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition ${
+                        timeLeft > 0
+                          ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm active:scale-95'
+                      }`}
+                      title={
+                        timeLeft > 0
+                          ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.'
+                          : 'Selesai & Kirimkan Jawaban'
+                      }
                     >
-                      <Send className="w-4 h-4" />
-                      <span>Selesai & Kirim</span>
+                      {timeLeft > 0 ? (
+                        <>
+                          <Lock className="w-4 h-4 text-slate-400" />
+                          <span>Selesai (Terkunci s/d 00:00)</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4" />
+                          <span>Selesai & Kirim</span>
+                        </>
+                      )}
                     </button>
                   )}
                 </div>
@@ -961,20 +1048,47 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
       {viewMode === 'all' && (
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
-            <span className="font-bold text-slate-800 text-sm block">
-              Status Pengerjaan: {answeredCount} dari {activeQuestions.length} Soal Dijawab
-            </span>
-            <span className="text-xs text-slate-500">
-              Periksa kembali jawaban Anda sebelum mengirimkan lembar ujian.
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-800 text-sm">
+                Status Pengerjaan: {answeredCount} dari {activeQuestions.length} Soal Dijawab
+              </span>
+              {timeLeft > 0 && (
+                <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold flex items-center gap-1">
+                  <Lock className="w-3 h-3 text-amber-700" /> Pengakhiran Mandiri Terkunci
+                </span>
+              )}
+            </div>
+            <span className="text-xs text-slate-500 block mt-0.5">
+              {timeLeft > 0
+                ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Sistem akan otomatis mengumpulkan jawaban tepat ketika timer 00:00.'
+                : 'Waktu ujian telah berakhir. Lembar ujian siap dikumpulkan.'}
             </span>
           </div>
 
           <button
             onClick={confirmSubmit}
-            className="w-full sm:w-auto px-8 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm shadow-md transition active:scale-95 flex items-center justify-center gap-2"
+            className={`w-full sm:w-auto px-6 py-3 rounded-xl font-extrabold text-sm shadow-sm transition flex items-center justify-center gap-2 ${
+              timeLeft > 0
+                ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95'
+            }`}
+            title={
+              timeLeft > 0
+                ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.'
+                : 'Kirim Jawaban Ujian'
+            }
           >
-            <Send className="w-4 h-4" />
-            <span>Kirim Jawaban Ujian</span>
+            {timeLeft > 0 ? (
+              <>
+                <Lock className="w-4 h-4 text-slate-400" />
+                <span>Kirim Jawaban (Terkunci s/d 00:00)</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                <span>Kirim Jawaban Ujian</span>
+              </>
+            )}
           </button>
         </div>
       )}
@@ -1065,6 +1179,23 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Review Hasil & Pembahasan Modal */}
+      {isReviewOpen && (
+        <ExamReviewModal
+          isOpen={isReviewOpen}
+          onClose={() => {
+            setIsReviewOpen(false);
+            onFinishExam();
+          }}
+          ujian={exam}
+          nilai={submittedNilai}
+          studentAnswers={answers}
+          onViewImage={onViewImage}
+          userRole="murid"
+          isTeacher={false}
+        />
       )}
     </div>
   );

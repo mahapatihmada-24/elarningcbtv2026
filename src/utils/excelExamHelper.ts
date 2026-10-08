@@ -25,6 +25,7 @@ export function downloadExamExcelTemplate(): void {
     'Gambar Opsi C',
     'Gambar Opsi D',
     'Gambar Opsi E',
+    'Pembahasan Soal',
   ];
 
   const sampleData = [
@@ -45,6 +46,7 @@ export function downloadExamExcelTemplate(): void {
       '',
       '',
       '',
+      'Kain terjual = 3/8 bagian. Pecahan senilai dicari dengan mengalikan pembilang dan penyebut dengan 2: (3 x 2)/(8 x 2) = 6/16. Jadi jawaban yang tepat adalah B.',
     ],
     [
       2,
@@ -63,6 +65,7 @@ export function downloadExamExcelTemplate(): void {
       '',
       '',
       '',
+      'Samakan penyebut ke 20: Toko Sejahtera = 10/20 (paling sedikit), Toko Makmur = 12/20, Toko Rezeki = 13/20, Toko Barokah = 14/20 (paling banyak). Maka pernyataan A, B, dan C benar.',
     ],
     [
       3,
@@ -81,6 +84,7 @@ export function downloadExamExcelTemplate(): void {
       '',
       '',
       '',
+      'Simbol sila pertama Pancasila (Ketuhanan Yang Maha Esa) adalah Bintang bersudut lima.',
     ],
     [
       4,
@@ -99,6 +103,7 @@ export function downloadExamExcelTemplate(): void {
       '',
       '',
       '',
+      'Luas persegi panjang = panjang x lebar ($L = p \\times l$).',
     ],
   ];
 
@@ -120,6 +125,7 @@ export function downloadExamExcelTemplate(): void {
     { wch: 25 }, // Gambar C
     { wch: 25 }, // Gambar D
     { wch: 25 }, // Gambar E
+    { wch: 45 }, // Pembahasan Soal
   ];
 
   XLSX.utils.book_append_sheet(wb, wsSoal, 'TEMPLATE_SOAL');
@@ -139,11 +145,13 @@ export function downloadExamExcelTemplate(): void {
     ['Pilihan E', 'Opsional', 'Opsi pilihan E (opsional jika memiliki 5 opsi pilihan)'],
     ['Link/URL Gambar', 'Opsional', 'Tautan gambar ilustrasi soal utama (URL https://... atau base64). Jika lebih dari 1 gambar, pisahkan dengan tanda "|" (contoh: url1 | url2)'],
     ['Gambar Opsi A - E', 'Opsional', 'Tautan URL gambar untuk opsi jawaban A s/d E (opsional, untuk soal dengan opsi bergambar)'],
+    ['Pembahasan Soal', 'Opsional', 'Langkah pengerjaan, rumus, atau alasan jawaban benar untuk review siswa dan cetak/unduh dokumen'],
     [],
     ['CATATAN TAMBAHAN:'],
     ['- Pastikan baris judul pada baris ke-1 tidak diubah namanya.'],
     ['- Kolom "Teks Soal" harus berisi narasi/pertanyaan soal, bukan jenis soal.'],
     ['- Opsi jawaban dapat menggunakan teks saja, gambar saja, maupun kombinasi teks dan gambar.'],
+    ['- Kolom "Pembahasan Soal" bersifat opsional, namun sangat disarankan untuk bahan evaluasi dan review siswa.'],
     ['- Anda dapat menyimpan format sebagai .xlsx, .xls, atau .csv.'],
   ];
 
@@ -193,6 +201,7 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
     'Gambar Opsi C',
     'Gambar Opsi D',
     'Gambar Opsi E',
+    'Pembahasan Soal',
   ];
 
   const rows = questions.map((q, idx) => {
@@ -219,6 +228,7 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
         q.c_img || '',
         q.d_img || '',
         q.e_img || '',
+        q.pembahasan || '',
       ];
     } else if (q.type === 'pgk_mcma') {
       const opts = q.options || [];
@@ -244,6 +254,7 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
         opts[2]?.img || '',
         opts[3]?.img || '',
         opts[4]?.img || '',
+        q.pembahasan || '',
       ];
     } else {
       const rowsTxt = (q.rows || [])
@@ -266,6 +277,7 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
         q.rows?.[2]?.img || '',
         q.rows?.[3]?.img || '',
         '',
+        q.pembahasan || '',
       ];
     }
   });
@@ -288,6 +300,7 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
     { wch: 25 }, // Gambar C
     { wch: 25 }, // Gambar D
     { wch: 25 }, // Gambar E
+    { wch: 45 }, // Pembahasan Soal
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'TEMPLATE_SOAL');
@@ -491,7 +504,22 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
 
   // Column: Kunci Jawaban
   const kunciIdx = header.findIndex(
-    (h) => h.includes('kunci') || h.includes('jawaban') || h === 'key'
+    (h) =>
+      h.includes('kunci') ||
+      ((h.includes('jawaban') || h === 'key') &&
+        !h.includes('pilihan') &&
+        !h.includes('opsi') &&
+        !h.includes('pembahasan'))
+  );
+
+  // Column: Pembahasan Soal
+  const pembahasanIdx = header.findIndex(
+    (h) =>
+      h.includes('pembahasan') ||
+      h.includes('penjelasan') ||
+      h.includes('solusi') ||
+      h.includes('keterangan pembahasan') ||
+      h.includes('explanation')
   );
 
   // Column: Bobot Nilai
@@ -621,6 +649,10 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
     const rawBobot = bobotIdx >= 0 ? Number(row[bobotIdx]) : Number(row[soalIdx + 6]);
     const bobot = !isNaN(rawBobot) && rawBobot > 0 ? rawBobot : 1;
 
+    // Resolve Pembahasan Soal
+    const rawPembahasan =
+      pembahasanIdx >= 0 ? String(row[pembahasanIdx] ?? '').trim() : '';
+
     // Resolve Gambar (Single or Multiple separated by | or newline)
     const rawGambarStr = gambarIdx >= 0 ? String(row[gambarIdx] ?? '').trim() : '';
     const parsedGambarList = rawGambarStr
@@ -687,6 +719,7 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
         gambar: gambarUrl || undefined,
         gambar_list: gambarList,
         options,
+        pembahasan: rawPembahasan || undefined,
       };
       parsedQuestions.push(q);
     } else if (isKategori) {
@@ -705,6 +738,7 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
           ...(optC || optCImg ? [{ text: optC, img: optCImg || undefined, key: 'col1' as const }] : []),
           ...(optD || optDImg ? [{ text: optD, img: optDImg || undefined, key: 'col2' as const }] : []),
         ],
+        pembahasan: rawPembahasan || undefined,
       };
       parsedQuestions.push(q);
     } else {
@@ -732,6 +766,7 @@ export async function parseQuestionsFromExcel(file: File): Promise<Question[]> {
         d_img: optDImg || undefined,
         ...(optE || optEImg ? { e: optE || '', e_img: optEImg || undefined } : {}),
         kunci: cleanKunci,
+        pembahasan: rawPembahasan || undefined,
       };
       parsedQuestions.push(q);
     }

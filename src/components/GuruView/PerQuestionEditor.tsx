@@ -20,6 +20,9 @@ import {
   AlignCenter,
   Palette,
   Heading,
+  KeyRound,
+  Lightbulb,
+  Check,
 } from 'lucide-react';
 import { Question, QuestionType, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, getQuestionImages } from '../../types';
 import { MathRenderer } from '../MathRenderer';
@@ -85,6 +88,7 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
   const activeIndex = Math.max(0, Math.min(currentIdx, questions.length - 1));
   const q = questions[activeIndex];
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const pembahasanRef = useRef<HTMLTextAreaElement>(null);
   const qImages = getQuestionImages(q);
 
   const handleFieldChange = (field: string, val: unknown) => {
@@ -159,6 +163,40 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
         ? `${currentText}\n\n${prefix}${textToWrap}${suffix}`
         : `${prefix}${textToWrap}${suffix}`;
       handleFieldChange('soal', newText);
+    }
+  };
+
+  const wrapPembahasanOrInsert = (
+    prefix: string,
+    suffix: string,
+    defaultPlaceholder: string = ''
+  ) => {
+    const textarea = pembahasanRef.current;
+    const currentText = q.pembahasan || '';
+    if (textarea) {
+      const start = textarea.selectionStart ?? currentText.length;
+      const end = textarea.selectionEnd ?? currentText.length;
+      const selectedText = currentText.substring(start, end);
+      const textToWrap = selectedText || defaultPlaceholder;
+      const before = currentText.substring(0, start);
+      const after = currentText.substring(end);
+
+      const newText = before + prefix + textToWrap + suffix + after;
+      handleFieldChange('pembahasan', newText);
+      setTimeout(() => {
+        if (textarea) {
+          textarea.focus();
+          const selStart = before.length + prefix.length;
+          const selEnd = selStart + textToWrap.length;
+          textarea.setSelectionRange(selStart, selEnd);
+        }
+      }, 50);
+    } else {
+      const textToWrap = defaultPlaceholder;
+      const newText = currentText
+        ? `${currentText}\n${prefix}${textToWrap}${suffix}`
+        : `${prefix}${textToWrap}${suffix}`;
+      handleFieldChange('pembahasan', newText);
     }
   };
 
@@ -644,9 +682,60 @@ Pada tanggal 10 Agustus 2024, Linda dan Vidya bertemu di tempat laundry tersebut
         {/* TYPE 1: PILIHAN GANDA (PG) */}
         {q.type === 'pg' && (
           <div className="space-y-3 pt-3 border-t border-slate-100">
+            {/* Kolom / Bar Kunci Jawaban Eksplisit */}
+            <div className="p-3.5 bg-gradient-to-r from-indigo-50/90 via-purple-50/80 to-indigo-50/90 border border-indigo-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-indigo-950 uppercase tracking-wide">
+                      Kunci Jawaban Soal:
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-lg bg-indigo-600 text-white text-xs font-black shadow-2xs">
+                      Pilihan {(q as QuestionPG).kunci || 'A'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500">
+                    Tetapkan kunci benar lewat tombol cepat di samping atau radio button pada setiap opsi
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-indigo-200 shadow-2xs">
+                {(
+                  ['A', 'B', 'C', 'D', ...((q as QuestionPG).e !== undefined ? ['E'] : [])] as (
+                    | 'A'
+                    | 'B'
+                    | 'C'
+                    | 'D'
+                    | 'E'
+                  )[]
+                ).map((letter) => {
+                  const isSelected = (q as QuestionPG).kunci === letter;
+                  return (
+                    <button
+                      key={letter}
+                      type="button"
+                      onClick={() => handleFieldChange('kunci', letter)}
+                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg font-black text-xs transition flex items-center justify-center ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-400 ring-offset-1'
+                          : 'text-slate-700 hover:bg-slate-100 hover:text-indigo-600'
+                      }`}
+                      title={`Tetapkan Pilihan ${letter} sebagai Kunci Jawaban Benar`}
+                    >
+                      {letter}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="flex items-center justify-between">
               <label className="text-xs font-extrabold text-slate-800">
-                Pilihan Jawaban & Kunci Benar:
+                Pilihan Jawaban (A, B, C, D{((q as QuestionPG).e !== undefined ? ', E' : '')}):
               </label>
               <div className="flex items-center gap-3">
                 <span className="text-[11px] text-slate-500">Pilih radio button untuk kunci</span>
@@ -753,6 +842,41 @@ Pada tanggal 10 Agustus 2024, Linda dan Vidya bertemu di tempat laundry tersebut
         {/* TYPE 2: PGK CENTANG BANYAK (MCMA) */}
         {q.type === 'pgk_mcma' && (
           <div className="space-y-3 pt-3 border-t border-slate-100">
+            {/* Indikator Kunci Jawaban PGK */}
+            <div className="p-3 bg-gradient-to-r from-emerald-50/90 via-teal-50/80 to-emerald-50/90 border border-emerald-200 rounded-2xl flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                  <KeyRound className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <span className="text-xs font-black text-emerald-950">
+                    Kunci Jawaban Benar (Centang Satu atau Lebih):
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                    {((q as QuestionPGKMCMA).options || [])
+                      .filter((o) => o.isKey)
+                      .map((o) => {
+                        const idx = ((q as QuestionPGKMCMA).options || []).indexOf(o);
+                        return (
+                          <span
+                            key={idx}
+                            className="px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[10px] font-bold flex items-center gap-1 shadow-2xs"
+                          >
+                            <Check className="w-2.5 h-2.5" />
+                            <span>Opsi {idx + 1}</span>
+                          </span>
+                        );
+                      })}
+                    {((q as QuestionPGKMCMA).options || []).every((o) => !o.isKey) && (
+                      <span className="text-[10px] text-amber-600 font-bold">
+                        (Belum ada kunci yang dicentang)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between">
               <label className="text-xs font-extrabold text-slate-800">
                 Opsi Pilihan (Centang Semua yang Benar):
@@ -842,6 +966,35 @@ Pada tanggal 10 Agustus 2024, Linda dan Vidya bertemu di tempat laundry tersebut
         {/* TYPE 3: PGK KATEGORI / TABEL PERNYATAAN */}
         {q.type === 'pgk_kategori' && (
           <div className="space-y-3 pt-3 border-t border-slate-100">
+            {/* Indikator Kunci Jawaban PGK Kategori */}
+            <div className="p-3 bg-gradient-to-r from-blue-50/90 via-indigo-50/80 to-blue-50/90 border border-blue-200 rounded-2xl flex flex-wrap items-center justify-between gap-2 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                  <KeyRound className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <span className="text-xs font-black text-blue-950">
+                    Kunci Jawaban Pernyataan:
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                    {((q as QuestionPGKKategori).rows || []).map((row, rIdx) => {
+                      const isCol1 = row.key === 'col1';
+                      return (
+                        <span
+                          key={rIdx}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold shadow-2xs ${
+                            isCol1 ? 'bg-indigo-600 text-white' : 'bg-rose-600 text-white'
+                          }`}
+                        >
+                          P{rIdx + 1}: {isCol1 ? (q as QuestionPGKKategori).col1 || 'Benar' : (q as QuestionPGKKategori).col2 || 'Salah'}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">
@@ -952,6 +1105,109 @@ Pada tanggal 10 Agustus 2024, Linda dan Vidya bertemu di tempat laundry tersebut
             </div>
           </div>
         )}
+
+        {/* SECTION: PEMBAHASAN SOAL */}
+        <div className="space-y-3 pt-4 border-t border-slate-200">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                <Lightbulb className="w-4 h-4" />
+              </div>
+              <div>
+                <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                  <span>Pembahasan Soal</span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    q.pembahasan && q.pembahasan.trim()
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                      : 'bg-amber-100 text-amber-800 border-amber-200'
+                  }`}>
+                    {q.pembahasan && q.pembahasan.trim() ? '✓ Terisi' : 'Opsional'}
+                  </span>
+                </label>
+                <p className="text-[11px] text-slate-500">
+                  Langkah penyelesaian materi untuk review hasil ujian siswa dan opsi cetak/unduh PDF & Word
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Format & Math Toolbar for Pembahasan */}
+            <div className="flex flex-wrap items-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => wrapPembahasanOrInsert('**', '**', 'teks tebal')}
+                className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 shadow-2xs"
+                title="Tebal (Bold)"
+              >
+                <Bold className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => wrapPembahasanOrInsert('*', '*', 'teks miring')}
+                className="p-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 shadow-2xs"
+                title="Miring (Italic)"
+              >
+                <Italic className="w-3.5 h-3.5" />
+              </button>
+              <div className="h-4 w-px bg-slate-300 mx-0.5" />
+              <button
+                type="button"
+                onClick={() => wrapPembahasanOrInsert('$\\frac{', '}{b}$', 'a')}
+                className="px-1.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-[11px] font-mono font-bold text-slate-700 shadow-2xs"
+                title="Sisipkan Pecahan $\frac{a}{b}$"
+              >
+                a/b
+              </button>
+              <button
+                type="button"
+                onClick={() => wrapPembahasanOrInsert('$\\sqrt{', '}$', 'x')}
+                className="px-1.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-[11px] font-mono font-bold text-slate-700 shadow-2xs"
+                title="Sisipkan Akar $\sqrt{x}$"
+              >
+                √x
+              </button>
+              <button
+                type="button"
+                onClick={() => wrapPembahasanOrInsert('$x^{', '}$', '2')}
+                className="px-1.5 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-[11px] font-mono font-bold text-slate-700 shadow-2xs"
+                title="Sisipkan Pangkat $x^{2}$"
+              >
+                x²
+              </button>
+            </div>
+          </div>
+
+          <textarea
+            ref={pembahasanRef}
+            value={q.pembahasan || ''}
+            onChange={(e) => handleFieldChange('pembahasan', e.target.value)}
+            rows={4}
+            placeholder={`Tuliskan pembahasan soal secara rinci...
+Contoh:
+Langkah pengerjaan:
+1. Hitung nilai pecahan: $\\frac{3 \\times 2}{8 \\times 2} = \\frac{6}{16}$
+2. Kesimpulan: Opsi jawaban yang tepat adalah B.`}
+            className="w-full text-xs sm:text-sm p-3.5 rounded-2xl border border-slate-300 bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none leading-relaxed font-normal"
+          />
+
+          {/* Live Preview of Pembahasan */}
+          {q.pembahasan && q.pembahasan.trim() && (
+            <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl text-xs space-y-1.5 shadow-2xs">
+              <div className="flex items-center justify-between border-b border-amber-200/70 pb-1.5">
+                <span className="text-[11px] text-amber-900 font-bold uppercase tracking-wide flex items-center gap-1.5">
+                  <Lightbulb className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Pratinjau Pembahasan Soal:</span>
+                </span>
+                <span className="text-[10px] text-amber-700">Tampilan pada review siswa & cetak Word/PDF</span>
+              </div>
+              <div className="pt-1">
+                <MathRenderer
+                  content={q.pembahasan}
+                  className="text-slate-800 font-medium text-xs sm:text-sm"
+                />
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* BOTTOM PAGINATION CONTROLS */}
         <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100">

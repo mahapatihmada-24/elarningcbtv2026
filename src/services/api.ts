@@ -1214,6 +1214,7 @@ export const api = {
     kelas: string;
     nilai: number;
     pelanggaran: number;
+    jawaban_json?: string;
   }): Promise<ApiResponse> {
     if (currentDataSource === 'FIREBASE') {
       try {
@@ -1249,6 +1250,7 @@ export const api = {
       Nilai: payload.nilai,
       Pelanggaran: payload.pelanggaran,
       Waktu_Submit: timeStr,
+      Jawaban_JSON: payload.jawaban_json,
     };
     list.push(newNilai);
     saveLocalNilai(list);

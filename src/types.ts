@@ -39,6 +39,7 @@ export interface QuestionPG {
   e?: string;
   e_img?: string;
   kunci: 'A' | 'B' | 'C' | 'D' | 'E';
+  pembahasan?: string;
 }
 
 export interface McmaOption {
@@ -54,6 +55,7 @@ export interface QuestionPGKMCMA {
   gambar?: string;
   gambar_list?: string[];
   options: McmaOption[];
+  pembahasan?: string;
 }
 
 export interface KategoriRow {
@@ -71,6 +73,7 @@ export interface QuestionPGKKategori {
   col1: string; // e.g. "Benar" or "Sebelum"
   col2: string; // e.g. "Salah" or "Sesudah"
   rows: KategoriRow[];
+  pembahasan?: string;
 }
 
 export type Question = QuestionPG | QuestionPGKMCMA | QuestionPGKKategori;
@@ -163,6 +166,7 @@ export interface Nilai {
   Catatan_Guru?: string;
   Koreksi_Manual?: boolean;
   No_HP_Ortu?: string;
+  Jawaban_JSON?: string;
 }
 
 export interface SchoolProfile {
