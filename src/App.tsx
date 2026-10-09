@@ -38,6 +38,8 @@ import { YouTubeModal } from './components/YouTubeModal';
 import { ImageModal } from './components/ImageModal';
 import { ConfirmModal, ModalState } from './components/ConfirmModal';
 import { GasSettingsModal } from './components/GasSettingsModal';
+import { ParentPinModal } from './components/ParentPortal/ParentPinModal';
+import { ParentDashboardModal } from './components/ParentPortal/ParentDashboardModal';
 
 const SESSION_KEY = 'elearning_user_session';
 const TAB_KEY = 'elearning_active_tab';
@@ -59,6 +61,8 @@ export default function App() {
   const [youtubeVideoId, setYoutubeVideoId] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; title?: string } | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isParentPinModalOpen, setIsParentPinModalOpen] = useState(false);
+  const [isParentDashboardOpen, setIsParentDashboardOpen] = useState(false);
   const initialModalState: ModalState = {
     isOpen: false,
     title: '',
@@ -356,6 +360,7 @@ export default function App() {
         onLogout={handleLogout}
         unreadNotificationsCount={unreadNotificationsCount}
         onOpenNotifications={() => setIsNotificationOpen(true)}
+        onOpenParentPortal={() => setIsParentPinModalOpen(true)}
       />
 
       {/* Content Area */}
@@ -615,6 +620,7 @@ export default function App() {
                   <MuridCBTList
                     currentUser={{ ...currentUser, role: 'admin', kelas: currentUser.kelas || 'Semua' }}
                     onStartExam={(exam) => setActiveExam(exam)}
+                    onOpenParentPortal={() => setIsParentPinModalOpen(true)}
                   />
                 )}
               </div>
@@ -794,6 +800,7 @@ export default function App() {
                     <MuridCBTList
                       currentUser={currentUser}
                       onStartExam={(exam) => setActiveExam(exam)}
+                      onOpenParentPortal={() => setIsParentPinModalOpen(true)}
                     />
                     {visibleAnnouncements.length > 0 && (
                       <AnnouncementBoard
@@ -984,6 +991,28 @@ export default function App() {
       />
 
       <ConfirmModal modal={modalState} onClose={handleCloseModal} />
+
+      {/* Portal Orang Tua Modals (additive feature for student/admin accounts) */}
+      {isParentPinModalOpen && currentUser && (
+        <ParentPinModal
+          isOpen={isParentPinModalOpen}
+          onClose={() => setIsParentPinModalOpen(false)}
+          student={currentUser}
+          onSuccess={() => {
+            setIsParentPinModalOpen(false);
+            setIsParentDashboardOpen(true);
+          }}
+        />
+      )}
+
+      {isParentDashboardOpen && currentUser && (
+        <ParentDashboardModal
+          isOpen={isParentDashboardOpen}
+          onClose={() => setIsParentDashboardOpen(false)}
+          student={currentUser}
+          onViewImage={(url, title) => setPreviewImage({ url, title })}
+        />
+      )}
     </div>
   );
 }

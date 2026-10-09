@@ -1,5 +1,5 @@
 import React from 'react';
-import { GraduationCap, LogOut, Settings, User as UserIcon, Bell } from 'lucide-react';
+import { GraduationCap, LogOut, Settings, User as UserIcon, Bell, HeartHandshake } from 'lucide-react';
 import { User } from '../types';
 import { DataSource } from '../services/api';
 
@@ -10,6 +10,7 @@ interface NavbarProps {
   onLogout: () => void;
   unreadNotificationsCount?: number;
   onOpenNotifications?: () => void;
+  onOpenParentPortal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -19,6 +20,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onLogout,
   unreadNotificationsCount = 0,
   onOpenNotifications,
+  onOpenParentPortal,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-indigo-700 text-white shadow-md">
@@ -86,6 +88,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
                 </span>
               )}
+            </button>
+          )}
+
+          {/* Parent Portal Access Button (Specifically for student account) */}
+          {(user.role === 'murid' || user.role === 'admin') && onOpenParentPortal && (
+            <button
+              type="button"
+              onClick={onOpenParentPortal}
+              title="Portal Orang Tua: Masukkan PIN untuk memantau rekap nilai, grafik & pembahasan belajar ananda"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-black text-[11px] sm:text-xs shadow-md transition active:scale-95 border border-emerald-300/40 cursor-pointer"
+            >
+              <HeartHandshake className="w-4 h-4 text-emerald-100 shrink-0" />
+              <span className="hidden sm:inline">Akses Orang Tua</span>
+              <span className="sm:hidden">Ortu</span>
             </button>
           )}
 

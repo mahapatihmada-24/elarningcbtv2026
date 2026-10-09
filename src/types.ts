@@ -6,6 +6,7 @@ export interface User {
   password?: string;
   role: Role;
   kelas: string;
+  parentPin?: string;
 }
 
 export interface Materi {

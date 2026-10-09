@@ -10,6 +10,7 @@ export function normalizeUser(u: any): User {
     password: u.password !== undefined || u.Password !== undefined ? String(u.password || u.Password || '') : undefined,
     role: validRole,
     kelas: String(u.kelas || u.Kelas || '-'),
+    parentPin: u.parentPin || u.ParentPin || u.pin_ortu || u.pinOrtu ? String(u.parentPin || u.ParentPin || u.pin_ortu || u.pinOrtu) : undefined,
   };
 }
 

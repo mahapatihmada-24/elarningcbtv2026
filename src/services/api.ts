@@ -726,6 +726,59 @@ export const api = {
     return this.updateUser(target);
   },
 
+  async getParentPin(username: string): Promise<string | null> {
+    const cleanU = (username || '').trim().toLowerCase();
+    const localPin = localStorage.getItem(`parent_pin_${cleanU}`);
+    if (localPin && localPin.trim()) {
+      return localPin.trim();
+    }
+    const users = getLocalUsers();
+    const target = users.find((u) => (u.username || '').toLowerCase() === cleanU);
+    if (target?.parentPin) {
+      localStorage.setItem(`parent_pin_${cleanU}`, target.parentPin);
+      return target.parentPin;
+    }
+    if (currentDataSource === 'FIREBASE' && !isFirestoreOffline()) {
+      try {
+        const fbUsers = await firebaseService.getUsers();
+        const fbTarget = fbUsers.find((u) => (u.username || '').toLowerCase() === cleanU);
+        if (fbTarget?.parentPin) {
+          localStorage.setItem(`parent_pin_${cleanU}`, fbTarget.parentPin);
+          return fbTarget.parentPin;
+        }
+      } catch {}
+    }
+    return null;
+  },
+
+  async saveParentPin(username: string, pin: string): Promise<ApiResponse> {
+    const cleanU = (username || '').trim().toLowerCase();
+    const cleanPin = (pin || '').trim();
+    if (!cleanPin || cleanPin.length < 4 || cleanPin.length > 6) {
+      return { success: false, message: 'PIN Orang Tua harus terdiri dari 4 sampai 6 digit angka.' };
+    }
+    localStorage.setItem(`parent_pin_${cleanU}`, cleanPin);
+    const users = getLocalUsers();
+    const target = users.find((u) => (u.username || '').toLowerCase() === cleanU);
+    if (target) {
+      target.parentPin = cleanPin;
+      await this.updateUser(target);
+    }
+    return { success: true, message: 'PIN Orang Tua berhasil disimpan!' };
+  },
+
+  async deleteParentPin(username: string): Promise<ApiResponse> {
+    const cleanU = (username || '').trim().toLowerCase();
+    localStorage.removeItem(`parent_pin_${cleanU}`);
+    const users = getLocalUsers();
+    const target = users.find((u) => (u.username || '').toLowerCase() === cleanU);
+    if (target) {
+      delete target.parentPin;
+      await this.updateUser(target);
+    }
+    return { success: true, message: 'PIN Orang Tua berhasil direset/dihapus!' };
+  },
+
   // 3. MATERI
   async getMateriList(targetKelas: string): Promise<Materi[]> {
     const cleanTarget = (targetKelas || '').trim().toLowerCase();
