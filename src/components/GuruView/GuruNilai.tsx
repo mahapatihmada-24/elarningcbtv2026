@@ -134,7 +134,7 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
   // WhatsApp Notification
   const handleOpenWAModal = (n: Nilai) => {
     const schoolName = schoolProfile?.namaSekolah || 'SDN Harjosari Kidul 01';
-    const defaultMsg = `Yth. Bapak/Ibu Orang Tua/Wali dari ${n.Nama_Murid},\n\nKami menginformasikan bahwa ananda telah menyelesaikan asesmen CBT:\n📚 Ujian: ${n.Judul_Ujian}\n🎯 Nilai Akhir: ${n.Nilai}\n📅 Waktu: ${n.Waktu_Submit}\n${
+    const defaultMsg = `Yth. Bapak/Ibu Orang Tua/Wali dari ${n.Nama_Murid},\n\nKami menginformasikan bahwa ananda telah menyelesaikan asesmen CBT:\n📚 Ujian: ${n.Judul_Ujian}\n🎯 Nilai Akhir: ${Number(n.Nilai || 0).toFixed(2)}\n📅 Waktu: ${n.Waktu_Submit}\n${
       n.Catatan_Guru ? `📝 Catatan Guru: ${n.Catatan_Guru}\n` : ''
     }\nTerima kasih atas perhatian dan bimbingannya.\n- ${schoolName}`;
 
@@ -216,11 +216,8 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
         ? (
             filteredNilai.reduce((acc, curr) => acc + Number(curr.Nilai || 0), 0) /
             filteredNilai.length
-          ).toLocaleString('id-ID', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })
-        : '0,00',
+          ).toFixed(2)
+        : '0.00',
     tuntas: filteredNilai.filter((n) => Number(n.Nilai || 0) >= kkm).length,
     pelanggaranTotal: filteredNilai.reduce((acc, curr) => acc + (curr.Pelanggaran || 0), 0),
   };
@@ -393,10 +390,7 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
                             : 'bg-rose-100 text-rose-800'
                         }`}
                       >
-                        {Number(n.Nilai).toLocaleString('id-ID', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
+                        {Number(n.Nilai || 0).toFixed(2)}
                       </span>
                     </td>
                     <td className="p-3 text-center">

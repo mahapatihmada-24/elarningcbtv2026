@@ -250,12 +250,9 @@ export const ExamReviewModal: React.FC<ExamReviewModalProps> = ({
                     </span>
                     <div className="flex items-baseline gap-1.5">
                       <span className="text-xl sm:text-2xl font-black text-slate-900">
-                        {scoreVal.toLocaleString('id-ID', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
+                        {scoreVal.toFixed(2)}
                       </span>
-                      <span className="text-xs text-slate-400 font-bold">/ 100,00</span>
+                      <span className="text-xs text-slate-400 font-bold">/ 100.00</span>
                       <span
                         className={`text-[11px] font-extrabold px-2 py-0.5 rounded-full ml-1 ${
                           scoreVal >= 75

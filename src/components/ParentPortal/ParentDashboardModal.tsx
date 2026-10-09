@@ -99,10 +99,10 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
   const numericNilai = nilaiList.map((n) => Number(n.Nilai || 0));
   const avgScore =
     totalExams > 0
-      ? (numericNilai.reduce((a, b) => a + b, 0) / totalExams).toFixed(1)
-      : '0.0';
-  const highestScore = totalExams > 0 ? Math.max(...numericNilai).toFixed(1) : '0';
-  const lowestScore = totalExams > 0 ? Math.min(...numericNilai).toFixed(1) : '0';
+      ? (numericNilai.reduce((a, b) => a + b, 0) / totalExams).toFixed(2)
+      : '0.00';
+  const highestScore = totalExams > 0 ? Math.max(...numericNilai).toFixed(2) : '0.00';
+  const lowestScore = totalExams > 0 ? Math.min(...numericNilai).toFixed(2) : '0.00';
   const tuntasCount = nilaiList.filter((n) => Number(n.Nilai || 0) >= kkm).length;
   const remedialCount = totalExams - tuntasCount;
   const tuntasPercentage = totalExams > 0 ? Math.round((tuntasCount / totalExams) * 100) : 0;
@@ -707,9 +707,9 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                                     />
                                     {/* Score Tag Above Point */}
                                     <rect
-                                      x={p.x - 14}
+                                      x={p.x - 18}
                                       y={p.y - 24}
-                                      width="28"
+                                      width="36"
                                       height="16"
                                       rx="4"
                                       fill={p.nilai >= kkm ? '#065f46' : '#9f1239'}
@@ -718,11 +718,11 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                                       x={p.x}
                                       y={p.y - 12}
                                       textAnchor="middle"
-                                      fontSize="9.5"
+                                      fontSize="9"
                                       fill="#ffffff"
                                       fontWeight="bold"
                                     >
-                                      {p.nilai}
+                                      {p.nilai.toFixed(2)}
                                     </text>
 
                                     {/* X Label (Exam Name / Index) */}
@@ -829,7 +829,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                                         ? 'bg-emerald-100 text-emerald-800'
                                         : 'bg-rose-100 text-rose-800'
                                     }`}>
-                                      {numNilai}
+                                      {numNilai.toFixed(2)}
                                     </span>
                                   </td>
                                   <td className="py-3 px-3.5 text-center">
@@ -912,7 +912,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                       >
                         {nilaiList.map((n) => (
                           <option key={n.ID} value={n.ID}>
-                            {n.Judul_Ujian} (Nilai: {n.Nilai})
+                            {n.Judul_Ujian} (Nilai: {Number(n.Nilai || 0).toFixed(2)})
                           </option>
                         ))}
                       </select>
@@ -971,7 +971,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : 'bg-rose-100 text-rose-800'
                             }`}>
-                              Nilai: {selectedNilai?.Nilai}
+                              Nilai: {Number(selectedNilai?.Nilai || 0).toFixed(2)}
                             </span>
                           </div>
                           <p className="text-xs text-slate-500">
@@ -1252,7 +1252,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                         if (examsForMapel.length === 0) return null;
 
                         const sum = examsForMapel.reduce((a, b) => a + Number(b.Nilai || 0), 0);
-                        const mAvg = (sum / examsForMapel.length).toFixed(1);
+                        const mAvg = (sum / examsForMapel.length).toFixed(2);
                         const numM = parseFloat(mAvg);
                         const isTuntas = numM >= kkm;
 

@@ -37,13 +37,10 @@ export function generateParentReportHtml({
   const numericNilai = nilaiList.map((n) => Number(n.Nilai || 0));
   const avg =
     total > 0
-      ? (numericNilai.reduce((a, b) => a + b, 0) / total).toLocaleString('id-ID', {
-          minimumFractionDigits: 1,
-          maximumFractionDigits: 1,
-        })
-      : '0.0';
-  const maxNilai = total > 0 ? Math.max(...numericNilai).toFixed(1) : '0';
-  const minNilai = total > 0 ? Math.min(...numericNilai).toFixed(1) : '0';
+      ? (numericNilai.reduce((a, b) => a + b, 0) / total).toFixed(2)
+      : '0.00';
+  const maxNilai = total > 0 ? Math.max(...numericNilai).toFixed(2) : '0.00';
+  const minNilai = total > 0 ? Math.min(...numericNilai).toFixed(2) : '0.00';
   const tuntasCount = nilaiList.filter((n) => Number(n.Nilai || 0) >= kkm).length;
   const tuntasPct = total > 0 ? Math.round((tuntasCount / total) * 100) : 0;
   const totalPelanggaran = nilaiList.reduce((acc, curr) => acc + (curr.Pelanggaran || 0), 0);
@@ -72,7 +69,7 @@ export function generateParentReportHtml({
 
   const mapelRowsHtml = Array.from(mapelMap.entries())
     .map(([mapel, data], idx) => {
-      const avgM = (data.sum / data.count).toFixed(1);
+      const avgM = (data.sum / data.count).toFixed(2);
       const numAvg = parseFloat(avgM);
       let predikat = 'C';
       if (numAvg >= 90) predikat = 'A (Sangat Baik)';
@@ -112,7 +109,7 @@ export function generateParentReportHtml({
           <td style="padding: 6px 8px; text-align: center; font-weight: bold; font-size: 12px; color: ${
             isTuntas ? '#15803d' : '#b91c1c'
           }; background: ${isTuntas ? '#f0fdf4' : '#fef2f2'};">
-            ${numNilai}
+            ${numNilai.toFixed(2)}
           </td>
           <td style="padding: 6px 8px; text-align: center; font-weight: bold; color: ${
             isTuntas ? '#15803d' : '#b91c1c'

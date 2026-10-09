@@ -57,6 +57,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
   const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [submittedNilai, setSubmittedNilai] = useState<Nilai | null>(null);
+  const timeUpAlertShownRef = useRef(false);
 
   // Student answers state
   // Key: question index => value
@@ -184,14 +185,12 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     };
   }, []);
 
-  // Timer interval: Pengakhiran otomatis tepat ketika timer menyentuh angka 00:00
+  // Timer interval: Ketika hitung mundur menyentuh 00:00:00, hentikan timer tanpa menutup aplikasi sepihak
   useEffect(() => {
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          // Pengakhiran Otomatis Saat Timer Habis (00:00)
-          handleSubmitExam(true);
           return 0;
         }
         return prev - 1;
@@ -200,6 +199,24 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
 
     return () => clearInterval(timer);
   }, []);
+
+  // Notifikasi pop-up saat waktu habis:
+  // "Waktu ujian telah habis. Silakan klik tombol Simpan & Kirim Jawaban untuk menyelesaikan ujian."
+  // Kunci input pilihan jawaban agar peserta tidak dapat mengubah jawaban lagi, namun izinkan peserta menekan tombol Simpan & Kirim Jawaban
+  useEffect(() => {
+    if (timeLeft <= 0 && !timeUpAlertShownRef.current && !submittedNilai) {
+      timeUpAlertShownRef.current = true;
+      onShowModal({
+        isOpen: true,
+        title: 'Waktu Ujian Telah Habis',
+        message:
+          'Waktu ujian telah habis. Silakan klik tombol Simpan & Kirim Jawaban untuk menyelesaikan ujian.',
+        type: 'warning',
+        isConfirm: false,
+        okText: 'Saya Mengerti, Kirimkan Jawaban',
+      });
+    }
+  }, [timeLeft, submittedNilai, onShowModal]);
 
   // Keyboard navigation for authentic CAT experience
   useEffect(() => {
@@ -306,20 +323,17 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     const penaltyVal = cheatCountRef.current * 5;
     const finalScoreVal = Math.max(0, rawScoreVal - penaltyVal);
 
-    // Format nilai dengan 2 angka di belakang koma (misal 100,00 atau 95,85)
-    const finalScoreNum = Math.round(finalScoreVal * 100) / 100;
-    const rawScoreNum = Math.round(rawScoreVal * 100) / 100;
+    // Format penilaian baku skala 0-100 dengan 2 angka di belakang koma (.toFixed(2)) (misalnya: 100.00, 85.50, atau 67.33)
+    const finalScoreNum = Number(finalScoreVal.toFixed(2));
+    const rawScoreNum = Number(rawScoreVal.toFixed(2));
 
-    const formatIndoScore = (num: number): string => {
-      return num.toLocaleString('id-ID', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+    const formatDecimalScore = (num: number): string => {
+      return Number(num || 0).toFixed(2);
     };
 
-    const rawScoreStr = formatIndoScore(rawScoreNum);
-    const penaltyStr = formatIndoScore(penaltyVal);
-    const finalScoreStr = formatIndoScore(finalScoreNum);
+    const rawScoreStr = formatDecimalScore(rawScoreNum);
+    const penaltyStr = formatDecimalScore(penaltyVal);
+    const finalScoreStr = formatDecimalScore(finalScoreNum);
 
     const submissionPayload = {
       answers,
@@ -367,9 +381,9 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
 
     let finishMsg = '';
     if (isViolationLimit) {
-      finishMsg = `Ujian telah dihentikan secara otomatis oleh sistem karena Anda telah mencapai batas maksimal 3 kali pelanggaran (meninggalkan halaman ujian).\n\nLembar jawaban Anda telah tersimpan dan terkirim ke server guru.\n\nNilai Murni: ${rawScoreStr}\nPenalti Pelanggaran (3x): -${penaltyStr}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100,00`;
+      finishMsg = `Ujian telah dihentikan secara otomatis oleh sistem karena Anda telah mencapai batas maksimal 3 kali pelanggaran (meninggalkan halaman ujian).\n\nLembar jawaban Anda telah tersimpan dan terkirim ke server guru.\n\nNilai Murni: ${rawScoreStr}\nPenalti Pelanggaran (3x): -${penaltyStr}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100.00`;
     } else {
-      finishMsg = `Waktu pengerjaan ujian telah berakhir. Sistem telah mengumpulkan lembar jawaban Anda secara otomatis ke server guru.\n\nNilai Murni: ${rawScoreStr}${penaltyVal > 0 ? `\nPenalti Pindah Tab (${cheatCountRef.current}x): -${penaltyStr}` : ''}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100,00`;
+      finishMsg = `Lembar jawaban ujian Anda telah berhasil disimpan dan dikirimkan ke server guru.\n\nNilai Murni: ${rawScoreStr}${penaltyVal > 0 ? `\nPenalti Pindah Tab (${cheatCountRef.current}x): -${penaltyStr}` : ''}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100.00`;
     }
 
     onShowModal({
@@ -490,18 +504,19 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
 
-            {/* Submit: Dikunci selama timer berjalan */}
+            {/* Submit: Dikunci selama timer berjalan, Aktif ketika waktu habis (00:00) */}
             <button
               onClick={confirmSubmit}
+              disabled={isSubmitting}
               className={`flex items-center gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-lg font-bold text-xs sm:text-sm transition ${
                 timeLeft > 0
                   ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed opacity-90'
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm active:scale-95'
+                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md active:scale-95 animate-pulse'
               }`}
               title={
                 timeLeft > 0
                   ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.'
-                  : 'Kirimkan Lembar Ujian'
+                  : 'Simpan & Kirim Jawaban Ujian'
               }
             >
               {timeLeft > 0 ? (
@@ -512,7 +527,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
               ) : (
                 <>
                   <Send className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Kirim</span>
+                  <span>Simpan & Kirim Jawaban</span>
                 </>
               )}
             </button>
@@ -536,6 +551,31 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
             >
               {cheatCount}/3 Pelanggaran
             </span>
+          </div>
+        )}
+
+        {/* Waktu Habis Banner: Buka Tombol Kirim & Kunci Input Pilihan */}
+        {timeLeft <= 0 && (
+          <div className="mt-2.5 py-2.5 px-3 sm:px-4 rounded-xl bg-amber-50 border-2 border-amber-400 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-sm animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 shrink-0" />
+              <div>
+                <span className="font-extrabold text-xs sm:text-sm text-amber-950 block">
+                  Waktu Ujian Telah Habis (00:00)
+                </span>
+                <span className="text-[11px] sm:text-xs text-amber-900">
+                  Input jawaban telah dikunci demi keamanan. Silakan klik tombol <strong>Simpan & Kirim Jawaban</strong> untuk menyelesaikan ujian.
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={confirmSubmit}
+              disabled={isSubmitting}
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition active:scale-95 shrink-0"
+            >
+              <Send className="w-4 h-4" />
+              <span>Simpan & Kirim Jawaban</span>
+            </button>
           </div>
         )}
       </div>
@@ -733,7 +773,9 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                     return (
                       <label
                         key={opt}
-                        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border-2 transition cursor-pointer active:scale-99 ${
+                        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border-2 transition ${
+                          timeLeft <= 0 ? 'cursor-not-allowed opacity-90' : 'cursor-pointer active:scale-99'
+                        } ${
                           isSelected
                             ? 'bg-indigo-50/80 border-indigo-600 text-indigo-950 shadow-sm'
                             : 'bg-white border-slate-200 hover:bg-slate-50/80 text-slate-800'
@@ -745,13 +787,17 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                             name={`q_${idx}`}
                             value={opt.toUpperCase()}
                             checked={isSelected}
-                            onChange={() =>
+                            disabled={timeLeft <= 0}
+                            onChange={() => {
+                              if (timeLeft <= 0) return;
                               setAnswers((prev) => ({
                                 ...prev,
                                 [idx]: opt.toUpperCase(),
-                              }))
-                            }
-                            className="w-5 h-5 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
+                              }));
+                            }}
+                            className={`w-5 h-5 text-indigo-600 focus:ring-indigo-500 shrink-0 ${
+                              timeLeft <= 0 ? 'cursor-not-allowed' : 'cursor-pointer'
+                            }`}
                           />
                           <div className="text-sm sm:text-base font-semibold text-slate-800">
                             <span className="font-bold text-indigo-700 mr-2">{opt.toUpperCase()}.</span>
@@ -807,7 +853,9 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                     return (
                       <label
                         key={oIdx}
-                        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border-2 transition cursor-pointer ${
+                        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border-2 transition ${
+                          timeLeft <= 0 ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'
+                        } ${
                           isChecked
                             ? 'bg-emerald-50/80 border-emerald-600 text-emerald-950 shadow-sm'
                             : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'
@@ -817,7 +865,9 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                           <input
                             type="checkbox"
                             checked={isChecked}
+                            disabled={timeLeft <= 0}
                             onChange={(e) => {
+                              if (timeLeft <= 0) return;
                               const copy = [...checkedArr];
                               copy[oIdx] = e.target.checked;
                               setAnswers((prev) => ({
@@ -825,7 +875,9 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                                 [idx]: copy,
                               }));
                             }}
-                            className="w-5 h-5 text-emerald-600 rounded cursor-pointer shrink-0"
+                            className={`w-5 h-5 text-emerald-600 rounded shrink-0 ${
+                              timeLeft <= 0 ? 'cursor-not-allowed' : 'cursor-pointer'
+                            }`}
                           />
                           <div className="text-sm sm:text-base font-semibold">
                             {opt.text ? (
@@ -925,43 +977,55 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                               </td>
 
                               <td className="p-3 text-center border-l border-slate-200">
-                                <label className="inline-flex items-center justify-center p-2 rounded-lg cursor-pointer hover:bg-indigo-50 w-full">
+                                <label className={`inline-flex items-center justify-center p-2 rounded-lg w-full ${
+                                  timeLeft <= 0 ? 'cursor-not-allowed opacity-90' : 'cursor-pointer hover:bg-indigo-50'
+                                }`}>
                                   <input
                                     type="radio"
                                     name={`q_${idx}_row_${rIdx}`}
                                     value="col1"
                                     checked={currentVal === 'col1'}
-                                    onChange={() =>
+                                    disabled={timeLeft <= 0}
+                                    onChange={() => {
+                                      if (timeLeft <= 0) return;
                                       setAnswers((prev) => ({
                                         ...prev,
                                         [idx]: {
                                           ...rowAnsObj,
                                           [rIdx]: 'col1',
                                         },
-                                      }))
-                                    }
-                                    className="w-5 h-5 text-indigo-600 cursor-pointer"
+                                      }));
+                                    }}
+                                    className={`w-5 h-5 text-indigo-600 ${
+                                      timeLeft <= 0 ? 'cursor-not-allowed' : 'cursor-pointer'
+                                    }`}
                                   />
                                 </label>
                               </td>
 
                               <td className="p-3 text-center border-l border-slate-200">
-                                <label className="inline-flex items-center justify-center p-2 rounded-lg cursor-pointer hover:bg-indigo-50 w-full">
+                                <label className={`inline-flex items-center justify-center p-2 rounded-lg w-full ${
+                                  timeLeft <= 0 ? 'cursor-not-allowed opacity-90' : 'cursor-pointer hover:bg-indigo-50'
+                                }`}>
                                   <input
                                     type="radio"
                                     name={`q_${idx}_row_${rIdx}`}
                                     value="col2"
                                     checked={currentVal === 'col2'}
-                                    onChange={() =>
+                                    disabled={timeLeft <= 0}
+                                    onChange={() => {
+                                      if (timeLeft <= 0) return;
                                       setAnswers((prev) => ({
                                         ...prev,
                                         [idx]: {
                                           ...rowAnsObj,
                                           [rIdx]: 'col2',
                                         },
-                                      }))
-                                    }
-                                    className="w-5 h-5 text-indigo-600 cursor-pointer"
+                                      }));
+                                    }}
+                                    className={`w-5 h-5 text-indigo-600 ${
+                                      timeLeft <= 0 ? 'cursor-not-allowed' : 'cursor-pointer'
+                                    }`}
                                   />
                                 </label>
                               </td>
@@ -995,25 +1059,39 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                   </button>
 
                   {currentQuestionIndex < activeQuestions.length - 1 ? (
-                    <button
-                      onClick={() => setCurrentQuestionIndex((prev) => Math.min(activeQuestions.length - 1, prev + 1))}
-                      className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition active:scale-95"
-                    >
-                      <span>Berikutnya</span>
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setCurrentQuestionIndex((prev) => Math.min(activeQuestions.length - 1, prev + 1))}
+                        className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition active:scale-95"
+                      >
+                        <span>Berikutnya</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                      {timeLeft <= 0 && (
+                        <button
+                          onClick={confirmSubmit}
+                          disabled={isSubmitting}
+                          className="px-4 sm:px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm flex items-center gap-2 shadow-md transition active:scale-95 animate-pulse"
+                          title="Waktu Habis - Klik untuk Simpan & Kirim Jawaban"
+                        >
+                          <Send className="w-4 h-4" />
+                          <span>Simpan & Kirim Jawaban</span>
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <button
                       onClick={confirmSubmit}
+                      disabled={isSubmitting}
                       className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition ${
                         timeLeft > 0
                           ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed'
-                          : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm active:scale-95'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md active:scale-95 animate-pulse'
                       }`}
                       title={
                         timeLeft > 0
                           ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.'
-                          : 'Selesai & Kirimkan Jawaban'
+                          : 'Simpan & Kirim Jawaban'
                       }
                     >
                       {timeLeft > 0 ? (
@@ -1024,7 +1102,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                       ) : (
                         <>
                           <Send className="w-4 h-4" />
-                          <span>Selesai & Kirim</span>
+                          <span>Simpan & Kirim Jawaban</span>
                         </>
                       )}
                     </button>
@@ -1044,30 +1122,35 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
               <span className="font-bold text-slate-800 text-sm">
                 Status Pengerjaan: {answeredCount} dari {activeQuestions.length} Soal Dijawab
               </span>
-              {timeLeft > 0 && (
+              {timeLeft > 0 ? (
                 <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold flex items-center gap-1">
                   <Lock className="w-3 h-3 text-amber-700" /> Pengakhiran Mandiri Terkunci
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3 text-emerald-600" /> Waktu Habis - Siap Kirim
                 </span>
               )}
             </div>
             <span className="text-xs text-slate-500 block mt-0.5">
               {timeLeft > 0
-                ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Sistem akan otomatis mengumpulkan jawaban tepat ketika timer 00:00.'
-                : 'Waktu ujian telah berakhir. Lembar ujian siap dikumpulkan.'}
+                ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Tombol Simpan & Kirim Jawaban akan aktif otomatis saat timer 00:00.'
+                : 'Waktu ujian telah habis. Seluruh pilihan jawaban telah dikunci. Silakan klik tombol Simpan & Kirim Jawaban.'}
             </span>
           </div>
 
           <button
             onClick={confirmSubmit}
+            disabled={isSubmitting}
             className={`w-full sm:w-auto px-6 py-3 rounded-xl font-extrabold text-sm shadow-sm transition flex items-center justify-center gap-2 ${
               timeLeft > 0
                 ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed'
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 shadow-md animate-pulse'
             }`}
             title={
               timeLeft > 0
                 ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.'
-                : 'Kirim Jawaban Ujian'
+                : 'Simpan & Kirim Jawaban'
             }
           >
             {timeLeft > 0 ? (
@@ -1078,7 +1161,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
             ) : (
               <>
                 <Send className="w-4 h-4" />
-                <span>Kirim Jawaban Ujian</span>
+                <span>Simpan & Kirim Jawaban</span>
               </>
             )}
           </button>

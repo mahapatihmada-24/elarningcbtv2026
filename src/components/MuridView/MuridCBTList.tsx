@@ -346,11 +346,7 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
                             : 'bg-rose-100 text-rose-800'
                         }`}
                       >
-                        {Number(latestScore).toLocaleString('id-ID', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}{' '}
-                        / 100,00
+                        {Number(latestScore).toFixed(2)} / 100.00
                       </span>
                     </div>
                   )}

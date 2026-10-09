@@ -306,7 +306,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
           <div className="text-2xl font-black text-indigo-700">
-            {isLoading ? '...' : stats.avgNilai.toFixed(1)}
+            {isLoading ? '...' : stats.avgNilai.toFixed(2)}
           </div>
           <p className="text-[11px] text-slate-400 mt-1">KKM: {schoolProfile?.kkmDefault || 75}</p>
         </div>

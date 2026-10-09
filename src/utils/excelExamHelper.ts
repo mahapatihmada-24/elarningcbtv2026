@@ -818,7 +818,7 @@ export function exportNilaiToExcel(
       n.Nama_Murid || '-',
       n.Kelas || '-',
       n.Judul_Ujian || judulUjian,
-      numNilai,
+      Number(numNilai.toFixed(2)),
       status,
       n.Pelanggaran || 0,
       n.Catatan_Guru || (n.Koreksi_Manual ? 'Koreksi Manual' : '-'),

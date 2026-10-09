@@ -43,13 +43,10 @@ export function generateRekapNilaiHtml({
   const numericNilai = nilaiList.map((n) => Number(n.Nilai || 0));
   const avg =
     total > 0
-      ? (numericNilai.reduce((a, b) => a + b, 0) / total).toLocaleString('id-ID', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })
-      : '0,00';
-  const maxNilai = total > 0 ? Math.max(...numericNilai).toFixed(1) : '0';
-  const minNilai = total > 0 ? Math.min(...numericNilai).toFixed(1) : '0';
+      ? (numericNilai.reduce((a, b) => a + b, 0) / total).toFixed(2)
+      : '0.00';
+  const maxNilai = total > 0 ? Math.max(...numericNilai).toFixed(2) : '0.00';
+  const minNilai = total > 0 ? Math.min(...numericNilai).toFixed(2) : '0.00';
   const tuntasCount = nilaiList.filter((n) => Number(n.Nilai || 0) >= kkm).length;
   const tuntasPct = total > 0 ? Math.round((tuntasCount / total) * 100) : 0;
   const remedialCount = total - tuntasCount;
@@ -108,7 +105,7 @@ export function generateRekapNilaiHtml({
           </td>
           <td style="padding: 6px 6px; text-align: center; vertical-align: top;">
             <div style="font-size: 13px; font-weight: 800; color: ${isTuntas ? '#15803d' : '#dc2626'};">
-              ${numNilai.toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ${numNilai.toFixed(2)}
             </div>
             <div style="font-size: 9.5px; color: #64748b;">KKM: ${kkm}</div>
           </td>
