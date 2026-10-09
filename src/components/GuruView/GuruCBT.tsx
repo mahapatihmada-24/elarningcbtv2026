@@ -253,6 +253,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
         c: '',
         d: '',
         kunci: 'A',
+        pembahasan: '',
       },
     ]);
   };
@@ -351,6 +352,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
         c: '',
         d: '',
         kunci: 'A',
+        pembahasan: '',
       };
     } else if (type === 'pgk_mcma') {
       newQ = {
@@ -363,6 +365,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
           { text: '', isKey: false },
           { text: '', isKey: false },
         ],
+        pembahasan: '',
       };
     } else {
       newQ = {
@@ -375,6 +378,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
           { text: 'Pernyataan 1', key: 'col1' },
           { text: 'Pernyataan 2', key: 'col2' },
         ],
+        pembahasan: '',
       };
     }
 
@@ -1001,7 +1005,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                     {q.soal || '(Belum ada teks pertanyaan)'}
                   </p>
 
-                  {/* Kunci Jawaban & Pembahasan Badge */}
+                  {/* Kunci Jawaban Badge */}
                   <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
                     <span className="px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold flex items-center gap-1">
                       <KeyRound className="w-3 h-3 text-indigo-600" />
@@ -1015,18 +1019,41 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                       </span>
                     </span>
 
-                    {q.pembahasan && q.pembahasan.trim() ? (
-                      <span className="px-2 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 font-bold flex items-center gap-1">
-                        <Lightbulb className="w-3 h-3 text-amber-600" />
-                        <span className="line-clamp-1 max-w-[280px]">
-                          Pembahasan: {q.pembahasan}
-                        </span>
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-slate-400 italic">
-                        (Belum ada pembahasan)
-                      </span>
-                    )}
+                    <span className={`px-2 py-0.5 rounded-md border font-bold flex items-center gap-1 ${
+                      q.pembahasan && q.pembahasan.trim()
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                        : 'bg-amber-50 border-amber-200 text-amber-800'
+                    }`}>
+                      <Lightbulb className="w-3 h-3 text-amber-600" />
+                      <span>{q.pembahasan && q.pembahasan.trim() ? 'Pembahasan Terisi' : 'Pembahasan Belum Diisi'}</span>
+                    </span>
+                  </div>
+
+                  {/* Input Khusus Pembahasan Soal */}
+                  <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                        <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Kolom Pembahasan Soal No. {qIdx + 1}:</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCurrentPerQIdx(qIdx);
+                          setEditMode('per_soal');
+                        }}
+                        className="text-[10px] text-indigo-600 font-bold hover:underline"
+                      >
+                        Buka Toolbar LaTeX/Rumus
+                      </button>
+                    </div>
+                    <textarea
+                      value={q.pembahasan || ''}
+                      onChange={(e) => updateQuestionField(qIdx, 'pembahasan', e.target.value)}
+                      rows={2}
+                      placeholder="Ketikkan pembahasan & langkah penyelesaian materi di sini..."
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-amber-500 focus:outline-none leading-relaxed font-normal"
+                    />
                   </div>
                 </div>
               ))}

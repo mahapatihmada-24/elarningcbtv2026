@@ -34,6 +34,7 @@ C. Jakarta
 D. Surabaya
 Kunci: B
 Bobot: 1
+Pembahasan: Nusantara (IKN) merupakan ibu kota negara Republik Indonesia yang ditetapkan berdasarkan undang-undang.
 
 2. Organ pernapasan utama pada manusia yang berfungsi menukar oksigen dan karbon dioksida adalah...
 A. Paru-paru
@@ -42,6 +43,7 @@ C. Hati
 D. Ginjal
 Kunci: A
 Bobot: 1
+Pembahasan: Paru-paru merupakan organ respirasi utama yang memiliki alveolus sebagai tempat pertukaran gas O2 dan CO2.
 
 3. [PGK] Manakah di antara pilihan berikut yang termasuk hewan pemakan tumbuhan (herbivora)?
 A. Sapi
@@ -50,12 +52,14 @@ C. Kelinci
 D. Kambing
 Kunci: A, C, D
 Bobot: 2
+Pembahasan: Sapi, kelinci, dan kambing memakan rumput/dedaunan sehingga tergolong herbivora. Harimau adalah karnivora pemakan daging.
 
 4. [TABEL] Tentukan apakah pernyataan berikut mengenai perubahan wujud zat Benar atau Salah:
 - Membeku adalah perubahan dari cair menjadi padat [Benar]
 - Menguap adalah perubahan dari gas menjadi cair [Salah]
 - Menyublim adalah perubahan dari padat menjadi gas [Benar]
-Bobot: 2`;
+Bobot: 2
+Pembahasan: Menguap adalah perubahan dari cair menjadi gas, sedangkan perubahan dari gas ke cair disebut mengembun.`;
 
 export const BulkQuestionModal: React.FC<BulkQuestionModalProps> = ({
   isOpen,

@@ -386,36 +386,18 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
                     </button>
                   )}
 
-                  {attemptsCount > 0 &&
-                    (isAllAnswered ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setReviewModalExam({ exam: u, nilai: latestSubmission });
-                        }}
-                        className="w-full py-2.5 px-3 rounded-xl bg-purple-50 hover:bg-purple-100 active:scale-98 text-purple-700 font-bold text-xs border border-purple-200 transition flex items-center justify-center gap-1.5 shadow-2xs"
-                      >
-                        <Lightbulb className="w-4 h-4 text-purple-600" />
-                        <span>Review Kunci & Pembahasan Soal</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setLockedNotice({
-                            title: 'Review & Pembahasan Terkunci',
-                            message: `Kunci jawaban dan pembahasan soal baru dapat terbuka jika Anda telah menjawab dan mengumpulkan seluruh butir soal (${questionCount} butir). Pada ujian ini, Anda baru menyelesaikan ${studentAnsweredCount} dari ${questionCount} butir soal.`,
-                            total: questionCount,
-                            answered: studentAnsweredCount,
-                          });
-                        }}
-                        className="w-full py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold text-xs border border-slate-200 transition flex items-center justify-center gap-1.5 cursor-not-allowed opacity-85"
-                        title={`Kunci & pembahasan terkunci (baru terjawab: ${studentAnsweredCount}/${questionCount} butir)`}
-                      >
-                        <Lock className="w-4 h-4 text-slate-400" />
-                        <span>Kunci & Pembahasan Terkunci ({studentAnsweredCount}/{questionCount})</span>
-                      </button>
-                    ))}
+                  {attemptsCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReviewModalExam({ exam: u, nilai: latestSubmission });
+                      }}
+                      className="w-full py-2.5 px-3 rounded-xl bg-purple-50 hover:bg-purple-100 active:scale-98 text-purple-700 font-bold text-xs border border-purple-200 transition flex items-center justify-center gap-1.5 shadow-2xs"
+                    >
+                      <Lightbulb className="w-4 h-4 text-purple-600" />
+                      <span>Review Kunci & Pembahasan Soal</span>
+                    </button>
+                  )}
 
                   {/* Student Question Sheet Download & Print & Kisi-Kisi */}
                   <div className="flex items-center gap-1.5 pt-1">

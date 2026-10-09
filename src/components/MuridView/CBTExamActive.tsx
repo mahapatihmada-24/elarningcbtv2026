@@ -321,6 +321,12 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     const penaltyStr = formatIndoScore(penaltyVal);
     const finalScoreStr = formatIndoScore(finalScoreNum);
 
+    const submissionPayload = {
+      answers,
+      questions: activeQuestions,
+    };
+    const jawabanJsonStr = JSON.stringify(submissionPayload);
+
     const payload = {
       id_ujian: exam.ID,
       judul_ujian: exam.Judul_Ujian,
@@ -328,12 +334,12 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
       kelas: currentUser.kelas,
       nilai: finalScoreNum,
       pelanggaran: cheatCountRef.current,
-      jawaban_json: JSON.stringify(answers),
+      jawaban_json: jawabanJsonStr,
     };
 
     await api.submitHasilUjian(payload);
 
-    setSubmittedNilai({
+    const newNilaiRecord: Nilai = {
       ID: 'NILAI-' + Date.now(),
       ID_Ujian: exam.ID,
       Judul_Ujian: exam.Judul_Ujian,
@@ -342,8 +348,10 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
       Nilai: finalScoreNum,
       Pelanggaran: cheatCountRef.current,
       Waktu_Submit: new Date().toISOString(),
-      Jawaban_JSON: JSON.stringify(answers),
-    });
+      Jawaban_JSON: jawabanJsonStr,
+    };
+
+    setSubmittedNilai(newNilaiRecord);
 
     if (finalScoreNum >= 75) {
       try {
@@ -356,45 +364,29 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     }
 
     const isViolationLimit = cheatCountRef.current >= 3;
-    const isAllQuestionsAnswered = answeredCount >= activeQuestions.length;
 
     let finishMsg = '';
     if (isViolationLimit) {
       finishMsg = `Ujian telah dihentikan secara otomatis oleh sistem karena Anda telah mencapai batas maksimal 3 kali pelanggaran (meninggalkan halaman ujian).\n\nLembar jawaban Anda telah tersimpan dan terkirim ke server guru.\n\nNilai Murni: ${rawScoreStr}\nPenalti Pelanggaran (3x): -${penaltyStr}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100,00`;
     } else {
-      finishMsg = `Waktu pengerjaan ujian telah berakhir (00:00). Sistem telah mengumpulkan lembar jawaban Anda secara otomatis ke server guru.\n\nNilai Murni: ${rawScoreStr}${penaltyVal > 0 ? `\nPenalti Pindah Tab (${cheatCountRef.current}x): -${penaltyStr}` : ''}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100,00`;
+      finishMsg = `Waktu pengerjaan ujian telah berakhir. Sistem telah mengumpulkan lembar jawaban Anda secara otomatis ke server guru.\n\nNilai Murni: ${rawScoreStr}${penaltyVal > 0 ? `\nPenalti Pindah Tab (${cheatCountRef.current}x): -${penaltyStr}` : ''}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100,00`;
     }
 
-    if (isAllQuestionsAnswered) {
-      onShowModal({
-        isOpen: true,
-        title: isViolationLimit ? 'Ujian Dihentikan (3x Pelanggaran)' : 'Ujian Selesai Otomatis!',
-        message: `${finishMsg}\n\nSeluruh soal telah Anda jawab lengkap (${activeQuestions.length} butir).\nKlik "Lihat Review & Pembahasan" untuk meninjau kunci jawaban dan pembahasan soal.`,
-        type: isViolationLimit ? 'danger' : finalScoreNum >= 75 ? 'success' : 'info',
-        isConfirm: true,
-        okText: 'Lihat Review & Pembahasan',
-        cancelText: 'Kembali ke Menu Utama',
-        onConfirm: () => {
-          setIsReviewOpen(true);
-        },
-        onCancel: () => {
-          onFinishExam();
-        },
-      });
-    } else {
-      // Syarat Kemunculan Review: Jika soal belum lengkap, sistem menolak dan menyembunyikan tampilan review, kunci jawaban, serta pembahasan!
-      onShowModal({
-        isOpen: true,
-        title: isViolationLimit ? 'Ujian Dihentikan (3x Pelanggaran)' : 'Ujian Selesai Otomatis!',
-        message: `${finishMsg}\n\n⚠️ Kunci & Pembahasan Terkunci:\nAnda baru menjawab ${answeredCount} dari ${activeQuestions.length} butir soal. Sesuai ketentuan sistem CBT, review hasil, kunci jawaban, dan pembahasan hanya dapat dibuka jika seluruh butir soal (${activeQuestions.length} butir) telah selesai dikerjakan lengkap.`,
-        type: isViolationLimit ? 'danger' : 'info',
-        isConfirm: false,
-        okText: 'Kembali ke Menu Utama',
-        onConfirm: () => {
-          onFinishExam();
-        },
-      });
-    }
+    onShowModal({
+      isOpen: true,
+      title: isViolationLimit ? 'Ujian Dihentikan (3x Pelanggaran)' : 'Ujian Telah Dikumpulkan!',
+      message: `${finishMsg}\n\nLembar jawaban Anda telah berhasil dikirimkan ke guru.\nSilakan klik "Lihat Review & Pembahasan" untuk meninjau kunci jawaban dan pembahasan soal.`,
+      type: isViolationLimit ? 'danger' : finalScoreNum >= 75 ? 'success' : 'info',
+      isConfirm: true,
+      okText: 'Lihat Review & Pembahasan',
+      cancelText: 'Kembali ke Menu Utama',
+      onConfirm: () => {
+        setIsReviewOpen(true);
+      },
+      onCancel: () => {
+        onFinishExam();
+      },
+    });
   };
 
   const confirmSubmit = () => {
@@ -1190,6 +1182,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
             onFinishExam();
           }}
           ujian={exam}
+          questions={activeQuestions}
           nilai={submittedNilai}
           studentAnswers={answers}
           onViewImage={onViewImage}

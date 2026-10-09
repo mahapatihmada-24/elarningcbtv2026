@@ -476,6 +476,7 @@ export const firebaseService = {
     kelas: string;
     nilai: number;
     pelanggaran: number;
+    jawaban_json?: string;
   }): Promise<ApiResponse> {
     const now = new Date();
     const pad = (n: number) => (n < 10 ? '0' + n : n);
@@ -493,6 +494,7 @@ export const firebaseService = {
       Nilai: payload.nilai,
       Pelanggaran: payload.pelanggaran,
       Waktu_Submit: timeStr,
+      Jawaban_JSON: payload.jawaban_json,
     };
 
     await withTimeout(setDoc(doc(db, COLLECTIONS.NILAI, newId), newNilai), 5000);

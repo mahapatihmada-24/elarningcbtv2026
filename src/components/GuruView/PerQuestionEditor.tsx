@@ -230,6 +230,7 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
         d_img: existingOpts[3]?.img,
         ...(existingOpts[4] ? { e: existingOpts[4].text, e_img: existingOpts[4].img } : {}),
         kunci: (q as QuestionPG).kunci || 'A',
+        pembahasan: q.pembahasan,
       });
     } else if (newType === 'pgk_mcma') {
       const pgQ = q as QuestionPG;
@@ -259,6 +260,7 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
                 { text: '', isKey: false },
                 { text: '', isKey: false },
               ],
+        pembahasan: q.pembahasan,
       });
     } else {
       onUpdateQuestion(activeIndex, {
@@ -273,6 +275,7 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
           { text: 'Pernyataan 1', key: 'col1' },
           { text: 'Pernyataan 2', key: 'col2' },
         ],
+        pembahasan: q.pembahasan,
       });
     }
   };

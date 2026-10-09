@@ -23,6 +23,7 @@ interface ExamReviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   ujian: Ujian;
+  questions?: Question[];
   nilai?: Nilai | null;
   studentAnswers?: Record<number, any>;
   onViewImage?: (url: string, title?: string) => void;
@@ -34,6 +35,7 @@ export const ExamReviewModal: React.FC<ExamReviewModalProps> = ({
   isOpen,
   onClose,
   ujian,
+  questions: propQuestions,
   nilai,
   studentAnswers,
   onViewImage,
@@ -46,45 +48,45 @@ export const ExamReviewModal: React.FC<ExamReviewModalProps> = ({
 
   const isTeacherView = userRole === 'guru' || userRole === 'admin' || isTeacher;
 
-  let questions: Question[] = [];
-  try {
-    const raw = JSON.parse(ujian.Soal_JSON || '{}');
-    if (raw.questions && Array.isArray(raw.questions)) {
-      questions = raw.questions;
-    } else if (Array.isArray(raw)) {
-      questions = raw;
-    }
-  } catch {}
-
-  // Resolve student answers from props or from saved Nilai.Jawaban_JSON
+  let questions: Question[] = propQuestions && propQuestions.length > 0 ? propQuestions : [];
   let resolvedAnswers: Record<number, any> = studentAnswers || {};
-  if (Object.keys(resolvedAnswers).length === 0 && nilai?.Jawaban_JSON) {
+
+  // Resolve student answers and questions from saved Nilai.Jawaban_JSON
+  if (nilai?.Jawaban_JSON) {
     try {
-      resolvedAnswers = JSON.parse(nilai.Jawaban_JSON);
+      const parsed = JSON.parse(nilai.Jawaban_JSON);
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.answers && typeof parsed.answers === 'object') {
+          if (Object.keys(resolvedAnswers).length === 0) {
+            resolvedAnswers = parsed.answers;
+          }
+          if (questions.length === 0 && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+            questions = parsed.questions;
+          }
+        } else if (Object.keys(resolvedAnswers).length === 0) {
+          resolvedAnswers = parsed;
+        }
+      }
     } catch {}
   }
 
-  const isQuestionAnswered = (q: Question, ans: any): boolean => {
-    if (ans === undefined || ans === null || ans === '') return false;
-    if (q.type === 'pg') {
-      return typeof ans === 'string' && ans.length > 0;
-    } else if (q.type === 'pgk_mcma') {
-      return Array.isArray(ans) && ans.some((v) => v === true);
-    } else if (q.type === 'pgk_kategori') {
-      const obj = ans as Record<number, string>;
-      return typeof obj === 'object' && Object.keys(obj).length === (q.rows?.length || 0);
-    }
-    return true;
-  };
+  // Fallback to ujian.Soal_JSON if questions still empty
+  if (questions.length === 0) {
+    try {
+      const raw = JSON.parse(ujian.Soal_JSON || '{}');
+      if (raw.questions && Array.isArray(raw.questions)) {
+        questions = raw.questions;
+      } else if (Array.isArray(raw)) {
+        questions = raw;
+      }
+    } catch {}
+  }
 
-  const totalQuestions = questions.length;
-  const answeredCount = questions.filter((q, idx) => isQuestionAnswered(q, resolvedAnswers[idx])).length;
-  const isAllAnswered = totalQuestions > 0 && answeredCount >= totalQuestions;
+  const hasStudentAnswers = Object.keys(resolvedAnswers).length > 0;
+  const isSubmittedExam = Boolean(nilai || hasStudentAnswers);
 
-  // Syarat Kemunculan Review, Kunci, & Pembahasan:
-  // Kunci jawaban dan pembahasan soal baru boleh terbuka/muncul jika siswa sudah menjawab dan mengumpulkan seluruh butir soal.
-  // Jika soal yang dikerjakan belum lengkap (misal baru 10 dari 20 soal), sistem harus menolak dan menyembunyikan tampilan review, kunci jawaban, serta pembahasan.
-  if (!isTeacherView && !isAllAnswered) {
+  // Akses Review Siswa: Kunci & pembahasan terbuka setelah siswa selesai dan mengumpulkan ujian.
+  if (!isTeacherView && !isSubmittedExam) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200">
         <div className="bg-white rounded-3xl max-w-md w-full p-6 text-center shadow-2xl border border-rose-200 space-y-5">
@@ -97,27 +99,10 @@ export const ExamReviewModal: React.FC<ExamReviewModalProps> = ({
               <span>Akses Review Terkunci</span>
             </div>
             <h3 className="font-black text-slate-900 text-lg leading-tight">
-              Syarat Kunci & Pembahasan Belum Terpenuhi
+              Ujian Belum Dikerjakan
             </h3>
-            <p className="text-xs text-slate-600 leading-relaxed text-left">
-              Sesuai dengan ketentuan sistem CBT, kunci jawaban dan pembahasan soal baru boleh terbuka jika Anda telah menjawab dan mengumpulkan <strong>seluruh butir soal</strong> ({totalQuestions} soal lengkap).
-            </p>
-            <div className="p-3.5 bg-rose-50/80 border border-rose-200 rounded-2xl text-xs text-rose-900 font-medium text-left space-y-1">
-              <div className="flex justify-between">
-                <span>Total Soal Ujian:</span>
-                <strong>{totalQuestions} Butir</strong>
-              </div>
-              <div className="flex justify-between">
-                <span>Soal yang Terjawab:</span>
-                <strong className="text-rose-700">{answeredCount} Butir</strong>
-              </div>
-              <div className="flex justify-between pt-1 border-t border-rose-200 text-rose-800 font-bold">
-                <span>Belum Terjawab:</span>
-                <span>{totalQuestions - answeredCount} Butir</span>
-              </div>
-            </div>
-            <p className="text-[11px] text-slate-500 italic text-left">
-              *Tampilan review, kunci jawaban, dan pembahasan disembunyikan demi menjaga integritas evaluasi pembelajaran.
+            <p className="text-xs text-slate-600 leading-relaxed text-center">
+              Review hasil, kunci jawaban, dan pembahasan materi baru dapat diakses setelah Anda menyelesaikan dan mengumpulkan ujian ini.
             </p>
           </div>
           <button
@@ -131,34 +116,33 @@ export const ExamReviewModal: React.FC<ExamReviewModalProps> = ({
     );
   }
 
-  const hasStudentAnswers = Object.keys(resolvedAnswers).length > 0;
+  const totalQuestions = questions.length;
 
   // Determine correct/wrong for each question
   const questionStatusMap: Record<number, { isCorrect: boolean; isPartial?: boolean }> = {};
 
   questions.forEach((q, idx) => {
     const ans = resolvedAnswers[idx];
-    if (ans === undefined) {
+    if (ans === undefined || ans === null) {
       questionStatusMap[idx] = { isCorrect: false };
       return;
     }
 
     if (q.type === 'pg') {
-      const isCorrect = String(ans).toUpperCase() === String(q.kunci).toUpperCase();
+      const isCorrect = String(ans).trim().toUpperCase() === String(q.kunci).trim().toUpperCase();
       questionStatusMap[idx] = { isCorrect };
     } else if (q.type === 'pgk_mcma') {
-      const selected = Array.isArray(ans) ? (ans as number[]) : [];
-      const correctKeys = (q.options || [])
-        .map((o, oIdx) => (o.isKey ? oIdx : -1))
-        .filter((i) => i >= 0);
+      const isSelected = (oIdx: number) =>
+        Array.isArray(ans) && (ans[oIdx] === true || (ans as number[]).includes(oIdx));
+      const options = q.options || [];
       const isExactMatch =
-        selected.length === correctKeys.length &&
-        selected.every((i) => correctKeys.includes(i));
+        options.length > 0 &&
+        options.every((o, oIdx) => Boolean(o.isKey) === Boolean(isSelected(oIdx)));
       questionStatusMap[idx] = { isCorrect: isExactMatch };
     } else if (q.type === 'pgk_kategori') {
       const rowAns = (ans as Record<number, 'col1' | 'col2'>) || {};
       const rows = q.rows || [];
-      const allCorrect = rows.every((r, rIdx) => rowAns[rIdx] === r.key);
+      const allCorrect = rows.length > 0 && rows.every((r, rIdx) => rowAns[rIdx] === r.key);
       questionStatusMap[idx] = { isCorrect: allCorrect };
     } else {
       questionStatusMap[idx] = { isCorrect: false };
@@ -639,27 +623,50 @@ export const ExamReviewModal: React.FC<ExamReviewModalProps> = ({
                   )}
 
                   {/* KOTAK PEMBAHASAN SOAL */}
-                  <div className="mt-3 p-3.5 bg-gradient-to-r from-amber-50/80 via-orange-50/60 to-amber-50/80 border border-amber-200/90 rounded-2xl space-y-1.5 shadow-2xs">
-                    <div className="flex items-center gap-2 text-amber-900 font-extrabold text-xs">
-                      <div className="w-6 h-6 rounded-lg bg-amber-500 text-white flex items-center justify-center shadow-xs">
-                        <Lightbulb className="w-3.5 h-3.5" />
+                  <div className="mt-3.5 p-4 bg-gradient-to-r from-amber-50 via-orange-50/40 to-amber-50 border-2 border-amber-200/90 rounded-2xl space-y-2.5 shadow-2xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-amber-200/70">
+                      <div className="flex items-center gap-2 text-amber-950 font-black text-xs sm:text-sm">
+                        <div className="w-7 h-7 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                          <Lightbulb className="w-4 h-4" />
+                        </div>
+                        <span>Pembahasan Soal & Langkah Penyelesaian</span>
                       </div>
-                      <span className="uppercase tracking-wide">💡 Pembahasan Soal:</span>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${
+                        q.pembahasan && q.pembahasan.trim()
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                          : 'bg-amber-100 text-amber-800 border-amber-300'
+                      }`}>
+                        {q.pembahasan && q.pembahasan.trim() ? '✓ Ada Pembahasan Materi' : 'Kunci Jawaban Soal'}
+                      </span>
                     </div>
 
-                    <div className="text-slate-800 text-xs sm:text-sm pl-8 leading-relaxed font-normal">
+                    <div className="text-slate-800 text-xs sm:text-sm leading-relaxed font-normal pt-0.5">
                       {q.pembahasan && q.pembahasan.trim() ? (
-                        <MathRenderer
-                          content={q.pembahasan}
-                          onViewImage={onViewImage}
-                          className="text-slate-900"
-                        />
+                        <div className="p-3 bg-white/80 rounded-xl border border-amber-200/60 shadow-2xs">
+                          <MathRenderer
+                            content={q.pembahasan}
+                            onViewImage={onViewImage}
+                            className="text-slate-900 font-medium whitespace-pre-line"
+                          />
+                        </div>
                       ) : (
-                        <p className="text-slate-500 italic text-xs">
-                          {q.type === 'pg'
-                            ? `Kunci jawaban yang benar adalah pilihan ${(q as QuestionPG).kunci || 'A'}. (Belum ada catatan pembahasan tertulis untuk butir soal ini).`
-                            : `(Belum ada catatan pembahasan khusus untuk butir soal ini. Silakan diskusikan bersama guru).`}
-                        </p>
+                        <div className="p-3 bg-white/70 rounded-xl border border-amber-200/50 text-slate-700 text-xs space-y-1">
+                          <p className="font-bold text-amber-950">
+                            {q.type === 'pg'
+                              ? `Kunci Jawaban Benar: Pilihan ${(q as QuestionPG).kunci || 'A'}`
+                              : q.type === 'pgk_mcma'
+                              ? `Kunci Jawaban Benar: Opsi ${((q as QuestionPGKMCMA).options || [])
+                                  .map((o, optIdx) => (o.isKey ? `No. ${optIdx + 1}` : null))
+                                  .filter(Boolean)
+                                  .join(', ')}`
+                              : `Kunci Jawaban Benar: ${((q as QuestionPGKKategori).rows || [])
+                                  .map((r, rowIdx) => `Pernyataan ${rowIdx + 1} = ${r.key === 'col1' ? (q as QuestionPGKKategori).col1 || 'Benar' : (q as QuestionPGKKategori).col2 || 'Salah'}`)
+                                  .join(', ')}`}
+                          </p>
+                          <p className="italic text-slate-500 text-[11px]">
+                            Catatan: Penjelasan tertulis tambahan belum dimasukkan oleh guru untuk butir soal ini.
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>

@@ -48,10 +48,11 @@ Ketentuan format soal untuk masing-masing item kisi-kisi:
    - L2 (Penerapan/C3): Soal perhitungan, penerapan dalam konteks nyata sehari-hari.
    - L3 (Penalaran/HOTS C4-C6): Soal berbasis stimulus teks narasi, data tabel, atau pemecahan masalah kompleks.
 3. Jenis tipe soal harus sesuai "bentukSoal":
-   - Pilihan Ganda (type: "pg"): Wajib ada "soal", "a", "b", "c", "d", dan "kunci" ('A'|'B'|'C'|'D'), serta "bobot" (number).
-   - PGK Multi-Jawaban (type: "pgk_mcma"): Wajib ada "soal", "bobot" (number), dan "options" berupa array 4 objek { "text": string, "isKey": boolean } di mana 2 atau 3 bernilai true.
-   - PGK Kategori/Tabel (type: "pgk_kategori"): Wajib ada "soal", "bobot" (number), "col1": "Benar", "col2": "Salah", dan "rows" berupa array 3-4 objek { "text": string, "key": "col1" | "col2" }.
+   - Pilihan Ganda (type: "pg"): Wajib ada "soal", "a", "b", "c", "d", "kunci" ('A'|'B'|'C'|'D'), "bobot" (number), dan "pembahasan" (string).
+   - PGK Multi-Jawaban (type: "pgk_mcma"): Wajib ada "soal", "bobot" (number), "pembahasan" (string), dan "options" berupa array 4 objek { "text": string, "isKey": boolean } di mana 2 atau 3 bernilai true.
+   - PGK Kategori/Tabel (type: "pgk_kategori"): Wajib ada "soal", "bobot" (number), "pembahasan" (string), "col1": "Benar", "col2": "Salah", dan "rows" berupa array 3-4 objek { "text": string, "key": "col1" | "col2" }.
 4. Gunakan notasi LaTeX KaTeX untuk simbol/rumus matematika (contoh: $\\frac{1}{2}$ atau $x^2$).
+5. Selalu sertakan field "pembahasan" (string) berupa penjelasan edukatif, runtut, dan langkah pengerjaan yang jelas mengapa jawaban tersebut benar.
 
 KEMBALIKAN HANYA JSON VALID berupa array of Question objects tanpa tanda kutip markdown backticks (\`\`\`json).`;
 

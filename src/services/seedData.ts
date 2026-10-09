@@ -97,6 +97,7 @@ export const INITIAL_UJIAN: Ujian[] = [
           c: '$\\frac{1}{8}$',
           d: '$\\frac{5}{4}$',
           kunci: 'B',
+          pembahasan: 'Samakan penyebut menjadi 4: $\\frac{1}{2} = \\frac{2}{4}$. Maka $\\frac{2}{4} + \\frac{1}{4} = \\frac{3}{4}$. Jawaban yang benar adalah B.',
         },
         {
           type: 'pgk_mcma',
@@ -108,6 +109,7 @@ export const INITIAL_UJIAN: Ujian[] = [
             { text: 'Fotosintesis klorofil tanaman', isKey: false },
             { text: 'Presipitasi (turunnya hujan ke permukaan bumi)', isKey: true },
           ],
+          pembahasan: 'Tahapan siklus air meliputi Evaporasi (penguapan), Kondensasi (pembentukan awan), dan Presipitasi (turunnya hujan). Fotosintesis adalah pembuatan makanan pada tumbuhan berklorofil.',
         },
         {
           type: 'pgk_kategori',
@@ -120,6 +122,7 @@ export const INITIAL_UJIAN: Ujian[] = [
             { text: 'Segitiga sama sisi memiliki 4 sisi yang sama panjang', key: 'col2' },
             { text: 'Bilangan desimal 0,5 jika diubah ke persen menjadi 50%', key: 'col1' },
           ],
+          pembahasan: '1. Pecahan 2/4 jika disederhanakan dengan membagi pembilang dan penyebut dengan 2 bernilai 1/2 (Benar).\n2. Segitiga memiliki 3 sisi, bukan 4 sisi (Salah).\n3. Desimal 0,5 = 5/10 = 50/100 = 50% (Benar).',
         },
       ],
     }),
@@ -136,5 +139,10 @@ export const INITIAL_NILAI: Nilai[] = [
     Nilai: 100,
     Pelanggaran: 0,
     Waktu_Submit: '2026-09-18 09:15',
+    Jawaban_JSON: JSON.stringify({
+      0: 'B',
+      1: [true, true, false, true],
+      2: { 0: 'col1', 1: 'col2', 2: 'col1' },
+    }),
   },
 ];
