@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   FileText,
   Clock,
@@ -60,8 +60,8 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
 
   const isAdmin = currentUser.role === 'admin';
 
-  const fetchData = async () => {
-    setIsLoading(true);
+  const fetchData = useCallback(async (silent?: boolean | unknown) => {
+    if (silent !== true) setIsLoading(true);
     try {
       const activeClass = isAdmin ? filterKelas : (currentUser.kelas || '6A');
       const [uData, hData, sProfile] = await Promise.all([
@@ -73,13 +73,33 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
       setHasilList(hData || []);
       if (sProfile) setSchoolProfile(sProfile);
     } finally {
-      setIsLoading(false);
+      if (silent !== true) setIsLoading(false);
     }
-  };
+  }, [isAdmin, filterKelas, currentUser.kelas, currentUser.role, currentUser.nama]);
 
   useEffect(() => {
-    fetchData();
-  }, [currentUser.kelas, currentUser.nama, currentUser.role, filterKelas]);
+    fetchData(false);
+
+    const handleSync = () => {
+      fetchData(true);
+    };
+
+    const handleStorage = (e: StorageEvent) => {
+      if (!e.key || e.key === 'cbt_nilai' || e.key === 'cbt_nilai_sync_event') {
+        fetchData(true);
+      }
+    };
+
+    window.addEventListener('cbt-nilai-updated', handleSync);
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', handleSync);
+
+    return () => {
+      window.removeEventListener('cbt-nilai-updated', handleSync);
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', handleSync);
+    };
+  }, [fetchData]);
 
   const handleInitiateExam = (u: Ujian) => {
     // Schedule check (bypassed for admin simulation test)
@@ -188,7 +208,7 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
             </select>
           )}
           <button
-            onClick={fetchData}
+            onClick={() => fetchData(false)}
             className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
           >
             Perbarui Daftar

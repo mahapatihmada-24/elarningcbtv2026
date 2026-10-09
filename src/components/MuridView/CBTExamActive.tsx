@@ -503,34 +503,6 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
-
-            {/* Submit: Dikunci selama timer berjalan, Aktif ketika waktu habis (00:00) */}
-            <button
-              onClick={confirmSubmit}
-              disabled={isSubmitting}
-              className={`flex items-center gap-1.5 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-lg font-bold text-xs sm:text-sm transition ${
-                timeLeft > 0
-                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed opacity-90'
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md active:scale-95 animate-pulse'
-              }`}
-              title={
-                timeLeft > 0
-                  ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.'
-                  : 'Simpan & Kirim Jawaban Ujian'
-              }
-            >
-              {timeLeft > 0 ? (
-                <>
-                  <Lock className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="hidden sm:inline">Kumpulkan (Terkunci)</span>
-                </>
-              ) : (
-                <>
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Simpan & Kirim Jawaban</span>
-                </>
-              )}
-            </button>
           </div>
         </div>
 
@@ -554,28 +526,18 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
           </div>
         )}
 
-        {/* Waktu Habis Banner: Buka Tombol Kirim & Kunci Input Pilihan */}
+        {/* Waktu Habis Banner: Hanya teks pemberitahuan tanpa tombol ganda */}
         {timeLeft <= 0 && (
-          <div className="mt-2.5 py-2.5 px-3 sm:px-4 rounded-xl bg-amber-50 border-2 border-amber-400 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 shadow-sm animate-in fade-in">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 shrink-0" />
-              <div>
-                <span className="font-extrabold text-xs sm:text-sm text-amber-950 block">
-                  Waktu Ujian Telah Habis (00:00)
-                </span>
-                <span className="text-[11px] sm:text-xs text-amber-900">
-                  Input jawaban telah dikunci demi keamanan. Silakan klik tombol <strong>Simpan & Kirim Jawaban</strong> untuk menyelesaikan ujian.
-                </span>
-              </div>
+          <div className="mt-2.5 py-2.5 px-3.5 sm:px-4 rounded-xl bg-amber-50 border-2 border-amber-400 text-amber-950 flex items-center gap-2.5 shadow-sm animate-in fade-in">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+            <div>
+              <span className="font-extrabold text-xs sm:text-sm text-amber-950 block">
+                Waktu Ujian Telah Habis (00:00:00)
+              </span>
+              <span className="text-[11px] sm:text-xs text-amber-900">
+                Pilihan jawaban telah dikunci demi keamanan. Silakan klik tombol <strong>Simpan & Kirim Jawaban</strong> di bagian bawah untuk menyelesaikan ujian.
+              </span>
             </div>
-            <button
-              onClick={confirmSubmit}
-              disabled={isSubmitting}
-              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition active:scale-95 shrink-0"
-            >
-              <Send className="w-4 h-4" />
-              <span>Simpan & Kirim Jawaban</span>
-            </button>
           </div>
         )}
       </div>
@@ -1041,25 +1003,17 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
               {/* CAT Navigation inside question card */}
               {viewMode === 'single' && (
                 <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-                  <button
-                    disabled={currentQuestionIndex === 0}
-                    onClick={() => setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))}
-                    className="px-4 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs sm:text-sm flex items-center gap-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                    <span>Sebelumnya</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      disabled={currentQuestionIndex === 0}
+                      onClick={() => setCurrentQuestionIndex((prev) => Math.max(0, prev - 1))}
+                      className="px-4 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs sm:text-sm flex items-center gap-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      <span>Sebelumnya</span>
+                    </button>
 
-                  <button
-                    onClick={() => setIsDaftarSoalOpen(true)}
-                    className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition active:scale-95"
-                  >
-                    <LayoutGrid className="w-4 h-4 text-indigo-600" />
-                    <span>Daftar Soal ({answeredCount}/{activeQuestions.length})</span>
-                  </button>
-
-                  {currentQuestionIndex < activeQuestions.length - 1 ? (
-                    <div className="flex items-center gap-2">
+                    {currentQuestionIndex < activeQuestions.length - 1 && (
                       <button
                         onClick={() => setCurrentQuestionIndex((prev) => Math.min(activeQuestions.length - 1, prev + 1))}
                         className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition active:scale-95"
@@ -1067,37 +1021,37 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                         <span>Berikutnya</span>
                         <ChevronRight className="w-4 h-4" />
                       </button>
-                      {timeLeft <= 0 && (
-                        <button
-                          onClick={confirmSubmit}
-                          disabled={isSubmitting}
-                          className="px-4 sm:px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs sm:text-sm flex items-center gap-2 shadow-md transition active:scale-95 animate-pulse"
-                          title="Waktu Habis - Klik untuk Simpan & Kirim Jawaban"
-                        >
-                          <Send className="w-4 h-4" />
-                          <span>Simpan & Kirim Jawaban</span>
-                        </button>
-                      )}
-                    </div>
-                  ) : (
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setIsDaftarSoalOpen(true)}
+                      className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm flex items-center gap-1.5 transition active:scale-95"
+                    >
+                      <LayoutGrid className="w-4 h-4 text-indigo-600" />
+                      <span>Daftar Soal ({answeredCount}/{activeQuestions.length})</span>
+                    </button>
+
+                    {/* HANYA 1 TOMBOL UTAMA "Simpan & Kirim Jawaban" DI BAGIAN BAWAH */}
                     <button
                       onClick={confirmSubmit}
-                      disabled={isSubmitting}
-                      className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition ${
+                      disabled={isSubmitting || timeLeft > 0}
+                      className={`px-4 sm:px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition ${
                         timeLeft > 0
-                          ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed'
-                          : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md active:scale-95 animate-pulse'
+                          ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed opacity-80'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md active:scale-95 animate-pulse cursor-pointer'
                       }`}
                       title={
                         timeLeft > 0
-                          ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.'
+                          ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis (00:00:00). Silakan periksa kembali jawaban Anda.'
                           : 'Simpan & Kirim Jawaban'
                       }
                     >
                       {timeLeft > 0 ? (
                         <>
                           <Lock className="w-4 h-4 text-slate-400" />
-                          <span>Selesai (Terkunci s/d 00:00)</span>
+                          <span>Simpan & Kirim (Terkunci)</span>
                         </>
                       ) : (
                         <>
@@ -1106,7 +1060,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                         </>
                       )}
                     </button>
-                  )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1141,22 +1095,22 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
 
           <button
             onClick={confirmSubmit}
-            disabled={isSubmitting}
+            disabled={isSubmitting || timeLeft > 0}
             className={`w-full sm:w-auto px-6 py-3 rounded-xl font-extrabold text-sm shadow-sm transition flex items-center justify-center gap-2 ${
               timeLeft > 0
-                ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed'
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 shadow-md animate-pulse'
+                ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed opacity-80'
+                : 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 shadow-md animate-pulse cursor-pointer'
             }`}
             title={
               timeLeft > 0
-                ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.'
+                ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis (00:00:00). Silakan periksa kembali jawaban Anda.'
                 : 'Simpan & Kirim Jawaban'
             }
           >
             {timeLeft > 0 ? (
               <>
                 <Lock className="w-4 h-4 text-slate-400" />
-                <span>Kirim Jawaban (Terkunci s/d 00:00)</span>
+                <span>Simpan & Kirim (Terkunci)</span>
               </>
             ) : (
               <>

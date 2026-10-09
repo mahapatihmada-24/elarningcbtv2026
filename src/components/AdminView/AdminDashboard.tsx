@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -59,8 +59,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [newTarget, setNewTarget] = useState<'semua' | 'guru' | 'murid'>('semua');
   const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
 
-  const fetchDashboardData = async () => {
-    setIsLoading(true);
+  const fetchDashboardData = useCallback(async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const [users, ujianList, materiList, nilaiList, annList, profile] = await Promise.all([
         api.getUsers(),
@@ -96,13 +96,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } catch (err) {
       console.error('Error fetching dashboard stats:', err);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
+    fetchDashboardData(false);
+
+    // Sinkronisasi otomatis real-time saat siswa menyelesaikan ujian
+    const handleSync = () => {
+      fetchDashboardData(true);
+    };
+
+    const handleStorage = (e: StorageEvent) => {
+      if (!e.key || e.key === 'cbt_nilai' || e.key === 'cbt_nilai_sync_event') {
+        fetchDashboardData(true);
+      }
+    };
+
+    window.addEventListener('cbt-nilai-updated', handleSync);
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', handleSync);
+
+    const interval = setInterval(() => {
+      fetchDashboardData(true);
+    }, 5000);
+
+    return () => {
+      window.removeEventListener('cbt-nilai-updated', handleSync);
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', handleSync);
+      clearInterval(interval);
+    };
+  }, [fetchDashboardData]);
 
   const handleCreateAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();

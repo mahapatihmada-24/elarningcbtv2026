@@ -282,8 +282,18 @@ function getLocalNilai(): Nilai[] {
   }
 }
 
+function notifyNilaiSync(detail?: any) {
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('cbt-nilai-updated', { detail }));
+      localStorage.setItem('cbt_nilai_sync_event', Date.now().toString());
+    } catch {}
+  }
+}
+
 function saveLocalNilai(nilai: Nilai[]) {
   localStorage.setItem(STORAGE_KEY_NILAI, JSON.stringify(nilai.map(normalizeNilai)));
+  notifyNilaiSync();
 }
 
 function getLocalSchoolProfile(): SchoolProfile {
@@ -1269,6 +1279,38 @@ export const api = {
     pelanggaran: number;
     jawaban_json?: string;
   }): Promise<ApiResponse> {
+    const now = new Date();
+    const pad = (n: number) => (n < 10 ? '0' + n : n);
+    const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(
+      now.getHours()
+    )}:${pad(now.getMinutes())}`;
+
+    const newNilai: Nilai = {
+      ID: 'NILAI-' + Date.now(),
+      ID_Ujian: payload.id_ujian,
+      Judul_Ujian: payload.judul_ujian,
+      Nama_Murid: payload.nama_murid,
+      Kelas: payload.kelas,
+      Nilai: payload.nilai,
+      Pelanggaran: payload.pelanggaran,
+      Waktu_Submit: timeStr,
+      Jawaban_JSON: payload.jawaban_json,
+    };
+
+    // 1. Simpan segera ke cache lokal dan pancarkan event sinkronisasi real-time
+    const list = getLocalNilai();
+    const existingIdx = list.findIndex(
+      (n) =>
+        n.ID_Ujian === payload.id_ujian &&
+        n.Nama_Murid.trim().toLowerCase() === payload.nama_murid.trim().toLowerCase()
+    );
+    if (existingIdx >= 0) {
+      list[existingIdx] = newNilai;
+    } else {
+      list.push(newNilai);
+    }
+    saveLocalNilai(list);
+
     if (currentDataSource === 'FIREBASE') {
       try {
         const res = await firebaseService.submitHasilUjian(payload);
@@ -1287,26 +1329,6 @@ export const api = {
       }
     }
 
-    const now = new Date();
-    const pad = (n: number) => (n < 10 ? '0' + n : n);
-    const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(
-      now.getHours()
-    )}:${pad(now.getMinutes())}`;
-
-    const list = getLocalNilai();
-    const newNilai: Nilai = {
-      ID: 'NILAI-' + Date.now(),
-      ID_Ujian: payload.id_ujian,
-      Judul_Ujian: payload.judul_ujian,
-      Nama_Murid: payload.nama_murid,
-      Kelas: payload.kelas,
-      Nilai: payload.nilai,
-      Pelanggaran: payload.pelanggaran,
-      Waktu_Submit: timeStr,
-      Jawaban_JSON: payload.jawaban_json,
-    };
-    list.push(newNilai);
-    saveLocalNilai(list);
     return { success: true, message: 'Hasil ujian berhasil disimpan ke sistem!' };
   },
 

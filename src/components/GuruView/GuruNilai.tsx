@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Award,
   RefreshCw,
@@ -49,8 +49,8 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
   // Print PDF Preview Modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
-  const fetchNilaiAndProfile = async () => {
-    setIsLoading(true);
+  const fetchNilaiAndProfile = useCallback(async (silent?: boolean | unknown) => {
+    if (silent !== true) setIsLoading(true);
     try {
       const [nData, sProfile] = await Promise.all([
         api.getNilaiList(),
@@ -59,13 +59,39 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
       setNilaiList(nData || []);
       setSchoolProfile(sProfile || null);
     } finally {
-      setIsLoading(false);
+      if (silent !== true) setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchNilaiAndProfile();
-  }, []);
+    fetchNilaiAndProfile(false);
+
+    // Sinkronisasi otomatis real-time saat siswa submit ujian atau nilai diperbarui
+    const handleSync = () => {
+      fetchNilaiAndProfile(true);
+    };
+
+    const handleStorage = (e: StorageEvent) => {
+      if (!e.key || e.key === 'cbt_nilai' || e.key === 'cbt_nilai_sync_event') {
+        fetchNilaiAndProfile(true);
+      }
+    };
+
+    window.addEventListener('cbt-nilai-updated', handleSync);
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', handleSync);
+
+    const interval = setInterval(() => {
+      fetchNilaiAndProfile(true);
+    }, 4000);
+
+    return () => {
+      window.removeEventListener('cbt-nilai-updated', handleSync);
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', handleSync);
+      clearInterval(interval);
+    };
+  }, [fetchNilaiAndProfile]);
 
   const handleResetNilai = (n: Nilai) => {
     onShowModal({
@@ -255,7 +281,7 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
             <span>Cetak / PDF</span>
           </button>
           <button
-            onClick={fetchNilaiAndProfile}
+            onClick={() => fetchNilaiAndProfile(false)}
             disabled={isLoading}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
           >
