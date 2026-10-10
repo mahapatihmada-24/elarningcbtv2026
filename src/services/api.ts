@@ -1,4 +1,4 @@
-import { User, Materi, Ujian, Nilai, ApiResponse, SchoolProfile, Announcement } from '../types';
+import { User, Materi, Ujian, Nilai, ApiResponse, SchoolProfile, Announcement, ExamResetPermission } from '../types';
 import { INITIAL_USERS, INITIAL_MATERI, INITIAL_UJIAN, INITIAL_NILAI } from './seedData';
 import {
   firebaseService,
@@ -88,6 +88,7 @@ const STORAGE_KEY_SCHOOL_PROFILE = 'cbt_db_school_profile';
 const STORAGE_KEY_MASTER_KELAS = 'cbt_db_master_kelas';
 const STORAGE_KEY_MASTER_MAPEL = 'cbt_db_master_mapel';
 const STORAGE_KEY_ANNOUNCEMENTS = 'cbt_db_announcements';
+const STORAGE_KEY_EXAM_RESETS = 'cbt_db_exam_resets';
 
 // Initialize LocalStorage with seed data if empty
 function ensureLocalDbInitialized() {
@@ -294,6 +295,29 @@ function notifyNilaiSync(detail?: any) {
 function saveLocalNilai(nilai: Nilai[]) {
   localStorage.setItem(STORAGE_KEY_NILAI, JSON.stringify(nilai.map(normalizeNilai)));
   notifyNilaiSync();
+}
+
+function getLocalExamResets(): ExamResetPermission[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY_EXAM_RESETS) || '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+function notifyExamResetsSync(detail?: any) {
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('cbt-resets-updated', { detail }));
+      localStorage.setItem('cbt_resets_sync_event', Date.now().toString());
+    } catch {}
+  }
+}
+
+function saveLocalExamResets(resets: ExamResetPermission[]) {
+  localStorage.setItem(STORAGE_KEY_EXAM_RESETS, JSON.stringify(resets));
+  notifyExamResetsSync();
 }
 
 function getLocalSchoolProfile(): SchoolProfile {
@@ -1311,6 +1335,11 @@ export const api = {
     }
     saveLocalNilai(list);
 
+    // Konsumsi/hapus status izin ujian ulang setelah siswa berhasil mengirimkan ujian baru
+    try {
+      this.consumeExamReset(payload.id_ujian, payload.nama_murid);
+    } catch {}
+
     if (currentDataSource === 'FIREBASE') {
       try {
         const res = await firebaseService.submitHasilUjian(payload);
@@ -1332,10 +1361,114 @@ export const api = {
     return { success: true, message: 'Hasil ujian berhasil disimpan ke sistem!' };
   },
 
-  async resetNilaiMurid(idNilai: string): Promise<ApiResponse> {
+  async getExamResets(namaMurid?: string): Promise<ExamResetPermission[]> {
+    let list: ExamResetPermission[] = [];
     if (currentDataSource === 'FIREBASE') {
       try {
-        const res = await firebaseService.resetNilaiMurid(idNilai);
+        list = await firebaseService.getExamResets(namaMurid);
+        if (list.length > 0) {
+          saveLocalExamResets(list);
+          return list;
+        }
+      } catch (err) {
+        console.warn('Firebase getExamResets error:', err);
+      }
+    }
+    const local = getLocalExamResets();
+    if (namaMurid) {
+      return local.filter(
+        (r) =>
+          r.status === 'granted' &&
+          r.namaMurid?.trim().toLowerCase() === namaMurid.trim().toLowerCase()
+      );
+    }
+    return local.filter((r) => r.status === 'granted');
+  },
+
+  async grantExamReset(
+    idUjian: string,
+    namaMurid: string,
+    judulUjian?: string,
+    nilaiSebelumnya?: number
+  ): Promise<ApiResponse> {
+    const cleanMurid = (namaMurid || '').trim();
+    const resetItem: ExamResetPermission = {
+      id: `${idUjian}___${encodeURIComponent(cleanMurid)}`,
+      idUjian,
+      namaMurid: cleanMurid,
+      judulUjian: judulUjian || '',
+      nilaiSebelumnya,
+      resetAt: new Date().toISOString(),
+      resetBy: 'guru/admin',
+      status: 'granted',
+    };
+
+    const localList = getLocalExamResets().filter(
+      (r) =>
+        !(
+          r.idUjian === idUjian &&
+          r.namaMurid?.trim().toLowerCase() === cleanMurid.toLowerCase()
+        )
+    );
+    localList.push(resetItem);
+    saveLocalExamResets(localList);
+
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        await firebaseService.grantExamReset(resetItem);
+      } catch (err) {
+        console.warn('Firebase grantExamReset error:', err);
+      }
+    }
+
+    return { success: true, message: 'Izin pengerjaan ulang berhasil diberikan!' };
+  },
+
+  async consumeExamReset(idUjian: string, namaMurid: string): Promise<ApiResponse> {
+    const cleanMurid = (namaMurid || '').trim().toLowerCase();
+    const localList = getLocalExamResets().filter(
+      (r) => !(r.idUjian === idUjian && r.namaMurid?.trim().toLowerCase() === cleanMurid)
+    );
+    saveLocalExamResets(localList);
+
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        await firebaseService.consumeExamReset(idUjian, namaMurid);
+      } catch (err) {
+        console.warn('Firebase consumeExamReset error:', err);
+      }
+    }
+
+    return { success: true };
+  },
+
+  async resetNilaiMurid(
+    idNilai: string,
+    idUjian?: string,
+    namaMurid?: string,
+    judulUjian?: string,
+    nilaiSebelumnya?: number
+  ): Promise<ApiResponse> {
+    // Cari data nilai lokal untuk mendapatkan metadata ujian dan murid jika belum disediakan
+    const targetNilai = getLocalNilai().find((n) => n.ID === idNilai);
+    const targetUjian = idUjian || targetNilai?.ID_Ujian;
+    const targetMurid = (namaMurid || targetNilai?.Nama_Murid || '').trim();
+    const targetJudul = judulUjian || targetNilai?.Judul_Ujian || '';
+    const prevScore = nilaiSebelumnya !== undefined ? nilaiSebelumnya : targetNilai?.Nilai;
+
+    if (targetUjian && targetMurid) {
+      await this.grantExamReset(targetUjian, targetMurid, targetJudul, prevScore);
+    }
+
+    if (currentDataSource === 'FIREBASE') {
+      try {
+        const res = await firebaseService.resetNilaiMurid(
+          idNilai,
+          targetUjian,
+          targetMurid,
+          targetJudul,
+          prevScore
+        );
         saveLocalNilai(getLocalNilai().filter((n) => n.ID !== idNilai));
         return res;
       } catch (err) {
@@ -1357,7 +1490,7 @@ export const api = {
 
     const list = getLocalNilai().filter((n) => n.ID !== idNilai);
     saveLocalNilai(list);
-    return { success: true, message: 'Akses ujian ulang berhasil diberikan kepada murid!' };
+    return { success: true, message: 'Izin pengerjaan ulang berhasil diberikan kepada murid!' };
   },
 
   async updateNilai(nilai: Nilai): Promise<ApiResponse> {

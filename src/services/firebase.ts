@@ -15,7 +15,7 @@ import {
   deleteField,
 } from 'firebase/firestore';
 import firebaseConfigFile from '../../firebase-applet-config.json';
-import { User, Materi, Ujian, Nilai, ApiResponse, SchoolProfile, Announcement } from '../types';
+import { User, Materi, Ujian, Nilai, ApiResponse, SchoolProfile, Announcement, ExamResetPermission } from '../types';
 import { INITIAL_USERS, INITIAL_MATERI, INITIAL_UJIAN, INITIAL_NILAI } from './seedData';
 import { normalizeUser, normalizeMateri, normalizeUjian, normalizeNilai } from './normalizers';
 
@@ -198,6 +198,7 @@ export const COLLECTIONS = {
   NILAI: 'nilai',
   SETTINGS: 'settings',
   ANNOUNCEMENTS: 'announcements',
+  RESETS: 'exam_resets',
 } as const;
 
 // Helper status koneksi Firestore
@@ -501,9 +502,91 @@ export const firebaseService = {
     return { success: true, message: 'Hasil ujian berhasil disimpan ke database Firebase!' };
   },
 
-  async resetNilaiMurid(idNilai: string): Promise<ApiResponse> {
+  async resetNilaiMurid(
+    idNilai: string,
+    idUjian?: string,
+    namaMurid?: string,
+    judulUjian?: string,
+    nilaiSebelumnya?: number
+  ): Promise<ApiResponse> {
+    let targetUjian = idUjian;
+    let targetMurid = namaMurid;
+    let targetJudul = judulUjian;
+    let prevScore = nilaiSebelumnya;
+
+    if (!targetUjian || !targetMurid) {
+      try {
+        const snap = await withTimeout(getDoc(doc(db, COLLECTIONS.NILAI, idNilai)), 4000);
+        if (snap.exists()) {
+          const d = snap.data();
+          targetUjian = targetUjian || d?.ID_Ujian;
+          targetMurid = targetMurid || d?.Nama_Murid;
+          targetJudul = targetJudul || d?.Judul_Ujian;
+          if (prevScore === undefined && d?.Nilai !== undefined) {
+            prevScore = Number(d.Nilai);
+          }
+        }
+      } catch {}
+    }
+
+    if (targetUjian && targetMurid) {
+      try {
+        const resetId = `${targetUjian}___${encodeURIComponent(targetMurid.trim())}`;
+        await withTimeout(
+          setDoc(doc(db, COLLECTIONS.RESETS, resetId), {
+            id: resetId,
+            idUjian: targetUjian,
+            namaMurid: targetMurid,
+            judulUjian: targetJudul || '',
+            nilaiSebelumnya: prevScore,
+            resetAt: new Date().toISOString(),
+            resetBy: 'guru/admin',
+            status: 'granted',
+          }),
+          5000
+        );
+      } catch (err) {
+        console.warn('Error recording reset permission in Firebase:', err);
+      }
+    }
+
     await withTimeout(deleteDoc(doc(db, COLLECTIONS.NILAI, idNilai)), 5000);
-    return { success: true, message: 'Akses ujian ulang berhasil diberikan kepada murid!' };
+    return { success: true, message: 'Izin pengerjaan ulang berhasil diberikan kepada murid!' };
+  },
+
+  async grantExamReset(reset: ExamResetPermission): Promise<ApiResponse> {
+    const docId = reset.id || `${reset.idUjian}___${encodeURIComponent(reset.namaMurid.trim())}`;
+    await withTimeout(setDoc(doc(db, COLLECTIONS.RESETS, docId), { ...reset, id: docId }), 5000);
+    return { success: true, message: 'Izin pengerjaan ulang berhasil dicatat di Firebase!' };
+  },
+
+  async getExamResets(namaMurid?: string): Promise<ExamResetPermission[]> {
+    if (isFirestoreOffline()) return [];
+    try {
+      const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.RESETS)), 6000);
+      const list = snap.docs.map((d) => d.data() as ExamResetPermission);
+      if (namaMurid) {
+        return list.filter(
+          (r) =>
+            r.status === 'granted' &&
+            r.namaMurid?.trim().toLowerCase() === namaMurid.trim().toLowerCase()
+        );
+      }
+      return list.filter((r) => r.status === 'granted');
+    } catch (err) {
+      markFirestoreOffline(err);
+      return [];
+    }
+  },
+
+  async consumeExamReset(idUjian: string, namaMurid: string): Promise<ApiResponse> {
+    try {
+      const docId = `${idUjian}___${encodeURIComponent(namaMurid.trim())}`;
+      await withTimeout(deleteDoc(doc(db, COLLECTIONS.RESETS, docId)), 5000);
+    } catch (err) {
+      console.warn('Error deleting exam reset doc in Firebase:', err);
+    }
+    return { success: true };
   },
 
   async updateNilai(nilai: Nilai): Promise<ApiResponse> {

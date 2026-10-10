@@ -170,6 +170,17 @@ export interface Nilai {
   Jawaban_JSON?: string;
 }
 
+export interface ExamResetPermission {
+  id: string;
+  idUjian: string;
+  namaMurid: string;
+  judulUjian?: string;
+  nilaiSebelumnya?: number;
+  resetAt: string;
+  resetBy?: string;
+  status: 'granted' | 'completed';
+}
+
 export interface SchoolProfile {
   namaSekolah: string;
   npsn: string;

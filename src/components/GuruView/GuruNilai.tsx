@@ -102,12 +102,12 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
       isConfirm: true,
       okText: 'Izinkan Ulang',
       onConfirm: async () => {
-        const res = await api.resetNilaiMurid(n.ID);
+        const res = await api.resetNilaiMurid(n.ID, n.ID_Ujian, n.Nama_Murid, n.Judul_Ujian, n.Nilai);
         if (res.success) {
           onShowModal({
             isOpen: true,
             title: 'Berhasil',
-            message: res.message || 'Kesempatan ujian ulang telah diberikan.',
+            message: res.message || 'Izin pengerjaan ulang telah diberikan kepada murid.',
             type: 'success',
             isConfirm: false,
           });

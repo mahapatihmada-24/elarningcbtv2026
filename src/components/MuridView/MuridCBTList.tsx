@@ -20,7 +20,7 @@ import {
   Lock,
   HeartHandshake,
 } from 'lucide-react';
-import { Ujian, Nilai, User, SchoolProfile, Question } from '../../types';
+import { Ujian, Nilai, User, SchoolProfile, Question, ExamResetPermission } from '../../types';
 import { api } from '../../services/api';
 import { downloadExamWord, printExamDocument } from '../../utils/documentExport';
 import { KisiKisiModal } from '../KisiKisiModal';
@@ -36,6 +36,7 @@ interface MuridCBTListProps {
 export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStartExam, onOpenParentPortal }) => {
   const [ujianList, setUjianList] = useState<Ujian[]>([]);
   const [hasilList, setHasilList] = useState<Nilai[]>([]);
+  const [resetsList, setResetsList] = useState<ExamResetPermission[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [schoolProfile, setSchoolProfile] = useState<SchoolProfile | null>(null);
   const [filterKelas, setFilterKelas] = useState<string>(currentUser.kelas || 'Semua');
@@ -64,14 +65,16 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
     if (silent !== true) setIsLoading(true);
     try {
       const activeClass = isAdmin ? filterKelas : (currentUser.kelas || '6A');
-      const [uData, hData, sProfile] = await Promise.all([
+      const [uData, hData, sProfile, rData] = await Promise.all([
         api.getUjianList(activeClass, currentUser.role || 'murid'),
         api.getHasilMurid(currentUser.nama),
         api.getSchoolProfile().catch(() => null),
+        api.getExamResets(currentUser.nama).catch(() => []),
       ]);
       setUjianList(uData || []);
       setHasilList(hData || []);
       if (sProfile) setSchoolProfile(sProfile);
+      setResetsList(rData || []);
     } finally {
       if (silent !== true) setIsLoading(false);
     }
@@ -85,17 +88,25 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
     };
 
     const handleStorage = (e: StorageEvent) => {
-      if (!e.key || e.key === 'cbt_nilai' || e.key === 'cbt_nilai_sync_event') {
+      if (
+        !e.key ||
+        e.key === 'cbt_nilai' ||
+        e.key === 'cbt_nilai_sync_event' ||
+        e.key === 'cbt_db_exam_resets' ||
+        e.key === 'cbt_resets_sync_event'
+      ) {
         fetchData(true);
       }
     };
 
     window.addEventListener('cbt-nilai-updated', handleSync);
+    window.addEventListener('cbt-resets-updated', handleSync);
     window.addEventListener('storage', handleStorage);
     window.addEventListener('focus', handleSync);
 
     return () => {
       window.removeEventListener('cbt-nilai-updated', handleSync);
+      window.removeEventListener('cbt-resets-updated', handleSync);
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('focus', handleSync);
     };
@@ -264,12 +275,26 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
             // Student attempts calculation
             const studentSubmissions = hasilList.filter((h) => h.ID_Ujian === u.ID);
             const attemptsCount = studentSubmissions.length;
-            const isCompletedAndLocked = maxAttempts > 0 && attemptsCount >= maxAttempts;
+
+            // Periksa izin pengerjaan ulang yang diberikan oleh guru/admin
+            const activeReset = resetsList.find(
+              (r) =>
+                r.idUjian === u.ID &&
+                r.status === 'granted' &&
+                r.namaMurid?.trim().toLowerCase() === (currentUser.nama || '').trim().toLowerCase()
+            );
+            const hasResetPermission = Boolean(activeReset);
+
+            const isCompletedAndLocked = !hasResetPermission && maxAttempts > 0 && attemptsCount >= maxAttempts;
             const latestSubmission =
               studentSubmissions.length > 0
                 ? studentSubmissions[studentSubmissions.length - 1]
                 : null;
-            const latestScore = latestSubmission ? latestSubmission.Nilai : null;
+            const latestScore = latestSubmission
+              ? latestSubmission.Nilai
+              : activeReset?.nilaiSebelumnya !== undefined
+              ? activeReset.nilaiSebelumnya
+              : null;
 
             // Hitung butir soal yang telah dijawab siswa pada pengerjaan terakhir
             let studentAnsweredCount = 0;
@@ -322,9 +347,15 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
                     {u.Judul_Ujian}
                   </h4>
 
-                  {/* Schedule badges */}
-                  {(u.Jadwal_Mulai || u.Jadwal_Selesai || u.Token_Ujian) && (
+                  {/* Schedule & Reset badges */}
+                  {(u.Jadwal_Mulai || u.Jadwal_Selesai || u.Token_Ujian || hasResetPermission) && (
                     <div className="flex flex-wrap gap-1.5 text-[11px]">
+                      {hasResetPermission && (
+                        <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold border border-amber-300 flex items-center gap-1 shadow-2xs animate-pulse">
+                          <RotateCcw className="w-3 h-3 text-amber-700" />
+                          Izin Ujian Ulang Diberikan
+                        </span>
+                      )}
                       {u.Token_Ujian && (
                         <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-bold border border-amber-200 flex items-center gap-1">
                           <KeyRound className="w-3 h-3 text-amber-600" />
@@ -373,7 +404,21 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
                 </div>
 
                 <div className="pt-3 border-t border-slate-100 space-y-2">
-                  {isCompletedAndLocked ? (
+                  {hasResetPermission ? (
+                    <div className="space-y-2">
+                      <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center gap-2 font-medium">
+                        <RotateCcw className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Guru/Admin telah memberikan izin untuk mengerjakan ulang ujian ini.</span>
+                      </div>
+                      <button
+                        onClick={() => handleInitiateExam(u)}
+                        className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-98 text-white font-bold text-xs sm:text-sm shadow-md transition flex items-center justify-center gap-2"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        <span>Mulai Pengerjaan Ulang</span>
+                      </button>
+                    </div>
+                  ) : isCompletedAndLocked ? (
                     <div className="w-full py-2.5 rounded-xl bg-emerald-50 text-emerald-700 font-bold text-xs text-center border border-emerald-200 flex items-center justify-center gap-1.5">
                       <CheckCircle className="w-4 h-4 text-emerald-600" />
                       <span>Selesai Dikerjakan ({attemptsCount}x)</span>
