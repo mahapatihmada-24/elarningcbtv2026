@@ -1,6 +1,6 @@
+import 'dotenv/config';
 import express from 'express';
 import path from 'path';
-import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
@@ -26,61 +26,6 @@ async function startServer() {
       hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
       timestamp: new Date().toISOString(),
     });
-  });
-
-  // Server-side fallback proxy for CBT submission (100% guaranteed for mobile devices)
-  app.post('/api/submit-nilai', async (req, res) => {
-    try {
-      const payload = req.body;
-      if (!payload || !payload.ID) {
-        return res.status(400).json({ success: false, message: 'Payload nilai tidak valid.' });
-      }
-
-      let cfg: any = { projectId: 'elearningcbt-sebayuloka', apiKey: '' };
-      try {
-        const rawCfg = fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8');
-        cfg = JSON.parse(rawCfg);
-      } catch {}
-
-      if (!cfg.projectId || !cfg.apiKey) {
-        return res.status(500).json({ success: false, message: 'Firebase configuration not found on server.' });
-      }
-
-      const fields: Record<string, any> = {};
-      for (const [k, v] of Object.entries(payload)) {
-        if (v === undefined || v === null) continue;
-        if (typeof v === 'string') fields[k] = { stringValue: v };
-        else if (typeof v === 'number') {
-          if (Number.isInteger(v)) fields[k] = { integerValue: String(v) };
-          else fields[k] = { doubleValue: v };
-        } else if (typeof v === 'boolean') fields[k] = { booleanValue: v };
-        else if (typeof v === 'object') fields[k] = { stringValue: JSON.stringify(v) };
-      }
-
-      const cleanId = encodeURIComponent(String(payload.ID).replace(/[^a-zA-Z0-9_-]/g, '_'));
-      const body = JSON.stringify({ fields });
-      const headers = { 'Content-Type': 'application/json' };
-
-      const urlRekap = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/rekap_nilai/${cleanId}?key=${cfg.apiKey}`;
-      const urlHasil = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/hasil_ujian/${cleanId}?key=${cfg.apiKey}`;
-      const urlNilai = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/nilai/${cleanId}?key=${cfg.apiKey}`;
-
-      const [resRekap, resHasil, resNilai] = await Promise.allSettled([
-        fetch(urlRekap, { method: 'PATCH', headers, body }),
-        fetch(urlHasil, { method: 'PATCH', headers, body }),
-        fetch(urlNilai, { method: 'PATCH', headers, body }),
-      ]);
-
-      const isOk = (r: PromiseSettledResult<Response>) => r.status === 'fulfilled' && r.value.ok;
-      if (isOk(resRekap) || isOk(resHasil) || isOk(resNilai)) {
-        return res.json({ success: true, message: 'Hasil ujian berhasil disimpan ke database via server proxy.' });
-      } else {
-        return res.status(502).json({ success: false, message: 'Gagal menulis ke Firestore via server proxy.' });
-      }
-    } catch (err: any) {
-      console.error('Error in /api/submit-nilai:', err);
-      return res.status(500).json({ success: false, message: err.message || 'Server error saat simpan nilai.' });
-    }
   });
 
   // AI Question Generator based on Kisi-Kisi

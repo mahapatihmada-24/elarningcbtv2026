@@ -50,10 +50,24 @@ export const PRESET_CONFIGS: Record<
   string,
   { id: string; name: string; desc: string; config: FirebaseAppConfig }
 > = {
+  v2026: {
+    id: 'v2026',
+    name: 'Proyek Utama (e-learningcbtv2026)',
+    desc: 'Proyek Firebase E-Learning CBT 2026',
+    config: {
+      projectId: 'e-learningcbtv2026',
+      appId: '1:418043445714:web:991b2969bcc32ff37bc80b',
+      apiKey: 'AIzaSyB6NIoNo3lSPwuCmjxBE8ff_A7bc7Gz-KI',
+      authDomain: 'e-learningcbtv2026.firebaseapp.com',
+      storageBucket: 'e-learningcbtv2026.firebasestorage.app',
+      messagingSenderId: '418043445714',
+      firestoreDatabaseId: '(default)',
+    },
+  },
   sebayuloka: {
     id: 'sebayuloka',
-    name: 'Proyek Utama (elearningcbt-sebayuloka)',
-    desc: 'Proyek Firebase utama pengguna',
+    name: 'Proyek Alternatif (elearningcbt-sebayuloka)',
+    desc: 'Proyek Firebase alternatif pengguna',
     config: {
       projectId: 'elearningcbt-sebayuloka',
       appId: '1:932039432049:web:0ba341a7a315ef72c788d0',
@@ -198,14 +212,12 @@ try {
 
 export const db = firestoreInstance;
 
-// Nama koleksi di Firestore (rekap_nilai & hasil_ujian sebagai koleksi utama)
+// Nama koleksi di Firestore
 export const COLLECTIONS = {
   USERS: 'users',
   MATERI: 'materi',
   UJIAN: 'ujian',
-  NILAI: 'rekap_nilai',
-  REKAP_NILAI: 'rekap_nilai',
-  HASIL_UJIAN: 'hasil_ujian',
+  NILAI: 'nilai',
   SETTINGS: 'settings',
   ANNOUNCEMENTS: 'announcements',
   RESETS: 'exam_resets',
@@ -358,25 +370,31 @@ export async function saveNilaiViaRest(nilai: Nilai): Promise<boolean> {
     const cfg = getActiveFirebaseConfig();
     if (!cfg.projectId || !cfg.apiKey) return false;
     const cleanId = encodeURIComponent(nilai.ID.replace(/[^a-zA-Z0-9_-]/g, '_'));
+    const url = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/nilai/${cleanId}?key=${cfg.apiKey}`;
     const payload = {
       fields: toFirestoreRestFields(cleanFirestoreDoc(nilai)),
     };
-    const body = JSON.stringify(payload);
-    const headers = { 'Content-Type': 'application/json' };
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
 
-    // Tulis ke koleksi rekap_nilai, hasil_ujian, dan nilai secara serentak
+    // Mirror juga ke rekap_nilai & hasil_ujian via REST
     const urlRekap = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/rekap_nilai/${cleanId}?key=${cfg.apiKey}`;
     const urlHasil = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/hasil_ujian/${cleanId}?key=${cfg.apiKey}`;
-    const urlNilai = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/nilai/${cleanId}?key=${cfg.apiKey}`;
+    fetch(urlRekap, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+    fetch(urlHasil, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
 
-    const [resRekap, resHasil, resNilai] = await Promise.allSettled([
-      fetch(urlRekap, { method: 'PATCH', headers, body }),
-      fetch(urlHasil, { method: 'PATCH', headers, body }),
-      fetch(urlNilai, { method: 'PATCH', headers, body }),
-    ]);
-
-    const isOk = (r: PromiseSettledResult<Response>) => r.status === 'fulfilled' && r.value.ok;
-    return isOk(resRekap) || isOk(resHasil) || isOk(resNilai);
+    return res.ok;
   } catch (e) {
     console.warn('[REST API] Gagal kirim nilai via REST:', e);
     return false;
@@ -388,15 +406,8 @@ export async function getNilaiListViaRest(): Promise<Nilai[]> {
   try {
     const cfg = getActiveFirebaseConfig();
     if (!cfg.projectId || !cfg.apiKey) return [];
-    
-    // Coba ambil dari rekap_nilai terlebih dahulu
-    let url = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/rekap_nilai?pageSize=300&key=${cfg.apiKey}`;
-    let res = await fetch(url);
-    if (!res.ok) {
-      // Fallback ke koleksi nilai
-      url = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/nilai?pageSize=300&key=${cfg.apiKey}`;
-      res = await fetch(url);
-    }
+    const url = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/nilai?pageSize=300&key=${cfg.apiKey}`;
+    const res = await fetch(url);
     if (!res.ok) return [];
     const data = await res.json();
     if (Array.isArray(data.documents)) {
@@ -681,52 +692,29 @@ export const firebaseService = {
 
     const cleaned = cleanFirestoreDoc(newNilai);
 
-    // 1. Eksekusi Jalur Utama via Firebase JS SDK langsung ke rekap_nilai & hasil_ujian & nilai
+    // 1. Eksekusi Jalur Utama via Firebase JS SDK
     try {
-      await withTimeout(
-        Promise.all([
-          setDoc(doc(db, COLLECTIONS.REKAP_NILAI, safeId), cleaned),
-          setDoc(doc(db, COLLECTIONS.HASIL_UJIAN, safeId), cleaned),
-          setDoc(doc(db, 'nilai', safeId), cleaned),
-        ]),
-        7000
-      );
+      await withTimeout(setDoc(doc(db, COLLECTIONS.NILAI, safeId), cleaned), 6000);
+      setDoc(doc(db, 'rekap_nilai', safeId), cleaned).catch(() => {});
+      setDoc(doc(db, 'hasil_ujian', safeId), cleaned).catch(() => {});
       markFirestoreOnline();
-      return { success: true, message: 'Hasil ujian berhasil disimpan langsung ke database Firebase Firestore!', data: newNilai };
+      return { success: true, message: 'Hasil ujian berhasil disimpan ke database Firebase!', data: newNilai };
     } catch (sdkErr) {
       console.warn('[Firebase SDK submitHasilUjian] Gagal/timeout via SDK, mengaktifkan jalur cepat REST API:', sdkErr);
     }
 
-    // 2. Eksekusi Jalur Cepat REST API Langsung ke Firestore (Sangat andal untuk browser mobile Android & iOS)
+    // 2. Eksekusi Jalur Cepat REST API (Sangat andal untuk browser mobile Android Chrome & Safari iOS)
     try {
       const restOk = await saveNilaiViaRest(newNilai);
       if (restOk) {
         markFirestoreOnline();
-        return { success: true, message: 'Hasil ujian berhasil disimpan ke database via REST!', data: newNilai };
+        return { success: true, message: 'Hasil ujian berhasil disimpan ke server database via REST!', data: newNilai };
       }
     } catch (restErr) {
       console.warn('[Firebase REST submitHasilUjian] Gagal via REST:', restErr);
     }
 
-    // 3. Eksekusi Jalur Fallback Proxy Server Lokal (/api/submit-nilai)
-    try {
-      const serverRes = await fetch('/api/submit-nilai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newNilai),
-      });
-      if (serverRes.ok) {
-        const serverData = await serverRes.json();
-        if (serverData && serverData.success) {
-          markFirestoreOnline();
-          return { success: true, message: 'Hasil ujian berhasil disimpan via proxy server!', data: newNilai };
-        }
-      }
-    } catch (proxyErr) {
-      console.warn('[Server Proxy submitHasilUjian] Gagal via proxy:', proxyErr);
-    }
-
-    // 4. Retry cepat via REST API
+    // 3. Retry cepat via REST API
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         await new Promise((r) => setTimeout(r, 600 * attempt));
@@ -789,14 +777,9 @@ export const firebaseService = {
       }
     }
 
-    await withTimeout(
-      Promise.allSettled([
-        deleteDoc(doc(db, COLLECTIONS.REKAP_NILAI, idNilai)),
-        deleteDoc(doc(db, COLLECTIONS.HASIL_UJIAN, idNilai)),
-        deleteDoc(doc(db, 'nilai', idNilai)),
-      ]),
-      5000
-    );
+    await withTimeout(deleteDoc(doc(db, COLLECTIONS.NILAI, idNilai)), 5000);
+    deleteDoc(doc(db, 'rekap_nilai', idNilai)).catch(() => {});
+    deleteDoc(doc(db, 'hasil_ujian', idNilai)).catch(() => {});
     return { success: true, message: 'Izin pengerjaan ulang berhasil diberikan kepada murid!' };
   },
 
@@ -839,14 +822,9 @@ export const firebaseService = {
     const payload = normalizeNilai(nilai);
     const cleaned = cleanFirestoreDoc(payload);
     try {
-      await withTimeout(
-        Promise.allSettled([
-          setDoc(doc(db, COLLECTIONS.REKAP_NILAI, payload.ID), cleaned),
-          setDoc(doc(db, COLLECTIONS.HASIL_UJIAN, payload.ID), cleaned),
-          setDoc(doc(db, 'nilai', payload.ID), cleaned),
-        ]),
-        5000
-      );
+      await withTimeout(setDoc(doc(db, COLLECTIONS.NILAI, payload.ID), cleaned), 5000);
+      setDoc(doc(db, 'rekap_nilai', payload.ID), cleaned).catch(() => {});
+      setDoc(doc(db, 'hasil_ujian', payload.ID), cleaned).catch(() => {});
       return { success: true, message: 'Koreksi nilai berhasil disimpan ke database Firebase!' };
     } catch (err) {
       console.warn('[Firebase updateNilai] SDK gagal, mencoba REST API:', err);
