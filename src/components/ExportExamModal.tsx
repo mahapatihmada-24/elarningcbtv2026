@@ -10,9 +10,11 @@ import {
   Sparkles,
   Lock,
   ShieldAlert,
+  FileSpreadsheet,
 } from 'lucide-react';
-import { Ujian } from '../types';
+import { Ujian, Question } from '../types';
 import { printExamDocument, downloadExamWord } from '../utils/documentExport';
+import { exportQuestionsToExcel } from '../utils/excelExamHelper';
 
 interface ExportExamModalProps {
   isOpen: boolean;
@@ -66,6 +68,33 @@ export const ExportExamModal: React.FC<ExportExamModalProps> = ({
     const includeAnswers = isStudentView ? false : (selectedType === 'with_answers' || selectedType === 'with_pembahasan');
     const includePembahasan = isStudentView ? false : (selectedType === 'with_pembahasan');
     downloadExamWord(ujian, { includeAnswers, includePembahasan });
+  };
+
+  const handleDownloadExcel = () => {
+    let questions: Question[] = [];
+    try {
+      const raw = JSON.parse(ujian.Soal_JSON || '{}');
+      if (raw.questions && Array.isArray(raw.questions)) {
+        questions = raw.questions;
+      } else if (Array.isArray(raw)) {
+        questions = raw;
+      }
+    } catch {}
+
+    if (questions.length === 0) {
+      setDeniedWarning('Paket ujian ini belum memiliki butir soal untuk diekspor ke Excel.');
+      return;
+    }
+
+    const includeAnswers = isStudentView ? false : (selectedType === 'with_answers' || selectedType === 'with_pembahasan');
+    const includePembahasan = isStudentView ? false : (selectedType === 'with_pembahasan');
+
+    exportQuestionsToExcel(ujian.Judul_Ujian, questions, {
+      includeAnswers,
+      includePembahasan,
+      kelas: ujian.Kelas,
+      mapel: ujian.Mapel,
+    });
   };
 
   return (
@@ -294,14 +323,14 @@ export const ExportExamModal: React.FC<ExportExamModalProps> = ({
               2. Pilih Format Aksi:
             </label>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <button
                 type="button"
                 onClick={handlePrint}
                 className="p-3 rounded-2xl bg-slate-900 hover:bg-slate-800 active:scale-98 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-md"
               >
                 <Printer className="w-4 h-4 text-indigo-300" />
-                <span>Cetak / Simpan PDF</span>
+                <span>Cetak / PDF</span>
               </button>
 
               <button
@@ -311,6 +340,15 @@ export const ExportExamModal: React.FC<ExportExamModalProps> = ({
               >
                 <Download className="w-4 h-4 text-blue-200" />
                 <span>Unduh Word (.doc)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadExcel}
+                className="p-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-md"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+                <span>Unduh Excel (.xlsx)</span>
               </button>
             </div>
           </div>
