@@ -1308,22 +1308,22 @@ export const api = {
   },
 
   async getNilaiList(): Promise<Nilai[]> {
-    if (currentDataSource === 'FIREBASE' && !isFirestoreOffline()) {
+    if (currentDataSource === 'FIREBASE') {
       try {
         const list = await firebaseService.getNilaiList();
-        if (Array.isArray(list)) {
+        if (Array.isArray(list) && list.length > 0) {
           saveLocalNilai(list);
           return list;
         }
       } catch (err) {
-        // Fall back to local
+        console.warn('Firebase getNilaiList error:', err);
       }
     }
 
     if (currentDataSource === 'GAS') {
       try {
         const res = await callGasServer<Nilai[]>('getNilaiList', []);
-        if (Array.isArray(res)) {
+        if (Array.isArray(res) && res.length > 0) {
           const normalized = res.map(normalizeNilai);
           saveLocalNilai(normalized);
           return normalized;
@@ -1344,6 +1344,8 @@ export const api = {
     kelas: string;
     nilai: number;
     pelanggaran: number;
+    catatan_guru?: string;
+    koreksi_manual?: boolean;
     jawaban_json?: string;
   }): Promise<ApiResponse> {
     const now = new Date();
@@ -1352,7 +1354,8 @@ export const api = {
       now.getHours()
     )}:${pad(now.getMinutes())}`;
 
-    const assignedId = payload.id_nilai || ('NILAI-' + Date.now());
+    const rawId = payload.id_nilai || ('NILAI-' + Date.now());
+    const assignedId = rawId.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 90);
     const payloadWithId = { ...payload, id_nilai: assignedId };
 
     const newNilai: Nilai = {
@@ -1364,6 +1367,8 @@ export const api = {
       Nilai: payload.nilai,
       Pelanggaran: payload.pelanggaran,
       Waktu_Submit: timeStr,
+      Catatan_Guru: payload.catatan_guru,
+      Koreksi_Manual: Boolean(payload.koreksi_manual),
       Jawaban_JSON: payload.jawaban_json,
     };
 
@@ -1394,6 +1399,17 @@ export const api = {
       try {
         const res = await firebaseService.submitHasilUjian(payloadWithId);
         removePendingSubmission(assignedId);
+        if (res.data) {
+          const freshRecord = normalizeNilai(res.data);
+          const freshList = getLocalNilai();
+          const tIdx = freshList.findIndex((n) => n.ID === assignedId);
+          if (tIdx >= 0) {
+            freshList[tIdx] = freshRecord;
+          } else {
+            freshList.push(freshRecord);
+          }
+          saveLocalNilai(freshList);
+        }
         return res;
       } catch (err) {
         console.warn('Firebase submitHasilUjian error:', err);
@@ -1739,5 +1755,25 @@ export const api = {
       }
     }
     return { success: true, message: 'Pengumuman berhasil dihapus!' };
+  },
+
+  getLocalNilai() {
+    return getLocalNilai();
+  },
+
+  saveLocalNilai(nilai: Nilai[]) {
+    saveLocalNilai(nilai);
+  },
+
+  getPendingSubmissions() {
+    return getPendingSubmissions();
+  },
+
+  savePendingSubmission(item: Omit<PendingExamSubmission, 'timestamp'>) {
+    savePendingSubmission(item);
+  },
+
+  removePendingSubmission(idNilai: string) {
+    removePendingSubmission(idNilai);
   },
 };

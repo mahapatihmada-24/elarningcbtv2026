@@ -104,10 +104,16 @@ export default function App() {
 
   // Check connectivity & restore session
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
+    const handleOnline = () => {
+      setIsOnline(true);
+      api.syncPendingSubmissions().catch(() => {});
+    };
     const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+
+    // Coba kirimkan antrean darurat jika ada sisa data di perangkat
+    api.syncPendingSubmissions().catch(() => {});
 
     const unsubscribe = subscribeDataSource((src) => setDataSource(src));
 

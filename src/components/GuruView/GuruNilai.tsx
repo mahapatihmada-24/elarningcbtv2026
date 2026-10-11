@@ -52,6 +52,9 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
   const fetchNilaiAndProfile = useCallback(async (silent?: boolean | unknown) => {
     if (silent !== true) setIsLoading(true);
     try {
+      // Sinkronkan antrean darurat yang belum terunggah jika ada
+      api.syncPendingSubmissions().catch(() => {});
+
       const [nData, sProfile] = await Promise.all([
         api.getNilaiList(),
         api.getSchoolProfile(),

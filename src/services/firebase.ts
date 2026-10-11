@@ -180,8 +180,15 @@ const resolvedDatabaseId =
 let firestoreInstance: ReturnType<typeof getFirestore>;
 try {
   firestoreInstance = resolvedDatabaseId
-    ? initializeFirestore(firebaseApp, { experimentalAutoDetectLongPolling: true }, resolvedDatabaseId)
-    : initializeFirestore(firebaseApp, { experimentalAutoDetectLongPolling: true });
+    ? initializeFirestore(
+        firebaseApp,
+        { experimentalAutoDetectLongPolling: true, ignoreUndefinedProperties: true },
+        resolvedDatabaseId
+      )
+    : initializeFirestore(firebaseApp, {
+        experimentalAutoDetectLongPolling: true,
+        ignoreUndefinedProperties: true,
+      });
 } catch {
   firestoreInstance = resolvedDatabaseId
     ? getFirestore(firebaseApp, resolvedDatabaseId)
@@ -287,6 +294,99 @@ export async function ensureFirebaseSeeded(): Promise<void> {
     markFirestoreOffline(err);
   } finally {
     isSeeding = false;
+  }
+}
+
+// Helper pembersihan objek dari undefined agar setDoc Firestore tidak crash
+export function cleanFirestoreDoc<T extends Record<string, any>>(data: T): Record<string, any> {
+  const cleaned: Record<string, any> = {};
+  for (const [key, val] of Object.entries(data)) {
+    if (val !== undefined) {
+      cleaned[key] = val;
+    }
+  }
+  return cleaned;
+}
+
+// Konversi objek TypeScript ke format Document Fields Firestore REST API
+function toFirestoreRestFields(obj: Record<string, any>): Record<string, any> {
+  const fields: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined || v === null) continue;
+    if (typeof v === 'string') {
+      fields[k] = { stringValue: v };
+    } else if (typeof v === 'number') {
+      if (Number.isInteger(v)) {
+        fields[k] = { integerValue: String(v) };
+      } else {
+        fields[k] = { doubleValue: v };
+      }
+    } else if (typeof v === 'boolean') {
+      fields[k] = { booleanValue: v };
+    } else if (typeof v === 'object') {
+      fields[k] = { stringValue: JSON.stringify(v) };
+    }
+  }
+  return fields;
+}
+
+// Parser dokumen hasil Firestore REST API menjadi objek Nilai
+function parseFirestoreRestNilaiDoc(doc: any): Nilai {
+  const f = doc.fields || {};
+  return {
+    ID: f.ID?.stringValue || doc.name?.split('/').pop() || '',
+    ID_Ujian: f.ID_Ujian?.stringValue || '',
+    Judul_Ujian: f.Judul_Ujian?.stringValue || '',
+    Nama_Murid: f.Nama_Murid?.stringValue || '',
+    Kelas: f.Kelas?.stringValue || '',
+    Nilai: Number(f.Nilai?.doubleValue ?? f.Nilai?.integerValue ?? 0),
+    Pelanggaran: Number(f.Pelanggaran?.integerValue ?? f.Pelanggaran?.doubleValue ?? 0),
+    Waktu_Submit: f.Waktu_Submit?.stringValue || '',
+    Catatan_Guru: f.Catatan_Guru?.stringValue || undefined,
+    Koreksi_Manual: Boolean(f.Koreksi_Manual?.booleanValue),
+    No_HP_Ortu: f.No_HP_Ortu?.stringValue || undefined,
+    Jawaban_JSON: f.Jawaban_JSON?.stringValue || undefined,
+  };
+}
+
+// Jalur Cepat REST API untuk menyimpan nilai (Solusi handal untuk Chrome Mobile & Safari iOS di HP)
+export async function saveNilaiViaRest(nilai: Nilai): Promise<boolean> {
+  try {
+    const cfg = getActiveFirebaseConfig();
+    if (!cfg.projectId || !cfg.apiKey) return false;
+    const cleanId = encodeURIComponent(nilai.ID.replace(/[^a-zA-Z0-9_-]/g, '_'));
+    const url = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/nilai/${cleanId}?key=${cfg.apiKey}`;
+    const payload = {
+      fields: toFirestoreRestFields(cleanFirestoreDoc(nilai)),
+    };
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return res.ok;
+  } catch (e) {
+    console.warn('[REST API] Gagal kirim nilai via REST:', e);
+    return false;
+  }
+}
+
+// Jalur Cepat REST API untuk mengambil rekap nilai
+export async function getNilaiListViaRest(): Promise<Nilai[]> {
+  try {
+    const cfg = getActiveFirebaseConfig();
+    if (!cfg.projectId || !cfg.apiKey) return [];
+    const url = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/nilai?pageSize=300&key=${cfg.apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (Array.isArray(data.documents)) {
+      return data.documents.map(parseFirestoreRestNilaiDoc);
+    }
+    return [];
+  } catch (e) {
+    console.warn('[REST API] Gagal ambil nilai via REST:', e);
+    return [];
   }
 }
 
@@ -460,14 +560,44 @@ export const firebaseService = {
   },
 
   async getNilaiList(): Promise<Nilai[]> {
-    if (isFirestoreOffline()) throw new Error('Firestore sedang offline');
-    await ensureFirebaseSeeded().catch(() => {});
-    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.NILAI)), 7000);
-    const list: Nilai[] = [];
-    snap.forEach((d) => {
-      list.push(normalizeNilai(d.data()));
-    });
-    return list.reverse();
+    let list: Nilai[] = [];
+    let sdkSuccess = false;
+
+    // Strategi 1: Coba ambil melalui Firestore JS SDK
+    try {
+      if (!isFirestoreOffline()) {
+        await ensureFirebaseSeeded().catch(() => {});
+        const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.NILAI)), 8000);
+        snap.forEach((d) => {
+          list.push(normalizeNilai(d.data()));
+        });
+        if (list.length > 0) {
+          sdkSuccess = true;
+        }
+      }
+    } catch (err) {
+      console.warn('[Firebase SDK getNilaiList] Gagal/timeout via SDK, beralih ke jalur cepat REST API:', err);
+    }
+
+    // Strategi 2: Jika SDK gagal, timeout, atau daftar kosong, ambil via REST API
+    if (!sdkSuccess || list.length === 0) {
+      try {
+        const restList = await getNilaiListViaRest();
+        if (restList.length > 0) {
+          list = restList;
+          markFirestoreOnline();
+        }
+      } catch (restErr) {
+        console.warn('[Firebase REST getNilaiList] Gagal via REST:', restErr);
+      }
+    }
+
+    if (list.length === 0 && isFirestoreOffline()) {
+      throw new Error('Firestore sedang offline');
+    }
+
+    // Urutkan nilai terbaru di posisi paling atas berdasarkan Waktu_Submit
+    return list.sort((a, b) => (b.Waktu_Submit || '').localeCompare(a.Waktu_Submit || ''));
   },
 
   async submitHasilUjian(payload: {
@@ -478,6 +608,8 @@ export const firebaseService = {
     kelas: string;
     nilai: number;
     pelanggaran: number;
+    catatan_guru?: string;
+    koreksi_manual?: boolean;
     jawaban_json?: string;
   }): Promise<ApiResponse> {
     const now = new Date();
@@ -486,34 +618,59 @@ export const firebaseService = {
       now.getHours()
     )}:${pad(now.getMinutes())}`;
 
-    const newId = payload.id_nilai || ('NILAI-' + Date.now());
+    // Sanitasi document ID agar aman untuk URL REST dan path Firestore tanpa karakter ilegal
+    const rawId = payload.id_nilai || ('NILAI-' + Date.now());
+    const safeId = rawId.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 90);
+
     const newNilai: Nilai = {
-      ID: newId,
-      ID_Ujian: payload.id_ujian,
-      Judul_Ujian: payload.judul_ujian,
-      Nama_Murid: payload.nama_murid,
-      Kelas: payload.kelas,
-      Nilai: payload.nilai,
-      Pelanggaran: payload.pelanggaran,
+      ID: safeId,
+      ID_Ujian: String(payload.id_ujian || '').trim(),
+      Judul_Ujian: String(payload.judul_ujian || '').trim(),
+      Nama_Murid: String(payload.nama_murid || '').trim(),
+      Kelas: String(payload.kelas || '-').trim(),
+      Nilai: Number(Number(payload.nilai || 0).toFixed(2)),
+      Pelanggaran: Number(payload.pelanggaran || 0),
       Waktu_Submit: timeStr,
-      Jawaban_JSON: payload.jawaban_json,
+      Catatan_Guru: payload.catatan_guru ? String(payload.catatan_guru).trim() : undefined,
+      Koreksi_Manual: Boolean(payload.koreksi_manual),
+      Jawaban_JSON: typeof payload.jawaban_json === 'string' ? payload.jawaban_json : undefined,
     };
 
-    let lastErr: unknown = null;
-    // Retry up to 3 times with exponential backoff for mobile cellular resilience
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        await withTimeout(setDoc(doc(db, COLLECTIONS.NILAI, newId), newNilai), 12000);
-        return { success: true, message: 'Hasil ujian berhasil disimpan ke database Firebase!', data: newNilai };
-      } catch (err) {
-        lastErr = err;
-        console.warn(`[Firebase] Gagal mengirim hasil ujian (Percobaan ${attempt}/3):`, err);
-        if (attempt < 3) {
-          await new Promise((r) => setTimeout(r, 1200 * attempt));
-        }
-      }
+    const cleaned = cleanFirestoreDoc(newNilai);
+
+    // 1. Eksekusi Jalur Utama via Firebase JS SDK
+    try {
+      await withTimeout(setDoc(doc(db, COLLECTIONS.NILAI, safeId), cleaned), 6000);
+      markFirestoreOnline();
+      return { success: true, message: 'Hasil ujian berhasil disimpan ke database Firebase!', data: newNilai };
+    } catch (sdkErr) {
+      console.warn('[Firebase SDK submitHasilUjian] Gagal/timeout via SDK, mengaktifkan jalur cepat REST API:', sdkErr);
     }
-    throw lastErr || new Error('Gagal menyimpan hasil ujian ke database Firebase.');
+
+    // 2. Eksekusi Jalur Cepat REST API (Sangat andal untuk browser mobile Android Chrome & Safari iOS)
+    try {
+      const restOk = await saveNilaiViaRest(newNilai);
+      if (restOk) {
+        markFirestoreOnline();
+        return { success: true, message: 'Hasil ujian berhasil disimpan ke server database via REST!', data: newNilai };
+      }
+    } catch (restErr) {
+      console.warn('[Firebase REST submitHasilUjian] Gagal via REST:', restErr);
+    }
+
+    // 3. Retry cepat via REST API
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        await new Promise((r) => setTimeout(r, 600 * attempt));
+        const restRetry = await saveNilaiViaRest(newNilai);
+        if (restRetry) {
+          markFirestoreOnline();
+          return { success: true, message: 'Hasil ujian berhasil disimpan ke server!', data: newNilai };
+        }
+      } catch {}
+    }
+
+    throw new Error('Gagal menyimpan hasil ujian ke database server. Lembar jawaban diamankan di penyimpanan lokal HP.');
   },
 
   async resetNilaiMurid(
@@ -605,8 +762,18 @@ export const firebaseService = {
 
   async updateNilai(nilai: Nilai): Promise<ApiResponse> {
     const payload = normalizeNilai(nilai);
-    await withTimeout(setDoc(doc(db, COLLECTIONS.NILAI, payload.ID), payload), 5000);
-    return { success: true, message: 'Koreksi nilai berhasil disimpan ke database Firebase!' };
+    const cleaned = cleanFirestoreDoc(payload);
+    try {
+      await withTimeout(setDoc(doc(db, COLLECTIONS.NILAI, payload.ID), cleaned), 5000);
+      return { success: true, message: 'Koreksi nilai berhasil disimpan ke database Firebase!' };
+    } catch (err) {
+      console.warn('[Firebase updateNilai] SDK gagal, mencoba REST API:', err);
+      const restOk = await saveNilaiViaRest(payload);
+      if (restOk) {
+        return { success: true, message: 'Koreksi nilai berhasil disimpan ke server!' };
+      }
+      throw new Error('Gagal memperbarui nilai di database.');
+    }
   },
 
   // 5. PENGATURAN IDENTITAS SEKOLAH & MASTER DATA

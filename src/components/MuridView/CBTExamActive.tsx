@@ -241,8 +241,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
   }, []);
 
   // Notifikasi pop-up saat waktu habis:
-  // "Waktu ujian telah habis. Silakan klik tombol Simpan & Kirim Jawaban untuk menyelesaikan ujian."
-  // Kunci input pilihan jawaban agar peserta tidak dapat mengubah jawaban lagi, namun izinkan peserta menekan tombol Simpan & Kirim Jawaban
+  // Kunci input pilihan jawaban dan segera kirimkan lembar jawaban ke server guru
   useEffect(() => {
     if (timeLeft <= 0 && !timeUpAlertShownRef.current && !submittedNilai) {
       timeUpAlertShownRef.current = true;
@@ -250,11 +249,23 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
         isOpen: true,
         title: 'Waktu Ujian Telah Habis',
         message:
-          'Waktu ujian telah habis. Silakan klik tombol Simpan & Kirim Jawaban untuk menyelesaikan ujian.',
+          'Waktu ujian telah habis. Lembar jawaban dan catatan anti-contek Anda sedang dikirimkan ke server guru secara otomatis demi keamanan data.',
         type: 'warning',
         isConfirm: false,
-        okText: 'Saya Mengerti, Kirimkan Jawaban',
+        okText: 'Kirimkan Sekarang',
+        onConfirm: () => {
+          handleSubmitExam(true);
+        },
       });
+
+      // Otomatis kirim jawaban setelah 1.5 detik jika murid di HP belum sempat menekan tombol
+      const autoTimer = setTimeout(() => {
+        if (!isSubmittingRef.current && !submittedNilai) {
+          handleSubmitExam(true);
+        }
+      }, 1500);
+
+      return () => clearTimeout(autoTimer);
     }
   }, [timeLeft, submittedNilai, onShowModal]);
 
@@ -365,13 +376,28 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
         ID_Ujian: payload.id_ujian,
         Judul_Ujian: payload.judul_ujian,
         Nama_Murid: payload.nama_murid,
-        Kelas: payload.kelas,
+        Kelas: payload.kelas || '-',
         Nilai: payload.nilai,
         Pelanggaran: payload.pelanggaran,
         Waktu_Submit: new Date().toISOString(),
         Jawaban_JSON: payload.jawaban_json,
       };
       setSubmittedNilai(fallbackRecord);
+
+      try {
+        const localList = api.getLocalNilai();
+        const existingIdx = localList.findIndex(
+          (n) => n.ID === payload.id_nilai || (n.ID_Ujian === payload.id_ujian && n.Nama_Murid === payload.nama_murid)
+        );
+        if (existingIdx >= 0) localList[existingIdx] = fallbackRecord;
+        else localList.push(fallbackRecord);
+        api.saveLocalNilai(localList);
+        api.savePendingSubmission(payload);
+        setTimeout(() => {
+          api.syncPendingSubmissions().catch(() => {});
+        }, 1000);
+      } catch {}
+
       await new Promise((r) => setTimeout(r, 600));
       finishSubmissionProcess(payload);
       return;
@@ -385,11 +411,11 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
         setSubmitRetryCount(attempt);
         if (attempt === 1) {
           setSubmitPhase('saving_local');
-          await new Promise((r) => setTimeout(r, 300));
+          await new Promise((r) => setTimeout(r, 200));
           setSubmitPhase('connecting');
         } else {
           setSubmitPhase('retrying');
-          await new Promise((r) => setTimeout(r, 1000));
+          await new Promise((r) => setTimeout(r, 800));
         }
 
         setSubmitPhase('syncing');
@@ -402,7 +428,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
         lastErrorMsg = err?.message || 'Gangguan sinyal seluler saat mengirim jawaban ke server.';
         console.warn(`[CBT Mobile Submit] Gagal pada percobaan ${attempt}/3:`, err);
         if (attempt < 3) {
-          await new Promise((r) => setTimeout(r, 1500 * attempt));
+          await new Promise((r) => setTimeout(r, 1000 * attempt));
         }
       }
     }
@@ -418,13 +444,16 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
         ID_Ujian: exam.ID,
         Judul_Ujian: exam.Judul_Ujian,
         Nama_Murid: currentUser.nama,
-        Kelas: currentUser.kelas,
+        Kelas: currentUser.kelas || '-',
         Nilai: payload.nilai,
         Pelanggaran: payload.pelanggaran,
         Waktu_Submit: new Date().toISOString(),
         Jawaban_JSON: payload.jawaban_json,
       };
       setSubmittedNilai(newNilaiRecord);
+
+      // Sinkronkan sisa antrean jika ada
+      api.syncPendingSubmissions().catch(() => {});
 
       await new Promise((r) => setTimeout(r, 800));
       finishSubmissionProcess(payload);
@@ -439,6 +468,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
   // Submit scoring logic
   const handleSubmitExam = async (isForced = false) => {
     if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     setSubmitPhase('saving_local');
     setSubmitRetryCount(1);
@@ -496,22 +526,33 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     // Format penilaian baku skala 0-100 dengan 2 angka di belakang koma (.toFixed(2))
     const finalScoreNum = Number(finalScoreVal.toFixed(2));
 
+    // Ringankan payload jawaban dengan mengekstrak data esensial tanpa menyalin gambar base64
+    const lightweightQuestions = activeQuestions.map((q, idx) => ({
+      nomor: idx + 1,
+      type: q.type,
+      soal: typeof q.soal === 'string' ? q.soal.substring(0, 300) : '',
+      kunci: (q as any).kunci || '',
+      bobot: Number(q.bobot) || 1,
+    }));
+
     const submissionPayload = {
       answers,
-      questions: activeQuestions,
+      questions: lightweightQuestions,
     };
     const jawabanJsonStr = JSON.stringify(submissionPayload);
 
-    const assignedId = `NILAI-${exam.ID}-${currentUser.nama.trim().replace(/\s+/g, '_')}-${Date.now()}`;
+    const safeStudent = (currentUser.nama || 'Murid').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+    const safeExamId = (exam.ID || 'UJN').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+    const assignedId = `NILAI-${Date.now()}-${safeStudent}-${safeExamId}`.substring(0, 80);
 
     const payload = {
       id_nilai: assignedId,
       id_ujian: exam.ID,
       judul_ujian: exam.Judul_Ujian,
-      nama_murid: currentUser.nama,
-      kelas: currentUser.kelas,
+      nama_murid: (currentUser.nama || '').trim(),
+      kelas: (currentUser.kelas || '-').trim(),
       nilai: finalScoreNum,
-      pelanggaran: cheatCountRef.current,
+      pelanggaran: Number(cheatCountRef.current || 0),
       jawaban_json: jawabanJsonStr,
     };
 
@@ -1240,6 +1281,28 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                 <span>Simpan & Kirim Jawaban</span>
               </>
             )}
+          </button>
+        </div>
+      )}
+
+      {/* Sticky Mobile Submit Action Bar (Tampil di HP saat waktu habis agar mudah ditekan) */}
+      {timeLeft <= 0 && !submittedNilai && (
+        <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 p-3 bg-white/95 backdrop-blur-md border-t-2 border-emerald-500 shadow-2xl flex items-center justify-between gap-3 animate-in slide-in-from-bottom duration-300">
+          <div className="flex-1 min-w-0">
+            <span className="text-xs font-bold text-slate-800 block truncate">
+              Waktu Ujian Selesai!
+            </span>
+            <span className="text-[10px] text-emerald-700 font-semibold block truncate">
+              {answeredCount}/{activeQuestions.length} Soal Dijawab • Kirim ke Server Guru
+            </span>
+          </div>
+          <button
+            onClick={() => handleSubmitExam(true)}
+            disabled={isSubmitting}
+            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow-md active:scale-95 flex items-center gap-1.5 shrink-0"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>{isSubmitting ? 'Mengirim...' : 'Kirim Jawaban'}</span>
           </button>
         </div>
       )}
