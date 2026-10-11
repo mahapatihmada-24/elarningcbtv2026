@@ -387,56 +387,9 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     });
   };
 
-  const sendPayloadWithRetry = async (payload: any, forceOfflineFallback = false) => {
+  const sendPayloadWithRetry = async (payload: any) => {
     setSubmitErrorMessage('');
     cleanupLocalStorage();
-
-    if (forceOfflineFallback) {
-      setSubmitPhase('success');
-      const fallbackRecord: Nilai = {
-        ID: payload.id_nilai,
-        ID_Ujian: payload.id_ujian,
-        Judul_Ujian: payload.judul_ujian,
-        Nama_Murid: payload.nama_murid,
-        Kelas: payload.kelas || '-',
-        Nilai: payload.nilai,
-        Pelanggaran: payload.pelanggaran,
-        Waktu_Submit: new Date().toISOString(),
-        Jawaban_JSON: payload.jawaban_json,
-      };
-      setSubmittedNilai(fallbackRecord);
-
-      try {
-        const localList = api.getLocalNilai();
-        const existingIdx = localList.findIndex(
-          (n) => n.ID === payload.id_nilai || (n.ID_Ujian === payload.id_ujian && n.Nama_Murid === payload.nama_murid)
-        );
-        if (existingIdx >= 0) localList[existingIdx] = fallbackRecord;
-        else localList.push(fallbackRecord);
-        api.saveLocalNilai(localList);
-        api.savePendingSubmission(payload);
-      } catch (e) {
-        console.warn('Fallback offline save local list warning:', e);
-      }
-
-      // Prioritas Sinkronisasi Otomatis: Kirim langsung ke Firebase Firestore di latar belakang tanpa memblokir siswa
-      try {
-        firebaseService.submitHasilUjian(payload).then(() => {
-          api.removePendingSubmission(payload.id_nilai);
-          console.info('Pengiriman latar belakang ke Firebase Firestore berhasil dicatat.');
-        }).catch(() => {
-          api.syncPendingSubmissions().catch(() => {});
-        });
-      } catch {}
-
-      try {
-        localStorage.removeItem(`cbt_emergency_backup_${exam.ID}_${currentUser.nama}`);
-      } catch {}
-
-      await new Promise((r) => setTimeout(r, 600));
-      finishSubmissionProcess(payload);
-      return;
-    }
 
     let succeeded = false;
     let lastErrorMsg = '';
@@ -448,7 +401,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
           setSubmitPhase('connecting');
         } else {
           setSubmitPhase('retrying');
-          await new Promise((r) => setTimeout(r, 800));
+          await new Promise((r) => setTimeout(r, 600));
         }
 
         setSubmitPhase('syncing');
@@ -458,24 +411,22 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
           break;
         }
       } catch (err: any) {
-        let msg = err?.message || 'Gangguan sinyal seluler saat mengirim jawaban ke server.';
+        let msg = err?.message || 'Gangguan sinyal seluler/WiFi saat mengirim lembar jawaban ke server database.';
         if (msg.includes('quota') || msg.includes('setItem')) {
           cleanupLocalStorage();
-          msg = 'Memori penyimpanan lokal HP telah dioptimalkan. Menghubungkan ulang ke server...';
+          msg = 'Memori penyimpanan HP telah dioptimalkan. Menghubungkan langsung ke server Firestore...';
         }
         lastErrorMsg = msg;
-        console.warn(`[CBT Mobile Submit] Gagal pada percobaan ${attempt}/3:`, err);
+        console.warn(`[CBT Mobile Submit] Percobaan ${attempt}/3:`, err);
         if (attempt < 3) {
-          await new Promise((r) => setTimeout(r, 1000 * attempt));
+          await new Promise((r) => setTimeout(r, 800 * attempt));
         }
       }
     }
 
     if (succeeded) {
       setSubmitPhase('success');
-      try {
-        localStorage.removeItem(`cbt_emergency_backup_${exam.ID}_${currentUser.nama}`);
-      } catch {}
+      pendingPayloadRef.current = null;
 
       const newNilaiRecord: Nilai = {
         ID: payload.id_nilai,
@@ -490,15 +441,12 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
       };
       setSubmittedNilai(newNilaiRecord);
 
-      // Sinkronkan sisa antrean jika ada
-      api.syncPendingSubmissions().catch(() => {});
-
       await new Promise((r) => setTimeout(r, 800));
       finishSubmissionProcess(payload);
     } else {
       setSubmitPhase('error_retry');
       setSubmitErrorMessage(
-        lastErrorMsg || 'Koneksi data seluler / WiFi terputus saat mengirim ke server. Lembar jawaban Anda aman tersimpan di HP.'
+        lastErrorMsg || 'Koneksi internet HP terputus saat mengirim ke server database Firestore. Data jawaban aman di memori aktif.'
       );
     }
   };
@@ -1453,14 +1401,14 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                 <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-left text-xs space-y-1.5 text-amber-900">
                   <div className="flex items-center gap-1.5 font-bold text-amber-800">
                     <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>Jawaban Anda Aman di HP!</span>
+                    <span>Jawaban Anda Aman di Memori Aktif HP!</span>
                   </div>
                   <p className="text-[11px] leading-relaxed text-amber-800">
-                    Seluruh lembar jawaban dan data anti-contek telah tersimpan aman di memori perangkat ini. Silakan periksa paket data/sinyal HP Anda, lalu tekan tombol coba kirim ulang di bawah.
+                    Seluruh lembar jawaban dan rekaman anti-contek telah tersimpan aman di memori aktif aplikasi tanpa membebani kuota penyimpanan lokal HP. Silakan pastikan paket data/sinyal internet terhubung, lalu tekan tombol kirim ulang ke Firestore di bawah.
                   </p>
                 </div>
 
-                <div className="space-y-2 pt-2">
+                <div className="pt-2">
                   <button
                     onClick={() => {
                       if (pendingPayloadRef.current) {
@@ -1468,22 +1416,10 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                         sendPayloadWithRetry(pendingPayloadRef.current);
                       }
                     }}
-                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-extrabold text-sm shadow-md active:scale-95 transition flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-700 to-indigo-800 hover:from-indigo-700 hover:to-indigo-900 text-white font-black text-sm shadow-lg active:scale-95 transition flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <RotateCcw className="w-4 h-4" />
-                    <span>Coba Kirim Ulang Sekarang</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      if (pendingPayloadRef.current) {
-                        cleanupLocalStorage();
-                        sendPayloadWithRetry(pendingPayloadRef.current, true);
-                      }
-                    }}
-                    className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs transition cursor-pointer"
-                  >
-                    Selesaikan dengan Cadangan Lokal (Sinkron Otomatis Nanti)
+                    <span>Coba Kirim Ulang Langsung ke Firestore</span>
                   </button>
                 </div>
               </div>
@@ -1496,12 +1432,12 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                 <div>
                   <h3 className="font-black text-lg text-slate-800">Pengiriman Berhasil!</h3>
                   <p className="text-xs text-emerald-700 font-bold mt-1">
-                    Nilai dan rekaman anti-contek Anda telah terverifikasi aman di server guru.
+                    Nilai dan rekaman anti-contek Anda telah terverifikasi aman di server database Firestore.
                   </p>
                 </div>
               </div>
             ) : (
-              // IN-PROGRESS STATE (saving_local, connecting, syncing, retrying)
+              // IN-PROGRESS STATE (connecting, syncing, retrying)
               <div className="space-y-4 pt-1">
                 <div className="relative w-16 h-16 mx-auto">
                   <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
@@ -1515,10 +1451,9 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                 <div>
                   <h3 className="font-black text-lg text-slate-800">Mengirim Lembar Jawaban</h3>
                   <p className="text-xs text-indigo-600 font-semibold mt-1 animate-pulse">
-                    {submitPhase === 'saving_local' && 'Menyimpan lembar jawaban ke memori HP...'}
                     {submitPhase === 'connecting' && 'Menghubungkan ke server database ujian...'}
-                    {submitPhase === 'syncing' && 'Mengirim nilai & data anti-contek ke server guru...'}
-                    {submitPhase === 'retrying' && `Mencoba kirim ulang otomatis... (Percobaan ${submitRetryCount} dari 3)`}
+                    {submitPhase === 'syncing' && 'Mengirim nilai & data anti-contek langsung ke Firestore...'}
+                    {submitPhase === 'retrying' && `Mencoba kirim ulang ke Firestore... (Percobaan ${submitRetryCount} dari 3)`}
                   </p>
                 </div>
 
@@ -1534,12 +1469,8 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
 
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-2 text-slate-700 font-medium">
-                      {submitPhase === 'saving_local' ? (
-                        <Loader2 className="w-4 h-4 text-indigo-600 animate-spin" />
-                      ) : (
-                        <CheckCircle className="w-4 h-4 text-emerald-600" />
-                      )}
-                      2. Cadangkan ke memori lokal HP
+                      <CheckCircle className="w-4 h-4 text-emerald-600" />
+                      2. Amankan di memori aktif (In-Memory)
                     </span>
                     <span className="text-[10px] font-bold text-emerald-600">Tersimpan</span>
                   </div>
@@ -1551,7 +1482,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                       ) : (
                         <Clock className="w-4 h-4 text-slate-400" />
                       )}
-                      3. Sinkronisasi nilai ke server guru & admin
+                      3. Tulis langsung ke Firestore (rekap_nilai)
                     </span>
                     <span className="text-[10px] font-bold text-indigo-600">
                       {submitPhase === 'retrying' ? `Retry ${submitRetryCount}` : 'Memproses...'}
