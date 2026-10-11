@@ -18,7 +18,7 @@ import {
   Bell,
 } from 'lucide-react';
 import { User, Ujian, SchoolProfile, Announcement } from './types';
-import { api, DataSource, subscribeDataSource, normalizeUser } from './services/api';
+import { api, DataSource, subscribeDataSource, normalizeUser, cleanupLocalStorage } from './services/api';
 import { Navbar } from './components/Navbar';
 import { LoginView } from './components/LoginView';
 import { AdminView } from './components/AdminView';
@@ -104,8 +104,12 @@ export default function App() {
 
   // Check connectivity & restore session
   useEffect(() => {
+    // Jalankan pembersihan awal untuk membebaskan kuota LocalStorage browser HP
+    cleanupLocalStorage();
+
     const handleOnline = () => {
       setIsOnline(true);
+      cleanupLocalStorage();
       api.syncPendingSubmissions().catch(() => {});
     };
     const handleOffline = () => setIsOnline(false);

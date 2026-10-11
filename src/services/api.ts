@@ -91,40 +91,202 @@ const STORAGE_KEY_ANNOUNCEMENTS = 'cbt_db_announcements';
 const STORAGE_KEY_EXAM_RESETS = 'cbt_db_exam_resets';
 const STORAGE_KEY_PENDING_SUBMISSIONS = 'cbt_pending_submissions';
 
+/**
+ * Pembersihan cerdas memori penyimpanan lokal (LocalStorage cleanup).
+ * Mencegah error 'QuotaExceededError' pada browser HP / Chrome Mobile / iOS Safari.
+ */
+export function cleanupLocalStorage(): void {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
+
+  try {
+    const now = Date.now();
+    const keysToRemove: string[] = [];
+
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+
+      // 1. Bersihkan kunci darurat atau log sementara yang usang
+      if (
+        key.startsWith('cbt_log_') ||
+        key.startsWith('cbt_temp_') ||
+        key.startsWith('cbt_draft_') ||
+        key.startsWith('cbt_cache_')
+      ) {
+        keysToRemove.push(key);
+      }
+
+      // 2. Bersihkan backup darurat ujian yang sudah lama (> 4 jam)
+      if (key.startsWith('cbt_emergency_backup_')) {
+        try {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.timestamp && now - parsed.timestamp > 4 * 3600 * 1000) {
+              keysToRemove.push(key);
+            }
+          }
+        } catch {
+          keysToRemove.push(key);
+        }
+      }
+    }
+
+    keysToRemove.forEach((k) => {
+      try {
+        localStorage.removeItem(k);
+      } catch {}
+    });
+
+    // 3. Optimasi dan kompresi cbt_db_nilai jika ada di localStorage
+    const rawNilai = localStorage.getItem(STORAGE_KEY_NILAI);
+    if (rawNilai) {
+      try {
+        const parsed = JSON.parse(rawNilai);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Batasi maksimal 25 record terbaru di penyimpanan lokal HP
+          const trimmed = parsed.slice(-25).map((item: any, idx: number, arr: any[]) => {
+            // Untuk record selain 2 teratas, buang atau kompresi Jawaban_JSON yang memakan kuota MB
+            const isVeryRecent = idx >= arr.length - 2;
+            if (!isVeryRecent && item.Jawaban_JSON) {
+              try {
+                const j = JSON.parse(item.Jawaban_JSON);
+                const compact = {
+                  answers: j.answers || j,
+                  compact: true,
+                };
+                return { ...item, Jawaban_JSON: JSON.stringify(compact) };
+              } catch {
+                return { ...item, Jawaban_JSON: undefined };
+              }
+            }
+            return item;
+          });
+          localStorage.setItem(STORAGE_KEY_NILAI, JSON.stringify(trimmed));
+        }
+      } catch (e) {
+        console.warn('Gagal optimasi cache nilai:', e);
+      }
+    }
+
+    // 4. Bersihkan cbt_pending_submissions jika terlalu banyak
+    const rawPending = localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS);
+    if (rawPending) {
+      try {
+        const parsed = JSON.parse(rawPending);
+        if (Array.isArray(parsed) && parsed.length > 10) {
+          const recent = parsed.slice(-10);
+          localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(recent));
+        }
+      } catch {}
+    }
+  } catch (err) {
+    console.warn('cleanupLocalStorage caught error:', err);
+  }
+}
+
+/**
+ * Helper penyimpanan aman ke LocalStorage dengan penanganan kuota otomatis.
+ * Mencegah throw exception DOMException 'Setting the value of ... exceeded the quota'.
+ */
+export function safeSetItem(key: string, value: string): boolean {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return false;
+
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (err) {
+    console.warn(`[safeSetItem] Kuota LocalStorage penuh untuk kunci '${key}'. Menjalankan pembersihan otomatis...`, err);
+
+    // Langkah 1: Jalankan pembersihan memori menyeluruh
+    cleanupLocalStorage();
+
+    // Langkah 2: Coba simpan kembali setelah pembersihan
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (retryErr) {
+      console.warn(`[safeSetItem] Percobaan kedua gagal untuk '${key}'. Menjalankan kompresi agresif...`, retryErr);
+
+      // Langkah 3: Kompresi agresif khusus untuk cbt_db_nilai
+      if (key === STORAGE_KEY_NILAI) {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) {
+            // Ambil maksimal 15 record terbaru dan buang seluruh Jawaban_JSON pada record lama
+            const stripped = parsed.slice(-15).map((n: any, idx: number, arr: any[]) => {
+              if (idx < arr.length - 1) {
+                const { Jawaban_JSON, ...rest } = n;
+                return rest;
+              }
+              if (n.Jawaban_JSON) {
+                try {
+                  const j = JSON.parse(n.Jawaban_JSON);
+                  return { ...n, Jawaban_JSON: JSON.stringify({ answers: j.answers || j }) };
+                } catch {
+                  return { ...n, Jawaban_JSON: undefined };
+                }
+              }
+              return n;
+            });
+            localStorage.setItem(key, JSON.stringify(stripped));
+            return true;
+          }
+        } catch {}
+      }
+
+      // Langkah 4: Hapus seluruh backup darurat jika masih belum muat
+      try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('cbt_emergency_backup_')) {
+            localStorage.removeItem(k);
+          }
+        }
+        localStorage.setItem(key, value);
+        return true;
+      } catch (finalErr) {
+        console.warn(`[safeSetItem] LocalStorage benar-benar penuh di browser ini. Data tetap aman di memori in-memory:`, finalErr);
+        return false;
+      }
+    }
+  }
+}
+
 // Initialize LocalStorage with seed data if empty
 function ensureLocalDbInitialized() {
   if (!localStorage.getItem(STORAGE_KEY_USERS)) {
-    localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(INITIAL_USERS));
+    safeSetItem(STORAGE_KEY_USERS, JSON.stringify(INITIAL_USERS));
   }
   if (!localStorage.getItem(STORAGE_KEY_MATERI)) {
-    localStorage.setItem(STORAGE_KEY_MATERI, JSON.stringify(INITIAL_MATERI));
+    safeSetItem(STORAGE_KEY_MATERI, JSON.stringify(INITIAL_MATERI));
   }
   if (!localStorage.getItem(STORAGE_KEY_UJIAN)) {
-    localStorage.setItem(STORAGE_KEY_UJIAN, JSON.stringify(INITIAL_UJIAN));
+    safeSetItem(STORAGE_KEY_UJIAN, JSON.stringify(INITIAL_UJIAN));
   }
   if (!localStorage.getItem(STORAGE_KEY_NILAI)) {
-    localStorage.setItem(STORAGE_KEY_NILAI, JSON.stringify(INITIAL_NILAI));
+    safeSetItem(STORAGE_KEY_NILAI, JSON.stringify(INITIAL_NILAI));
   }
   if (!localStorage.getItem(STORAGE_KEY_SCHOOL_PROFILE)) {
-    localStorage.setItem(STORAGE_KEY_SCHOOL_PROFILE, JSON.stringify(DEFAULT_SCHOOL_PROFILE));
+    safeSetItem(STORAGE_KEY_SCHOOL_PROFILE, JSON.stringify(DEFAULT_SCHOOL_PROFILE));
   } else if (!localStorage.getItem('cbt_mfa_initialized_v2')) {
-    localStorage.setItem('cbt_mfa_initialized_v2', 'true');
+    safeSetItem('cbt_mfa_initialized_v2', 'true');
     try {
       const existing = JSON.parse(localStorage.getItem(STORAGE_KEY_SCHOOL_PROFILE) || '{}');
       existing.enableMFAAdmin = true;
       if (!existing.adminOTPSecret) existing.adminOTPSecret = '240101';
-      localStorage.setItem(STORAGE_KEY_SCHOOL_PROFILE, JSON.stringify(existing));
+      safeSetItem(STORAGE_KEY_SCHOOL_PROFILE, JSON.stringify(existing));
     } catch {}
   }
   if (!localStorage.getItem(STORAGE_KEY_MASTER_KELAS)) {
-    localStorage.setItem(STORAGE_KEY_MASTER_KELAS, JSON.stringify(DEFAULT_MASTER_KELAS));
+    safeSetItem(STORAGE_KEY_MASTER_KELAS, JSON.stringify(DEFAULT_MASTER_KELAS));
   }
   if (!localStorage.getItem(STORAGE_KEY_MASTER_MAPEL)) {
-    localStorage.setItem(STORAGE_KEY_MASTER_MAPEL, JSON.stringify(DEFAULT_MASTER_MAPEL));
+    safeSetItem(STORAGE_KEY_MASTER_MAPEL, JSON.stringify(DEFAULT_MASTER_MAPEL));
   }
   if (!localStorage.getItem(STORAGE_KEY_ANNOUNCEMENTS)) {
     const today = new Date().toISOString().split('T')[0];
-    localStorage.setItem(
+    safeSetItem(
       STORAGE_KEY_ANNOUNCEMENTS,
       JSON.stringify([
         {
@@ -271,16 +433,27 @@ function saveLocalUjian(ujian: Ujian[]) {
   }
 }
 
+let inMemoryNilaiList: Nilai[] | null = null;
+
 function getLocalNilai(): Nilai[] {
+  if (inMemoryNilaiList && inMemoryNilaiList.length > 0) {
+    return inMemoryNilaiList;
+  }
   ensureLocalDbInitialized();
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY_NILAI) || '[]');
     if (Array.isArray(raw)) {
-      return raw.map(normalizeNilai);
+      const list = raw.map(normalizeNilai);
+      inMemoryNilaiList = list;
+      return list;
     }
-    return INITIAL_NILAI.map(normalizeNilai);
+    const list = INITIAL_NILAI.map(normalizeNilai);
+    inMemoryNilaiList = list;
+    return list;
   } catch {
-    return INITIAL_NILAI.map(normalizeNilai);
+    const list = INITIAL_NILAI.map(normalizeNilai);
+    inMemoryNilaiList = list;
+    return list;
   }
 }
 
@@ -288,13 +461,38 @@ function notifyNilaiSync(detail?: any) {
   if (typeof window !== 'undefined') {
     try {
       window.dispatchEvent(new CustomEvent('cbt-nilai-updated', { detail }));
-      localStorage.setItem('cbt_nilai_sync_event', Date.now().toString());
+      safeSetItem('cbt_nilai_sync_event', Date.now().toString());
     } catch {}
   }
 }
 
 function saveLocalNilai(nilai: Nilai[]) {
-  localStorage.setItem(STORAGE_KEY_NILAI, JSON.stringify(nilai.map(normalizeNilai)));
+  const normalized = nilai.map(normalizeNilai);
+  inMemoryNilaiList = [...normalized];
+
+  // Siapkan data ringan untuk penyimpanan lokal (maksimal 30 record terbaru, kompres/buang Jawaban_JSON pada record lama)
+  try {
+    const compactList = normalized.slice(-30).map((item, idx, arr) => {
+      const isLatest = idx >= arr.length - 2;
+      if (!isLatest && item.Jawaban_JSON) {
+        try {
+          const j = JSON.parse(item.Jawaban_JSON);
+          return {
+            ...item,
+            Jawaban_JSON: JSON.stringify({ answers: j.answers || j, compact: true }),
+          };
+        } catch {
+          return { ...item, Jawaban_JSON: undefined };
+        }
+      }
+      return item;
+    });
+
+    safeSetItem(STORAGE_KEY_NILAI, JSON.stringify(compactList));
+  } catch (err) {
+    console.warn('Gagal menyimpan compact nilai ke LocalStorage, memori in-memory tetap aman:', err);
+  }
+
   notifyNilaiSync();
 }
 
@@ -311,13 +509,13 @@ function notifyExamResetsSync(detail?: any) {
   if (typeof window !== 'undefined') {
     try {
       window.dispatchEvent(new CustomEvent('cbt-resets-updated', { detail }));
-      localStorage.setItem('cbt_resets_sync_event', Date.now().toString());
+      safeSetItem('cbt_resets_sync_event', Date.now().toString());
     } catch {}
   }
 }
 
 function saveLocalExamResets(resets: ExamResetPermission[]) {
-  localStorage.setItem(STORAGE_KEY_EXAM_RESETS, JSON.stringify(resets));
+  safeSetItem(STORAGE_KEY_EXAM_RESETS, JSON.stringify(resets));
   notifyExamResetsSync();
 }
 
@@ -344,16 +542,29 @@ function getPendingSubmissions(): PendingExamSubmission[] {
 
 function savePendingSubmission(item: Omit<PendingExamSubmission, 'timestamp'>) {
   try {
+    // Ringankan jawaban_json dalam antrean pending jika terlalu besar
+    let compactJawaban = item.jawaban_json;
+    if (compactJawaban && compactJawaban.length > 2000) {
+      try {
+        const j = JSON.parse(compactJawaban);
+        if (j.answers) {
+          compactJawaban = JSON.stringify({ answers: j.answers });
+        }
+      } catch {}
+    }
+
     const current = getPendingSubmissions().filter((p) => p.id_nilai !== item.id_nilai);
-    current.push({ ...item, timestamp: Date.now() });
-    localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(current));
+    // Simpan maksimal 10 antrean pending terbaru
+    const trimmed = current.slice(-9);
+    trimmed.push({ ...item, jawaban_json: compactJawaban, timestamp: Date.now() });
+    safeSetItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(trimmed));
   } catch {}
 }
 
 function removePendingSubmission(idNilai: string) {
   try {
     const current = getPendingSubmissions().filter((p) => p.id_nilai !== idNilai);
-    localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(current));
+    safeSetItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(current));
   } catch {}
 }
 
@@ -1372,33 +1583,41 @@ export const api = {
       Jawaban_JSON: payload.jawaban_json,
     };
 
-    // 1. Simpan segera ke cache lokal dan pancarkan event sinkronisasi real-time
-    const list = getLocalNilai();
-    const existingIdx = list.findIndex(
-      (n) =>
-        (n.ID === assignedId || n.ID_Ujian === payload.id_ujian) &&
-        n.Nama_Murid.trim().toLowerCase() === payload.nama_murid.trim().toLowerCase()
-    );
-    if (existingIdx >= 0) {
-      list[existingIdx] = newNilai;
-    } else {
-      list.push(newNilai);
+    // 1. Simpan segera ke cache in-memory & lokal secara aman (tanpa pernah memblokir pengiriman jaringan ke server)
+    try {
+      const list = getLocalNilai();
+      const existingIdx = list.findIndex(
+        (n) =>
+          (n.ID === assignedId || n.ID_Ujian === payload.id_ujian) &&
+          n.Nama_Murid.trim().toLowerCase() === payload.nama_murid.trim().toLowerCase()
+      );
+      if (existingIdx >= 0) {
+        list[existingIdx] = newNilai;
+      } else {
+        list.push(newNilai);
+      }
+      saveLocalNilai(list);
+    } catch (localErr) {
+      console.warn('Gagal menyimpan nilai lokal sementara, pengiriman ke cloud tetap diprioritaskan:', localErr);
     }
-    saveLocalNilai(list);
 
-    // Simpan ke antrean cadangan lokal untuk proteksi perangkat seluler
-    savePendingSubmission(payloadWithId);
+    // Amankan ke antrean pending lokal untuk proteksi jika koneksi HP tidak stabil
+    try {
+      savePendingSubmission(payloadWithId);
+    } catch {}
 
     // Konsumsi/hapus status izin ujian ulang setelah siswa berhasil mengirimkan ujian baru
     try {
       this.consumeExamReset(payload.id_ujian, payload.nama_murid);
     } catch {}
 
-    // 2. Simpan ke database online (Firebase / GAS) dengan propagasi error untuk penanganan retry mobile
-    if (currentDataSource === 'FIREBASE') {
+    // 2. PRIORITAS UTAMA: Simpan langsung ke database online (Firebase Firestore / GAS)
+    if (currentDataSource === 'FIREBASE' || (typeof navigator !== 'undefined' && navigator.onLine)) {
       try {
         const res = await firebaseService.submitHasilUjian(payloadWithId);
+        // Jika sukses tersimpan di Firebase Firestore, hapus dari antrean pending
         removePendingSubmission(assignedId);
+
         if (res.data) {
           const freshRecord = normalizeNilai(res.data);
           const freshList = getLocalNilai();
@@ -1411,9 +1630,19 @@ export const api = {
           saveLocalNilai(freshList);
         }
         return res;
-      } catch (err) {
+      } catch (err: any) {
         console.warn('Firebase submitHasilUjian error:', err);
-        throw err;
+        // Pastikan tersimpan di antrean pending untuk sinkronisasi otomatis
+        savePendingSubmission(payloadWithId);
+        const rawMsg = err?.message || '';
+        if (rawMsg.includes('quota') || rawMsg.includes('setItem')) {
+          cleanupLocalStorage();
+        }
+        throw new Error(
+          rawMsg && !rawMsg.includes('quota') && !rawMsg.includes('setItem')
+            ? rawMsg
+            : 'Koneksi internet HP tidak stabil saat mengirim ke server. Lembar jawaban Anda telah diamankan di antrean HP dan akan disinkronkan otomatis.'
+        );
       }
     }
 
@@ -1424,14 +1653,15 @@ export const api = {
           removePendingSubmission(assignedId);
           return res;
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn('GAS submitHasilUjian error:', err);
+        savePendingSubmission(payloadWithId);
         throw err;
       }
     }
 
     removePendingSubmission(assignedId);
-    return { success: true, message: 'Hasil ujian berhasil disimpan ke sistem!' };
+    return { success: true, message: 'Hasil ujian berhasil diamankan di penyimpanan lokal!', data: newNilai };
   },
 
   async syncPendingSubmissions(): Promise<number> {
@@ -1440,16 +1670,21 @@ export const api = {
     let synced = 0;
     for (const item of queue) {
       try {
-        if (currentDataSource === 'FIREBASE') {
-          await firebaseService.submitHasilUjian(item);
-          removePendingSubmission(item.id_nilai);
-          synced++;
-        } else if (currentDataSource === 'GAS') {
-          await callGasServer<ApiResponse>('submitHasilUjian', [item]);
+        // Prioritaskan pengiriman ke Firebase Firestore
+        const res = await firebaseService.submitHasilUjian(item);
+        if (res && res.success !== false) {
           removePendingSubmission(item.id_nilai);
           synced++;
         }
       } catch (e) {
+        // Coba alternatif via GAS jika Firebase sedang tidak terjangkau
+        if (currentDataSource === 'GAS') {
+          try {
+            await callGasServer<ApiResponse>('submitHasilUjian', [item]);
+            removePendingSubmission(item.id_nilai);
+            synced++;
+          } catch {}
+        }
         console.warn('Pending submission sync failed for item:', item.id_nilai, e);
       }
     }
@@ -1775,5 +2010,13 @@ export const api = {
 
   removePendingSubmission(idNilai: string) {
     removePendingSubmission(idNilai);
+  },
+
+  cleanupLocalStorage() {
+    cleanupLocalStorage();
+  },
+
+  safeSetItem(key: string, value: string) {
+    return safeSetItem(key, value);
   },
 };

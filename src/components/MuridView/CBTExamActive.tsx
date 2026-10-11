@@ -26,7 +26,8 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Ujian, Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, User, Nilai, getQuestionImages } from '../../types';
-import { api } from '../../services/api';
+import { api, cleanupLocalStorage, safeSetItem } from '../../services/api';
+import { firebaseService } from '../../services/firebase';
 import { MathRenderer } from '../MathRenderer';
 import { ModalState } from '../ConfirmModal';
 import { ExamReviewModal } from '../ExamReviewModal';
@@ -368,6 +369,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
 
   const sendPayloadWithRetry = async (payload: any, forceOfflineFallback = false) => {
     setSubmitErrorMessage('');
+    cleanupLocalStorage();
 
     if (forceOfflineFallback) {
       setSubmitPhase('success');
@@ -393,9 +395,22 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
         else localList.push(fallbackRecord);
         api.saveLocalNilai(localList);
         api.savePendingSubmission(payload);
-        setTimeout(() => {
+      } catch (e) {
+        console.warn('Fallback offline save local list warning:', e);
+      }
+
+      // Prioritas Sinkronisasi Otomatis: Kirim langsung ke Firebase Firestore di latar belakang tanpa memblokir siswa
+      try {
+        firebaseService.submitHasilUjian(payload).then(() => {
+          api.removePendingSubmission(payload.id_nilai);
+          console.info('Pengiriman latar belakang ke Firebase Firestore berhasil dicatat.');
+        }).catch(() => {
           api.syncPendingSubmissions().catch(() => {});
-        }, 1000);
+        });
+      } catch {}
+
+      try {
+        localStorage.removeItem(`cbt_emergency_backup_${exam.ID}_${currentUser.nama}`);
       } catch {}
 
       await new Promise((r) => setTimeout(r, 600));
@@ -425,7 +440,12 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
           break;
         }
       } catch (err: any) {
-        lastErrorMsg = err?.message || 'Gangguan sinyal seluler saat mengirim jawaban ke server.';
+        let msg = err?.message || 'Gangguan sinyal seluler saat mengirim jawaban ke server.';
+        if (msg.includes('quota') || msg.includes('setItem')) {
+          cleanupLocalStorage();
+          msg = 'Memori penyimpanan lokal HP telah dioptimalkan. Menghubungkan ulang ke server...';
+        }
+        lastErrorMsg = msg;
         console.warn(`[CBT Mobile Submit] Gagal pada percobaan ${attempt}/3:`, err);
         if (attempt < 3) {
           await new Promise((r) => setTimeout(r, 1000 * attempt));
@@ -526,11 +546,10 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     // Format penilaian baku skala 0-100 dengan 2 angka di belakang koma (.toFixed(2))
     const finalScoreNum = Number(finalScoreVal.toFixed(2));
 
-    // Ringankan payload jawaban dengan mengekstrak data esensial tanpa menyalin gambar base64
+    // Ringankan payload jawaban dengan hanya menyertakan metadata esensial (nomor, tipe, kunci, bobot) tanpa duplikasi teks soal/gambar
     const lightweightQuestions = activeQuestions.map((q, idx) => ({
       nomor: idx + 1,
       type: q.type,
-      soal: typeof q.soal === 'string' ? q.soal.substring(0, 300) : '',
       kunci: (q as any).kunci || '',
       bobot: Number(q.bobot) || 1,
     }));
@@ -558,9 +577,10 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
 
     pendingPayloadRef.current = payload;
 
-    // Simpan cadangan darurat ke memori perangkat lokal sebelum proses pengiriman jaringan dimulai
+    // Bersihkan memori dan simpan cadangan darurat ke memori perangkat lokal secara aman
     try {
-      localStorage.setItem(`cbt_emergency_backup_${exam.ID}_${currentUser.nama}`, JSON.stringify(payload));
+      cleanupLocalStorage();
+      safeSetItem(`cbt_emergency_backup_${exam.ID}_${currentUser.nama}`, JSON.stringify(payload));
     } catch {}
 
     await sendPayloadWithRetry(payload);
@@ -1429,6 +1449,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                   <button
                     onClick={() => {
                       if (pendingPayloadRef.current) {
+                        cleanupLocalStorage();
                         sendPayloadWithRetry(pendingPayloadRef.current);
                       }
                     }}
@@ -1441,10 +1462,11 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                   <button
                     onClick={() => {
                       if (pendingPayloadRef.current) {
+                        cleanupLocalStorage();
                         sendPayloadWithRetry(pendingPayloadRef.current, true);
                       }
                     }}
-                    className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs transition"
+                    className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs transition cursor-pointer"
                   >
                     Selesaikan dengan Cadangan Lokal (Sinkron Otomatis Nanti)
                   </button>
