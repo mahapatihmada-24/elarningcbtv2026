@@ -195,7 +195,6 @@ export function safeSetItem(key: string, value: string): boolean {
 
 // Initialize LocalStorage with seed data if empty
 function ensureLocalDbInitialized() {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
   // Pastikan cbt_db_nilai tidak ada di localStorage
   try {
     localStorage.removeItem(STORAGE_KEY_NILAI);
@@ -584,7 +583,6 @@ async function callGasServer<T>(action: string, args: unknown[] = []): Promise<T
 export type DataSource = 'FIREBASE' | 'GAS' | 'LOCAL';
 
 function getInitialDataSource(): DataSource {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return 'FIREBASE';
   const saved = localStorage.getItem(STORAGE_KEY_PREFERRED_SOURCE) as DataSource;
   if (saved === 'FIREBASE' || saved === 'GAS' || saved === 'LOCAL') {
     return saved;

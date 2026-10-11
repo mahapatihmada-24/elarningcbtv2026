@@ -393,7 +393,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <h4 className="font-bold text-sm text-slate-800 group-hover:text-indigo-600">
                   Bank Soal & CBT
                 </h4>
-                <p className="text-xs text-slate-500">Jadwal, token, edit per soal, ekspor/impor Excel</p>
+                <p className="text-xs text-slate-500">Jadwal, token, edit per soal, import Excel</p>
               </div>
             </div>
             <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-1 transition" />

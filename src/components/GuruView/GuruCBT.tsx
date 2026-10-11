@@ -197,60 +197,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
       });
       return;
     }
-    exportQuestionsToExcel(judul || 'Bank_Soal', questions, {
-      kelas,
-      mapel,
-      schoolName: schoolProfile?.namaSekolah,
-    });
-    onShowModal({
-      isOpen: true,
-      title: 'Ekspor Excel Berhasil',
-      message: `File Excel untuk butir soal "${judul || 'Bank_Soal'}" (${questions.length} butir) berhasil diunduh.`,
-      type: 'success',
-    });
-  };
-
-  const handleExportExamCardToExcel = (u: Ujian) => {
-    try {
-      let qList: Question[] = [];
-      const raw = JSON.parse(u.Soal_JSON || '{}');
-      if (raw.questions && Array.isArray(raw.questions)) {
-        qList = raw.questions;
-      } else if (Array.isArray(raw)) {
-        qList = raw;
-      }
-
-      if (qList.length === 0) {
-        onShowModal({
-          isOpen: true,
-          title: 'Soal Masih Kosong',
-          message: `Paket ujian "${u.Judul_Ujian}" belum memiliki butir soal yang dapat diekspor ke Excel.`,
-          type: 'warning',
-        });
-        return;
-      }
-
-      exportQuestionsToExcel(u.Judul_Ujian, qList, {
-        kelas: u.Kelas,
-        mapel: u.Mapel,
-        schoolName: schoolProfile?.namaSekolah,
-      });
-
-      onShowModal({
-        isOpen: true,
-        title: 'Ekspor Excel Berhasil',
-        message: `File Excel paket ujian "${u.Judul_Ujian}" (${qList.length} butir soal) berhasil diunduh.`,
-        type: 'success',
-      });
-    } catch (err) {
-      console.error('Error exporting exam to Excel:', err);
-      onShowModal({
-        isOpen: true,
-        title: 'Gagal Ekspor Excel',
-        message: 'Format data butir soal tidak valid untuk diekspor.',
-        type: 'danger',
-      });
-    }
+    exportQuestionsToExcel(judul || 'Bank_Soal', questions);
   };
 
   const fetchUjianAndMaster = async () => {
@@ -967,11 +914,11 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
               <button
                 type="button"
                 onClick={handleExportExcel}
-                className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-bold transition flex items-center gap-1 active:scale-95 shadow-xs"
-                title="Ekspor Seluruh Butir Soal ke Excel (.xlsx)"
+                className="px-2.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold transition flex items-center gap-1"
+                title="Ekspor Seluruh Butir Soal ke Excel"
               >
-                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Ekspor Excel</span>
+                <Download className="w-3 h-3 text-slate-600" />
+                <span className="hidden sm:inline">Ekspor Excel</span>
               </button>
             </div>
           </div>
@@ -1242,18 +1189,10 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                       <button
                         onClick={() => setExportModalExam(u)}
                         className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200/70 transition flex items-center gap-1.5 font-medium text-xs shadow-xs shrink-0"
-                        title="Cetak & Unduh Dokumen (PDF, Word, Excel: Naskah / Kunci / Pembahasan)"
+                        title="Cetak & Unduh Dokumen (PDF & Word: Naskah / Kunci / Pembahasan)"
                       >
                         <Printer className="w-3.5 h-3.5 text-blue-600" />
                         <span>Cetak/Word</span>
-                      </button>
-                      <button
-                        onClick={() => handleExportExamCardToExcel(u)}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/70 transition flex items-center gap-1.5 font-medium text-xs shadow-xs shrink-0 active:scale-95"
-                        title="Ekspor Paket Soal ke Format Excel (.xlsx)"
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Ekspor Excel</span>
                       </button>
                       <button
                         onClick={() => setReviewModalExam(u)}

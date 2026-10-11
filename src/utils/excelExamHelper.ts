@@ -178,25 +178,10 @@ export function downloadExamExcelTemplate(): void {
   }
 }
 
-export interface ExportQuestionsExcelOptions {
-  includeAnswers?: boolean;
-  includePembahasan?: boolean;
-  kelas?: string;
-  mapel?: string;
-  schoolName?: string;
-}
-
 /**
  * Exports existing questions of an exam to a neat Excel file.
  */
-export function exportQuestionsToExcel(
-  judulUjian: string,
-  questions: Question[],
-  options?: ExportQuestionsExcelOptions
-): void {
-  const includeAnswers = options?.includeAnswers !== false;
-  const includePembahasan = options?.includePembahasan !== false;
-
+export function exportQuestionsToExcel(judulUjian: string, questions: Question[]): void {
   const wb = XLSX.utils.book_new();
 
   const headers = [
@@ -225,10 +210,7 @@ export function exportQuestionsToExcel(
         ? q.gambar_list.join(' | ')
         : q.gambar || '';
 
-    const displayPembahasan = includePembahasan ? (q.pembahasan || '') : '';
-
     if (q.type === 'pg') {
-      const displayKey = includeAnswers ? (q.kunci || '') : '';
       return [
         idx + 1,
         'PG',
@@ -237,7 +219,7 @@ export function exportQuestionsToExcel(
         q.b,
         q.c,
         q.d,
-        displayKey,
+        q.kunci,
         q.bobot || 1,
         q.e || '',
         qImgs,
@@ -246,7 +228,7 @@ export function exportQuestionsToExcel(
         q.c_img || '',
         q.d_img || '',
         q.e_img || '',
-        displayPembahasan,
+        q.pembahasan || '',
       ];
     } else if (q.type === 'pgk_mcma') {
       const opts = q.options || [];
@@ -254,7 +236,6 @@ export function exportQuestionsToExcel(
         .map((o, oIdx) => (o.isKey ? String.fromCharCode(65 + oIdx) : null))
         .filter(Boolean)
         .join(',');
-      const displayKey = includeAnswers ? (keys || 'A') : '';
 
       return [
         idx + 1,
@@ -264,7 +245,7 @@ export function exportQuestionsToExcel(
         opts[1]?.text || '',
         opts[2]?.text || '',
         opts[3]?.text || '',
-        displayKey,
+        keys || 'A',
         q.bobot || 1,
         opts[4]?.text || '',
         qImgs,
@@ -273,14 +254,12 @@ export function exportQuestionsToExcel(
         opts[2]?.img || '',
         opts[3]?.img || '',
         opts[4]?.img || '',
-        displayPembahasan,
+        q.pembahasan || '',
       ];
     } else {
       const rowsTxt = (q.rows || [])
         .map((r) => `${r.text} => ${r.key === 'col1' ? q.col1 : q.col2}`)
         .join('; ');
-      const displayKey = includeAnswers ? 'Tabel Kategori' : '';
-
       return [
         idx + 1,
         'PGK_KATEGORI',
@@ -289,7 +268,7 @@ export function exportQuestionsToExcel(
         '-',
         '-',
         '-',
-        displayKey,
+        'Tabel Kategori',
         q.bobot || 1,
         '',
         qImgs,
@@ -298,7 +277,7 @@ export function exportQuestionsToExcel(
         q.rows?.[2]?.img || '',
         q.rows?.[3]?.img || '',
         '',
-        displayPembahasan,
+        q.pembahasan || '',
       ];
     }
   });
@@ -326,42 +305,15 @@ export function exportQuestionsToExcel(
 
   XLSX.utils.book_append_sheet(wb, ws, 'TEMPLATE_SOAL');
 
-  // Sheet 2: Kunci Jawaban Ringkas (jika includeAnswers)
-  if (includeAnswers) {
-    const keyHeaders = ['No', 'Tipe Soal', 'Kunci Jawaban', 'Bobot', 'Pembahasan Singkat'];
-    const keyRows = questions.map((q, idx) => {
-      let kunci = '-';
-      if (q.type === 'pg') kunci = q.kunci;
-      else if (q.type === 'pgk_mcma') {
-        kunci = (q.options || [])
-          .map((o, oIdx) => (o.isKey ? String.fromCharCode(65 + oIdx) : null))
-          .filter(Boolean)
-          .join(', ');
-      } else if (q.type === 'pgk_kategori') {
-        kunci = (q.rows || [])
-          .map((r, rIdx) => `${rIdx + 1}.${r.key === 'col1' ? q.col1 : q.col2}`)
-          .join(', ');
-      }
-      return [
-        idx + 1,
-        q.type === 'pg' ? 'Pilihan Ganda' : q.type === 'pgk_mcma' ? 'PGK Multi-Jawaban' : 'PGK Kategori',
-        kunci,
-        q.bobot || 1,
-        includePembahasan ? (q.pembahasan || '-') : '-',
-      ];
-    });
-    const keyWs = XLSX.utils.aoa_to_sheet([keyHeaders, ...keyRows]);
-    keyWs['!cols'] = [{ wch: 6 }, { wch: 22 }, { wch: 24 }, { wch: 10 }, { wch: 50 }];
-    XLSX.utils.book_append_sheet(wb, keyWs, 'KUNCI_JAWABAN');
-  }
-
   const safeTitle = (judulUjian || 'Soal_CBT').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const filename = `Bank_Soal_${safeTitle}_${Date.now()}.xlsx`;
+  const filename = `Soal_${safeTitle}_${Date.now()}.xlsx`;
 
   try {
+    XLSX.writeFile(wb, filename);
+  } catch {
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([wbout], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8',
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -369,13 +321,8 @@ export function exportQuestionsToExcel(
     a.download = filename;
     document.body.appendChild(a);
     a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 200);
-  } catch (err) {
-    console.warn('Fallback to XLSX.writeFile:', err);
-    XLSX.writeFile(wb, filename);
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 }
 
