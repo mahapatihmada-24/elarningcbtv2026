@@ -2,10 +2,74 @@ import * as XLSX from 'xlsx';
 import { Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, McmaOption, Nilai, SchoolProfile, Ujian } from '../types';
 
 /**
+ * Sanitizes any cell value for Excel (.xlsx) specifications.
+ * Excel cell limit is strictly 32,767 characters.
+ * Any base64 image data URI is stripped or replaced with a concise indicator,
+ * and any remaining text is safely trimmed to at most 32,000 characters.
+ */
+export function sanitizeForExcelCell(val: any): any {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'number' || typeof val === 'boolean') return val;
+  if (val instanceof Date) return val;
+
+  let str = typeof val === 'string' ? val : String(val);
+
+  // If contains base64 image data URIs (which easily exceed 100k chars and cannot be displayed in Excel anyway)
+  if (str.includes('data:image/')) {
+    // Replace HTML img tags with data URLs:
+    str = str.replace(/<img[^>]*src=["']data:image\/[^"']+["'][^>]*>/gi, '[Gambar Tersemat]');
+    // Replace markdown image tags with data URLs: ![alt](data:image/...)
+    str = str.replace(/!\[[^\]]*\]\(data:image\/[^)]+\)/gi, '[Gambar Tersemat]');
+    // Replace direct data:image URIs
+    str = str.replace(/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/g, '[Gambar Base64]');
+  }
+
+  // Enforce Excel max cell text length (32,767 characters)
+  if (str.length > 32000) {
+    str = str.slice(0, 31950) + '... [Teks dipotong: batas sel Excel 32.767 karakter]';
+  }
+
+  return str;
+}
+
+/**
+ * Universal safety pass over all worksheets in a workbook to guarantee
+ * no cell exceeds Excel's 32,767 character ceiling or contains giant base64 strings.
+ */
+export function sanitizeWorkbookForExcel(wb: XLSX.WorkBook): XLSX.WorkBook {
+  if (!wb || !wb.Sheets) return wb;
+  try {
+    for (const sheetName of Object.keys(wb.Sheets)) {
+      const ws = wb.Sheets[sheetName];
+      if (!ws) continue;
+      for (const cellAddress of Object.keys(ws)) {
+        if (cellAddress.startsWith('!')) continue; // Skip '!ref', '!cols', '!merges'
+        const cell = ws[cellAddress];
+        if (cell) {
+          if (typeof cell.v === 'string') {
+            cell.v = sanitizeForExcelCell(cell.v);
+          }
+          if (typeof cell.w === 'string' && cell.w.length > 32000) {
+            cell.w = sanitizeForExcelCell(cell.w);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Error during workbook cell sanitization:', err);
+  }
+  return wb;
+}
+
+/**
  * Robust cross-browser Excel workbook downloader.
  * Supports standard browsers, iframes, mobile Chrome/Safari, and fallbacks.
+ * Automatically sanitizes all sheets to prevent 32,767 character limit crashes.
  */
 export function saveWorkbookFile(wb: XLSX.WorkBook, filename: string): void {
+  // Always sanitize the entire workbook first so no cell violates Excel's 32,767 character limit!
+  sanitizeWorkbookForExcel(wb);
+
   try {
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const blob = new Blob([wbout], {
@@ -227,31 +291,45 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
     'Pembahasan Soal',
   ];
 
+  const formatImageVal = (imgStr?: string): string => {
+    if (!imgStr) return '';
+    const trimmed = String(imgStr).trim();
+    if (trimmed.startsWith('data:image/')) return '[Gambar Base64]';
+    if (trimmed.length > 2000) return trimmed.slice(0, 1950) + '...';
+    return trimmed;
+  };
+
+  const formatImgList = (list?: string[], single?: string): string => {
+    if (list && list.length > 0) {
+      return list.map(formatImageVal).filter(Boolean).join(' | ');
+    }
+    return formatImageVal(single);
+  };
+
   const rows = questions.map((q, idx) => {
-    const qImgs =
-      q.gambar_list && q.gambar_list.length > 0
-        ? q.gambar_list.join(' | ')
-        : q.gambar || '';
+    const qImgs = formatImgList(q.gambar_list, q.gambar);
+    const cleanSoal = sanitizeForExcelCell(q.soal || '');
+    const cleanPembahasan = sanitizeForExcelCell(q.pembahasan || '');
 
     if (q.type === 'pg') {
       return [
         idx + 1,
         'PG',
-        q.soal,
-        q.a,
-        q.b,
-        q.c,
-        q.d,
-        q.kunci,
-        q.bobot || 1,
-        q.e || '',
+        cleanSoal,
+        sanitizeForExcelCell(q.a || ''),
+        sanitizeForExcelCell(q.b || ''),
+        sanitizeForExcelCell(q.c || ''),
+        sanitizeForExcelCell(q.d || ''),
+        sanitizeForExcelCell(q.kunci || 'A'),
+        Number(q.bobot) || 1,
+        sanitizeForExcelCell(q.e || ''),
         qImgs,
-        q.a_img || '',
-        q.b_img || '',
-        q.c_img || '',
-        q.d_img || '',
-        q.e_img || '',
-        q.pembahasan || '',
+        formatImageVal(q.a_img),
+        formatImageVal(q.b_img),
+        formatImageVal(q.c_img),
+        formatImageVal(q.d_img),
+        formatImageVal(q.e_img),
+        cleanPembahasan,
       ];
     } else if (q.type === 'pgk_mcma') {
       const opts = q.options || [];
@@ -263,21 +341,21 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
       return [
         idx + 1,
         'PGK',
-        q.soal,
-        opts[0]?.text || '',
-        opts[1]?.text || '',
-        opts[2]?.text || '',
-        opts[3]?.text || '',
-        keys || 'A',
-        q.bobot || 1,
-        opts[4]?.text || '',
+        cleanSoal,
+        sanitizeForExcelCell(opts[0]?.text || ''),
+        sanitizeForExcelCell(opts[1]?.text || ''),
+        sanitizeForExcelCell(opts[2]?.text || ''),
+        sanitizeForExcelCell(opts[3]?.text || ''),
+        sanitizeForExcelCell(keys || 'A'),
+        Number(q.bobot) || 1,
+        sanitizeForExcelCell(opts[4]?.text || ''),
         qImgs,
-        opts[0]?.img || '',
-        opts[1]?.img || '',
-        opts[2]?.img || '',
-        opts[3]?.img || '',
-        opts[4]?.img || '',
-        q.pembahasan || '',
+        formatImageVal(opts[0]?.img),
+        formatImageVal(opts[1]?.img),
+        formatImageVal(opts[2]?.img),
+        formatImageVal(opts[3]?.img),
+        formatImageVal(opts[4]?.img),
+        cleanPembahasan,
       ];
     } else {
       const rowsTxt = (q.rows || [])
@@ -286,21 +364,21 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
       return [
         idx + 1,
         'PGK_KATEGORI',
-        q.soal,
-        rowsTxt,
+        cleanSoal,
+        sanitizeForExcelCell(rowsTxt),
         '-',
         '-',
         '-',
         'Tabel Kategori',
-        q.bobot || 1,
+        Number(q.bobot) || 1,
         '',
         qImgs,
-        q.rows?.[0]?.img || '',
-        q.rows?.[1]?.img || '',
-        q.rows?.[2]?.img || '',
-        q.rows?.[3]?.img || '',
+        formatImageVal(q.rows?.[0]?.img),
+        formatImageVal(q.rows?.[1]?.img),
+        formatImageVal(q.rows?.[2]?.img),
+        formatImageVal(q.rows?.[3]?.img),
         '',
-        q.pembahasan || '',
+        cleanPembahasan,
       ];
     }
   });

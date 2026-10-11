@@ -27,6 +27,7 @@ import { api } from '../services/api';
 import { ModalState } from './ConfirmModal';
 import { UploadStudentExcelModal } from './UploadStudentExcelModal';
 import { downloadStudentTemplate } from '../utils/excelUserImport';
+import { saveWorkbookFile } from '../utils/excelExamHelper';
 
 interface AdminViewProps {
   onShowModal: (modal: Partial<ModalState>) => void;
@@ -291,22 +292,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
     XLSX.utils.book_append_sheet(wb, ws, 'AKUN_PENGGUNA');
 
     const filename = `Data_Akun_Pengguna_${Date.now()}.xlsx`;
-    try {
-      XLSX.writeFile(wb, filename);
-    } catch {
-      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      const blob = new Blob([wbout], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }
+    saveWorkbookFile(wb, filename);
   };
 
   const handleOpenManageParentPin = async (u: User) => {

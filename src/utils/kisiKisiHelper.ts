@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { Ujian, Question, KisiKisiItem, ExamPayload, SchoolProfile } from '../types';
+import { saveWorkbookFile } from './excelExamHelper';
 
 export const DEFAULT_SCHOOL_NAME = 'SD NEGERI HARJOSARI KIDUL 01';
 export const DEFAULT_SCHOOL_SUBTITLE = 'DINAS PENDIDIKAN DAN KEBUDAYAAN KABUPATEN TEGAL';
@@ -826,7 +827,7 @@ export function exportKisiKisiToExcel({
   const safeTitle = (ujian.Judul_Ujian || 'Kisi_Kisi_Soal')
     .replace(/[^a-zA-Z0-9_-]/g, '_')
     .slice(0, 35);
-  XLSX.writeFile(wb, `Kisi_Kisi_${safeTitle}.xlsx`);
+  saveWorkbookFile(wb, `Kisi_Kisi_${safeTitle}.xlsx`);
 }
 
 /**
