@@ -27,7 +27,6 @@ export function generateParentReportHtml({
   const nipKepsek = schoolProfile?.nipKepalaSekolah || '196805121992032008';
 
   const dateStr = new Date().toLocaleDateString('id-ID', {
-    weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -408,7 +407,7 @@ export function generateParentReportHtml({
         <div style="font-size: 8.5pt; color: #64748b; margin-top: 2px;">(Tanda Tangan & Nama Terang)</div>
       </td>
       <td>
-        <div>Tegal, ${dateStr}</div>
+        <div>Adiwerna, ${dateStr}</div>
         <div style="font-weight: bold;">Guru Kelas / Wali Kelas,</div>
         <div class="sig-space"></div>
         <div style="font-weight: bold; text-decoration: underline;">${schoolProfile?.kepalaSekolah || 'Guru Kelas'}</div>

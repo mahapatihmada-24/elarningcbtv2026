@@ -769,7 +769,7 @@ export function exportKisiKisiToExcel({
     '',
     '',
     '',
-    'Tegal, ' + new Date().toLocaleDateString('id-ID', { dateStyle: 'long' }),
+    'Adiwerna, ' + new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
     '',
   ]);
   rows.push([

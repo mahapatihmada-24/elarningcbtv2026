@@ -29,7 +29,6 @@ export function generateRekapNilaiHtml({
   const nipKepsek = schoolProfile?.nipKepalaSekolah || '196805121992032008';
 
   const dateStr = new Date().toLocaleDateString('id-ID', {
-    weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
