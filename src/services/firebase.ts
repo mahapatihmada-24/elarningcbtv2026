@@ -13,6 +13,7 @@ import {
   query,
   where,
   deleteField,
+  onSnapshot,
 } from 'firebase/firestore';
 import firebaseConfigFile from '../../firebase-applet-config.json';
 import { User, Materi, Ujian, Nilai, ApiResponse, SchoolProfile, Announcement, ExamResetPermission } from '../types';
@@ -364,6 +365,21 @@ export async function saveNilaiViaRest(nilai: Nilai): Promise<boolean> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+
+    // Mirror juga ke rekap_nilai & hasil_ujian via REST
+    const urlRekap = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/rekap_nilai/${cleanId}?key=${cfg.apiKey}`;
+    const urlHasil = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/hasil_ujian/${cleanId}?key=${cfg.apiKey}`;
+    fetch(urlRekap, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+    fetch(urlHasil, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+
     return res.ok;
   } catch (e) {
     console.warn('[REST API] Gagal kirim nilai via REST:', e);
@@ -600,6 +616,30 @@ export const firebaseService = {
     return list.sort((a, b) => (b.Waktu_Submit || '').localeCompare(a.Waktu_Submit || ''));
   },
 
+  subscribeNilaiList(callback: (list: Nilai[]) => void): () => void {
+    try {
+      const q = collection(db, COLLECTIONS.NILAI);
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const list: Nilai[] = [];
+          snapshot.forEach((d) => {
+            list.push(normalizeNilai(d.data()));
+          });
+          const sorted = list.sort((a, b) => (b.Waktu_Submit || '').localeCompare(a.Waktu_Submit || ''));
+          callback(sorted);
+        },
+        (err) => {
+          console.warn('[Firestore onSnapshot] Gagal realtime listener nilai:', err);
+        }
+      );
+      return unsubscribe;
+    } catch (err) {
+      console.warn('[subscribeNilaiList] Error initializing onSnapshot:', err);
+      return () => {};
+    }
+  },
+
   async submitHasilUjian(payload: {
     id_ujian: string;
     id_nilai?: string;
@@ -641,6 +681,8 @@ export const firebaseService = {
     // 1. Eksekusi Jalur Utama via Firebase JS SDK
     try {
       await withTimeout(setDoc(doc(db, COLLECTIONS.NILAI, safeId), cleaned), 6000);
+      setDoc(doc(db, 'rekap_nilai', safeId), cleaned).catch(() => {});
+      setDoc(doc(db, 'hasil_ujian', safeId), cleaned).catch(() => {});
       markFirestoreOnline();
       return { success: true, message: 'Hasil ujian berhasil disimpan ke database Firebase!', data: newNilai };
     } catch (sdkErr) {
@@ -670,7 +712,7 @@ export const firebaseService = {
       } catch {}
     }
 
-    throw new Error('Gagal menyimpan hasil ujian ke database server. Lembar jawaban diamankan di penyimpanan lokal HP.');
+    throw new Error('Gagal menyimpan hasil ujian ke database server. Lembar jawaban diamankan di memori aktif HP.');
   },
 
   async resetNilaiMurid(
@@ -722,6 +764,8 @@ export const firebaseService = {
     }
 
     await withTimeout(deleteDoc(doc(db, COLLECTIONS.NILAI, idNilai)), 5000);
+    deleteDoc(doc(db, 'rekap_nilai', idNilai)).catch(() => {});
+    deleteDoc(doc(db, 'hasil_ujian', idNilai)).catch(() => {});
     return { success: true, message: 'Izin pengerjaan ulang berhasil diberikan kepada murid!' };
   },
 
@@ -765,6 +809,8 @@ export const firebaseService = {
     const cleaned = cleanFirestoreDoc(payload);
     try {
       await withTimeout(setDoc(doc(db, COLLECTIONS.NILAI, payload.ID), cleaned), 5000);
+      setDoc(doc(db, 'rekap_nilai', payload.ID), cleaned).catch(() => {});
+      setDoc(doc(db, 'hasil_ujian', payload.ID), cleaned).catch(() => {});
       return { success: true, message: 'Koreksi nilai berhasil disimpan ke database Firebase!' };
     } catch (err) {
       console.warn('[Firebase updateNilai] SDK gagal, mencoba REST API:', err);

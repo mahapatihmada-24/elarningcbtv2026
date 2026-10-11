@@ -69,19 +69,19 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
   useEffect(() => {
     fetchNilaiAndProfile(false);
 
-    // Sinkronisasi otomatis real-time saat siswa submit ujian atau nilai diperbarui
+    // 1. Sinkronisasi real-time instan langsung dari Firestore (onSnapshot)
+    const unsubscribeFirestore = api.subscribeNilaiList((liveList) => {
+      if (Array.isArray(liveList)) {
+        setNilaiList(liveList);
+      }
+    });
+
+    // 2. Sinkronisasi event internal saat submit / update lokal
     const handleSync = () => {
       fetchNilaiAndProfile(true);
     };
 
-    const handleStorage = (e: StorageEvent) => {
-      if (!e.key || e.key === 'cbt_nilai' || e.key === 'cbt_nilai_sync_event') {
-        fetchNilaiAndProfile(true);
-      }
-    };
-
     window.addEventListener('cbt-nilai-updated', handleSync);
-    window.addEventListener('storage', handleStorage);
     window.addEventListener('focus', handleSync);
 
     const interval = setInterval(() => {
@@ -89,8 +89,8 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
     }, 4000);
 
     return () => {
+      unsubscribeFirestore();
       window.removeEventListener('cbt-nilai-updated', handleSync);
-      window.removeEventListener('storage', handleStorage);
       window.removeEventListener('focus', handleSync);
       clearInterval(interval);
     };

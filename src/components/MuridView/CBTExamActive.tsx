@@ -241,6 +241,26 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  // Deteksi otomatis saat sinyal internet kembali online untuk mengirim langsung ke Firestore
+  useEffect(() => {
+    const handleOnlineAutoSend = () => {
+      setIsOnline(true);
+      if (submitPhase === 'error_retry' && pendingPayloadRef.current) {
+        console.info('Koneksi internet kembali pulih! Mengirimkan lembar jawaban otomatis ke Firestore...');
+        sendPayloadWithRetry(pendingPayloadRef.current);
+      }
+    };
+    const handleOfflineState = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnlineAutoSend);
+    window.addEventListener('offline', handleOfflineState);
+
+    return () => {
+      window.removeEventListener('online', handleOnlineAutoSend);
+      window.removeEventListener('offline', handleOfflineState);
+    };
+  }, [submitPhase]);
+
   // Notifikasi pop-up saat waktu habis:
   // Kunci input pilihan jawaban dan segera kirimkan lembar jawaban ke server guru
   useEffect(() => {
@@ -425,8 +445,6 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
       try {
         setSubmitRetryCount(attempt);
         if (attempt === 1) {
-          setSubmitPhase('saving_local');
-          await new Promise((r) => setTimeout(r, 200));
           setSubmitPhase('connecting');
         } else {
           setSubmitPhase('retrying');
@@ -490,7 +508,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
-    setSubmitPhase('saving_local');
+    setSubmitPhase('connecting');
     setSubmitRetryCount(1);
     setSubmitErrorMessage('');
 
@@ -577,11 +595,8 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
 
     pendingPayloadRef.current = payload;
 
-    // Bersihkan memori dan simpan cadangan darurat ke memori perangkat lokal secara aman
-    try {
-      cleanupLocalStorage();
-      safeSetItem(`cbt_emergency_backup_${exam.ID}_${currentUser.nama}`, JSON.stringify(payload));
-    } catch {}
+    // Bersihkan memori dan langsung mulai pengiriman ke server
+    cleanupLocalStorage();
 
     await sendPayloadWithRetry(payload);
   };

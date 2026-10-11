@@ -10,6 +10,7 @@ import {
   resetActiveFirebaseConfig,
   PRESET_CONFIGS,
   isFirestoreOffline,
+  saveNilaiViaRest,
 } from './firebase';
 import {
   normalizeUser,
@@ -138,44 +139,18 @@ export function cleanupLocalStorage(): void {
       } catch {}
     });
 
-    // 3. Optimasi dan kompresi cbt_db_nilai jika ada di localStorage
-    const rawNilai = localStorage.getItem(STORAGE_KEY_NILAI);
-    if (rawNilai) {
-      try {
-        const parsed = JSON.parse(rawNilai);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Batasi maksimal 25 record terbaru di penyimpanan lokal HP
-          const trimmed = parsed.slice(-25).map((item: any, idx: number, arr: any[]) => {
-            // Untuk record selain 2 teratas, buang atau kompresi Jawaban_JSON yang memakan kuota MB
-            const isVeryRecent = idx >= arr.length - 2;
-            if (!isVeryRecent && item.Jawaban_JSON) {
-              try {
-                const j = JSON.parse(item.Jawaban_JSON);
-                const compact = {
-                  answers: j.answers || j,
-                  compact: true,
-                };
-                return { ...item, Jawaban_JSON: JSON.stringify(compact) };
-              } catch {
-                return { ...item, Jawaban_JSON: undefined };
-              }
-            }
-            return item;
-          });
-          localStorage.setItem(STORAGE_KEY_NILAI, JSON.stringify(trimmed));
-        }
-      } catch (e) {
-        console.warn('Gagal optimasi cache nilai:', e);
-      }
-    }
+    // 3. HAPUS TOTAL ketergantungan localStorage untuk cbt_db_nilai agar memori HP bersih 100%
+    try {
+      localStorage.removeItem(STORAGE_KEY_NILAI);
+    } catch {}
 
     // 4. Bersihkan cbt_pending_submissions jika terlalu banyak
     const rawPending = localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS);
     if (rawPending) {
       try {
         const parsed = JSON.parse(rawPending);
-        if (Array.isArray(parsed) && parsed.length > 10) {
-          const recent = parsed.slice(-10);
+        if (Array.isArray(parsed) && parsed.length > 5) {
+          const recent = parsed.slice(-5);
           localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(recent));
         }
       } catch {}
@@ -192,69 +167,39 @@ export function cleanupLocalStorage(): void {
 export function safeSetItem(key: string, value: string): boolean {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') return false;
 
+  // Nilai ujian tidak boleh masuk ke localStorage
+  if (key === STORAGE_KEY_NILAI) {
+    try {
+      localStorage.removeItem(STORAGE_KEY_NILAI);
+    } catch {}
+    return true;
+  }
+
   try {
     localStorage.setItem(key, value);
     return true;
   } catch (err) {
     console.warn(`[safeSetItem] Kuota LocalStorage penuh untuk kunci '${key}'. Menjalankan pembersihan otomatis...`, err);
 
-    // Langkah 1: Jalankan pembersihan memori menyeluruh
     cleanupLocalStorage();
 
-    // Langkah 2: Coba simpan kembali setelah pembersihan
     try {
       localStorage.setItem(key, value);
       return true;
     } catch (retryErr) {
-      console.warn(`[safeSetItem] Percobaan kedua gagal untuk '${key}'. Menjalankan kompresi agresif...`, retryErr);
-
-      // Langkah 3: Kompresi agresif khusus untuk cbt_db_nilai
-      if (key === STORAGE_KEY_NILAI) {
-        try {
-          const parsed = JSON.parse(value);
-          if (Array.isArray(parsed)) {
-            // Ambil maksimal 15 record terbaru dan buang seluruh Jawaban_JSON pada record lama
-            const stripped = parsed.slice(-15).map((n: any, idx: number, arr: any[]) => {
-              if (idx < arr.length - 1) {
-                const { Jawaban_JSON, ...rest } = n;
-                return rest;
-              }
-              if (n.Jawaban_JSON) {
-                try {
-                  const j = JSON.parse(n.Jawaban_JSON);
-                  return { ...n, Jawaban_JSON: JSON.stringify({ answers: j.answers || j }) };
-                } catch {
-                  return { ...n, Jawaban_JSON: undefined };
-                }
-              }
-              return n;
-            });
-            localStorage.setItem(key, JSON.stringify(stripped));
-            return true;
-          }
-        } catch {}
-      }
-
-      // Langkah 4: Hapus seluruh backup darurat jika masih belum muat
-      try {
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith('cbt_emergency_backup_')) {
-            localStorage.removeItem(k);
-          }
-        }
-        localStorage.setItem(key, value);
-        return true;
-      } catch (finalErr) {
-        console.warn(`[safeSetItem] LocalStorage benar-benar penuh di browser ini. Data tetap aman di memori in-memory:`, finalErr);
-        return false;
-      }
+      console.warn(`[safeSetItem] Gagal simpan '${key}', memori in-memory tetap aman.`, retryErr);
+      return false;
     }
   }
 }
 
 // Initialize LocalStorage with seed data if empty
 function ensureLocalDbInitialized() {
+  // Pastikan cbt_db_nilai tidak ada di localStorage
+  try {
+    localStorage.removeItem(STORAGE_KEY_NILAI);
+  } catch {}
+
   if (!localStorage.getItem(STORAGE_KEY_USERS)) {
     safeSetItem(STORAGE_KEY_USERS, JSON.stringify(INITIAL_USERS));
   }
@@ -263,9 +208,6 @@ function ensureLocalDbInitialized() {
   }
   if (!localStorage.getItem(STORAGE_KEY_UJIAN)) {
     safeSetItem(STORAGE_KEY_UJIAN, JSON.stringify(INITIAL_UJIAN));
-  }
-  if (!localStorage.getItem(STORAGE_KEY_NILAI)) {
-    safeSetItem(STORAGE_KEY_NILAI, JSON.stringify(INITIAL_NILAI));
   }
   if (!localStorage.getItem(STORAGE_KEY_SCHOOL_PROFILE)) {
     safeSetItem(STORAGE_KEY_SCHOOL_PROFILE, JSON.stringify(DEFAULT_SCHOOL_PROFILE));
@@ -344,7 +286,7 @@ function getLocalUsers(): User[] {
 }
 
 function saveLocalUsers(users: User[]) {
-  localStorage.setItem(STORAGE_KEY_USERS, JSON.stringify(users.map(normalizeUser)));
+  safeSetItem(STORAGE_KEY_USERS, JSON.stringify(users.map(normalizeUser)));
 }
 
 function getLocalMateri(): Materi[] {
@@ -361,7 +303,7 @@ function getLocalMateri(): Materi[] {
 }
 
 function saveLocalMateri(materi: Materi[]) {
-  localStorage.setItem(STORAGE_KEY_MATERI, JSON.stringify(materi.map(normalizeMateri)));
+  safeSetItem(STORAGE_KEY_MATERI, JSON.stringify(materi.map(normalizeMateri)));
 }
 
 let inMemoryUjianList: Ujian[] | null = null;
@@ -439,29 +381,15 @@ function getLocalNilai(): Nilai[] {
   if (inMemoryNilaiList && inMemoryNilaiList.length > 0) {
     return inMemoryNilaiList;
   }
-  ensureLocalDbInitialized();
-  try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY_NILAI) || '[]');
-    if (Array.isArray(raw)) {
-      const list = raw.map(normalizeNilai);
-      inMemoryNilaiList = list;
-      return list;
-    }
-    const list = INITIAL_NILAI.map(normalizeNilai);
-    inMemoryNilaiList = list;
-    return list;
-  } catch {
-    const list = INITIAL_NILAI.map(normalizeNilai);
-    inMemoryNilaiList = list;
-    return list;
-  }
+  const list = INITIAL_NILAI.map(normalizeNilai);
+  inMemoryNilaiList = list;
+  return list;
 }
 
 function notifyNilaiSync(detail?: any) {
   if (typeof window !== 'undefined') {
     try {
       window.dispatchEvent(new CustomEvent('cbt-nilai-updated', { detail }));
-      safeSetItem('cbt_nilai_sync_event', Date.now().toString());
     } catch {}
   }
 }
@@ -469,30 +397,6 @@ function notifyNilaiSync(detail?: any) {
 function saveLocalNilai(nilai: Nilai[]) {
   const normalized = nilai.map(normalizeNilai);
   inMemoryNilaiList = [...normalized];
-
-  // Siapkan data ringan untuk penyimpanan lokal (maksimal 30 record terbaru, kompres/buang Jawaban_JSON pada record lama)
-  try {
-    const compactList = normalized.slice(-30).map((item, idx, arr) => {
-      const isLatest = idx >= arr.length - 2;
-      if (!isLatest && item.Jawaban_JSON) {
-        try {
-          const j = JSON.parse(item.Jawaban_JSON);
-          return {
-            ...item,
-            Jawaban_JSON: JSON.stringify({ answers: j.answers || j, compact: true }),
-          };
-        } catch {
-          return { ...item, Jawaban_JSON: undefined };
-        }
-      }
-      return item;
-    });
-
-    safeSetItem(STORAGE_KEY_NILAI, JSON.stringify(compactList));
-  } catch (err) {
-    console.warn('Gagal menyimpan compact nilai ke LocalStorage, memori in-memory tetap aman:', err);
-  }
-
   notifyNilaiSync();
 }
 
@@ -531,13 +435,25 @@ export interface PendingExamSubmission {
   timestamp: number;
 }
 
+let inMemoryPendingQueue: PendingExamSubmission[] = [];
+
 function getPendingSubmissions(): PendingExamSubmission[] {
+  let localList: PendingExamSubmission[] = [];
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS) || '[]');
-    return Array.isArray(raw) ? raw : [];
+    if (Array.isArray(raw)) localList = raw;
   } catch {
-    return [];
+    localList = [];
   }
+  // Gabungkan antrean lokal dengan in-memory untuk memastikan tidak ada data yang hilang
+  const map = new Map<string, PendingExamSubmission>();
+  for (const item of localList) {
+    if (item && item.id_nilai) map.set(item.id_nilai, item);
+  }
+  for (const item of inMemoryPendingQueue) {
+    if (item && item.id_nilai) map.set(item.id_nilai, item);
+  }
+  return Array.from(map.values());
 }
 
 function savePendingSubmission(item: Omit<PendingExamSubmission, 'timestamp'>) {
@@ -553,16 +469,27 @@ function savePendingSubmission(item: Omit<PendingExamSubmission, 'timestamp'>) {
       } catch {}
     }
 
+    const fullItem: PendingExamSubmission = { ...item, jawaban_json: compactJawaban, timestamp: Date.now() };
+
+    // 1. Simpan selalu ke antrean memori aktif (In-Memory)
+    const memIdx = inMemoryPendingQueue.findIndex((p) => p.id_nilai === item.id_nilai);
+    if (memIdx >= 0) inMemoryPendingQueue[memIdx] = fullItem;
+    else inMemoryPendingQueue.push(fullItem);
+    if (inMemoryPendingQueue.length > 10) {
+      inMemoryPendingQueue = inMemoryPendingQueue.slice(-10);
+    }
+
+    // 2. Simpan cadangan aman ke localStorage
     const current = getPendingSubmissions().filter((p) => p.id_nilai !== item.id_nilai);
-    // Simpan maksimal 10 antrean pending terbaru
     const trimmed = current.slice(-9);
-    trimmed.push({ ...item, jawaban_json: compactJawaban, timestamp: Date.now() });
+    trimmed.push(fullItem);
     safeSetItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(trimmed));
   } catch {}
 }
 
 function removePendingSubmission(idNilai: string) {
   try {
+    inMemoryPendingQueue = inMemoryPendingQueue.filter((p) => p.id_nilai !== idNilai);
     const current = getPendingSubmissions().filter((p) => p.id_nilai !== idNilai);
     safeSetItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(current));
   } catch {}
@@ -579,7 +506,7 @@ function getLocalSchoolProfile(): SchoolProfile {
 }
 
 function saveLocalSchoolProfile(profile: SchoolProfile) {
-  localStorage.setItem(STORAGE_KEY_SCHOOL_PROFILE, JSON.stringify(profile));
+  safeSetItem(STORAGE_KEY_SCHOOL_PROFILE, JSON.stringify(profile));
 }
 
 function getLocalMasterKelas(): string[] {
@@ -593,7 +520,7 @@ function getLocalMasterKelas(): string[] {
 }
 
 function saveLocalMasterKelas(classes: string[]) {
-  localStorage.setItem(STORAGE_KEY_MASTER_KELAS, JSON.stringify(classes));
+  safeSetItem(STORAGE_KEY_MASTER_KELAS, JSON.stringify(classes));
 }
 
 function getLocalMasterMapel(): string[] {
@@ -607,7 +534,7 @@ function getLocalMasterMapel(): string[] {
 }
 
 function saveLocalMasterMapel(mapels: string[]) {
-  localStorage.setItem(STORAGE_KEY_MASTER_MAPEL, JSON.stringify(mapels));
+  safeSetItem(STORAGE_KEY_MASTER_MAPEL, JSON.stringify(mapels));
 }
 
 function getLocalAnnouncements(): Announcement[] {
@@ -621,7 +548,7 @@ function getLocalAnnouncements(): Announcement[] {
 }
 
 function saveLocalAnnouncements(items: Announcement[]) {
-  localStorage.setItem(STORAGE_KEY_ANNOUNCEMENTS, JSON.stringify(items));
+  safeSetItem(STORAGE_KEY_ANNOUNCEMENTS, JSON.stringify(items));
 }
 
 // Low-level GAS caller with timeout
@@ -1519,16 +1446,15 @@ export const api = {
   },
 
   async getNilaiList(): Promise<Nilai[]> {
-    if (currentDataSource === 'FIREBASE') {
-      try {
-        const list = await firebaseService.getNilaiList();
-        if (Array.isArray(list) && list.length > 0) {
-          saveLocalNilai(list);
-          return list;
-        }
-      } catch (err) {
-        console.warn('Firebase getNilaiList error:', err);
+    // Sumber Utama 100%: Selalu tarik data rekap nilai langsung dari database Firebase Firestore
+    try {
+      const list = await firebaseService.getNilaiList();
+      if (Array.isArray(list)) {
+        inMemoryNilaiList = list;
+        return list;
       }
+    } catch (err) {
+      console.warn('Firebase getNilaiList error:', err);
     }
 
     if (currentDataSource === 'GAS') {
@@ -1536,7 +1462,7 @@ export const api = {
         const res = await callGasServer<Nilai[]>('getNilaiList', []);
         if (Array.isArray(res) && res.length > 0) {
           const normalized = res.map(normalizeNilai);
-          saveLocalNilai(normalized);
+          inMemoryNilaiList = normalized;
           return normalized;
         }
       } catch (err) {
@@ -1544,7 +1470,7 @@ export const api = {
       }
     }
 
-    return [...getLocalNilai()].reverse();
+    return inMemoryNilaiList || INITIAL_NILAI.map(normalizeNilai);
   },
 
   async submitHasilUjian(payload: {
@@ -1583,85 +1509,79 @@ export const api = {
       Jawaban_JSON: payload.jawaban_json,
     };
 
-    // 1. Simpan segera ke cache in-memory & lokal secara aman (tanpa pernah memblokir pengiriman jaringan ke server)
-    try {
-      const list = getLocalNilai();
-      const existingIdx = list.findIndex(
-        (n) =>
-          (n.ID === assignedId || n.ID_Ujian === payload.id_ujian) &&
-          n.Nama_Murid.trim().toLowerCase() === payload.nama_murid.trim().toLowerCase()
-      );
-      if (existingIdx >= 0) {
-        list[existingIdx] = newNilai;
-      } else {
-        list.push(newNilai);
-      }
-      saveLocalNilai(list);
-    } catch (localErr) {
-      console.warn('Gagal menyimpan nilai lokal sementara, pengiriman ke cloud tetap diprioritaskan:', localErr);
+    // 1. Simpan segera ke memori aktif (In-Memory) agar UI responsif seketika
+    const list = getLocalNilai();
+    const existingIdx = list.findIndex(
+      (n) =>
+        (n.ID === assignedId || n.ID_Ujian === payload.id_ujian) &&
+        n.Nama_Murid.trim().toLowerCase() === payload.nama_murid.trim().toLowerCase()
+    );
+    if (existingIdx >= 0) {
+      list[existingIdx] = newNilai;
+    } else {
+      list.unshift(newNilai);
     }
+    saveLocalNilai(list);
 
-    // Amankan ke antrean pending lokal untuk proteksi jika koneksi HP tidak stabil
-    try {
-      savePendingSubmission(payloadWithId);
-    } catch {}
+    // Amankan ke antrean pending in-memory
+    savePendingSubmission(payloadWithId);
 
     // Konsumsi/hapus status izin ujian ulang setelah siswa berhasil mengirimkan ujian baru
     try {
       this.consumeExamReset(payload.id_ujian, payload.nama_murid);
     } catch {}
 
-    // 2. PRIORITAS UTAMA: Simpan langsung ke database online (Firebase Firestore / GAS)
-    if (currentDataSource === 'FIREBASE' || (typeof navigator !== 'undefined' && navigator.onLine)) {
-      try {
-        const res = await firebaseService.submitHasilUjian(payloadWithId);
-        // Jika sukses tersimpan di Firebase Firestore, hapus dari antrean pending
-        removePendingSubmission(assignedId);
+    // 2. PRIORITAS UTAMA 100%: Tulis langsung ke database Firebase Firestore (Jalur SDK & Jalur Cepat REST API)
+    try {
+      const res = await firebaseService.submitHasilUjian(payloadWithId);
+      removePendingSubmission(assignedId);
 
-        if (res.data) {
-          const freshRecord = normalizeNilai(res.data);
-          const freshList = getLocalNilai();
-          const tIdx = freshList.findIndex((n) => n.ID === assignedId);
-          if (tIdx >= 0) {
-            freshList[tIdx] = freshRecord;
-          } else {
-            freshList.push(freshRecord);
-          }
-          saveLocalNilai(freshList);
+      if (res.data) {
+        const freshRecord = normalizeNilai(res.data);
+        const freshList = getLocalNilai();
+        const tIdx = freshList.findIndex((n) => n.ID === assignedId);
+        if (tIdx >= 0) {
+          freshList[tIdx] = freshRecord;
+        } else {
+          freshList.unshift(freshRecord);
         }
-        return res;
-      } catch (err: any) {
-        console.warn('Firebase submitHasilUjian error:', err);
-        // Pastikan tersimpan di antrean pending untuk sinkronisasi otomatis
-        savePendingSubmission(payloadWithId);
-        const rawMsg = err?.message || '';
-        if (rawMsg.includes('quota') || rawMsg.includes('setItem')) {
-          cleanupLocalStorage();
-        }
-        throw new Error(
-          rawMsg && !rawMsg.includes('quota') && !rawMsg.includes('setItem')
-            ? rawMsg
-            : 'Koneksi internet HP tidak stabil saat mengirim ke server. Lembar jawaban Anda telah diamankan di antrean HP dan akan disinkronkan otomatis.'
-        );
+        saveLocalNilai(freshList);
       }
-    }
+      return res;
+    } catch (firebaseErr: any) {
+      console.warn('[submitHasilUjian] Pengiriman via SDK Firestore gagal, mencoba jalur cepat REST API:', firebaseErr);
 
-    if (currentDataSource === 'GAS') {
+      // Jalur Cepat REST API Langsung ke Firestore
       try {
-        const res = await callGasServer<ApiResponse>('submitHasilUjian', [payloadWithId]);
-        if (res && res.success) {
+        const restSaved = await saveNilaiViaRest(newNilai);
+        if (restSaved) {
           removePendingSubmission(assignedId);
-          return res;
+          return {
+            success: true,
+            message: 'Hasil ujian berhasil disimpan langsung ke server database Firebase!',
+            data: newNilai,
+          };
         }
-      } catch (err: any) {
-        console.warn('GAS submitHasilUjian error:', err);
-        savePendingSubmission(payloadWithId);
-        throw err;
+      } catch (restErr) {
+        console.warn('[submitHasilUjian] REST retry gagal:', restErr);
       }
-    }
 
-    removePendingSubmission(assignedId);
-    return { success: true, message: 'Hasil ujian berhasil diamankan di penyimpanan lokal!', data: newNilai };
+      // Alternatif GAS jika dikonfigurasi
+      if (currentDataSource === 'GAS') {
+        try {
+          const gasRes = await callGasServer<ApiResponse>('submitHasilUjian', [payloadWithId]);
+          if (gasRes && gasRes.success) {
+            removePendingSubmission(assignedId);
+            return gasRes;
+          }
+        } catch {}
+      }
+
+      // Jika jaringan benar-benar offline / putus
+      throw new Error(
+        'Koneksi internet HP terputus saat mengirim nilai ke database server. Lembar jawaban Anda telah tersimpan aman di memori aktif HP.'
+      );
+    }
   },
 
   async syncPendingSubmissions(): Promise<number> {
@@ -2018,5 +1938,9 @@ export const api = {
 
   safeSetItem(key: string, value: string) {
     return safeSetItem(key, value);
+  },
+
+  subscribeNilaiList(callback: (list: Nilai[]) => void): () => void {
+    return firebaseService.subscribeNilaiList(callback);
   },
 };
