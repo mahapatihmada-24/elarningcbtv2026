@@ -14,10 +14,12 @@ export const MathRenderer: React.FC<MathRendererProps> = ({
   images = [],
   onViewImage,
 }) => {
-  if (!content) return null;
+  if (content === null || content === undefined) return null;
+  const strContent = typeof content === 'string' ? content : String(content);
+  if (!strContent.trim()) return null;
 
   // Pre-process content: if content has \frac{a}{b} not enclosed in $, auto-wrap it for convenience
-  let processedContent = content;
+  let processedContent = strContent;
   if (processedContent.includes('\\frac') && !processedContent.includes('$')) {
     processedContent = processedContent.replace(/\\frac\{[^{}]+\}\{[^{}]+\}/g, (m) => `$${m}$`);
   }

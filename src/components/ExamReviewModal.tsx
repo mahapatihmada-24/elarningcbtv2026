@@ -48,38 +48,64 @@ export const ExamReviewModal: React.FC<ExamReviewModalProps> = ({
 
   const isTeacherView = userRole === 'guru' || userRole === 'admin' || isTeacher;
 
-  let questions: Question[] = propQuestions && propQuestions.length > 0 ? propQuestions : [];
+  // 1. Ambil bank soal lengkap dari ujian.Soal_JSON
+  let examBankQuestions: Question[] = [];
+  try {
+    const raw = typeof ujian.Soal_JSON === 'string' ? JSON.parse(ujian.Soal_JSON || '{}') : ujian.Soal_JSON;
+    if (raw?.questions && Array.isArray(raw.questions)) {
+      examBankQuestions = raw.questions;
+    } else if (Array.isArray(raw)) {
+      examBankQuestions = raw;
+    }
+  } catch {}
+
+  let questions: Question[] = propQuestions && propQuestions.length > 0 && propQuestions[0]?.soal
+    ? propQuestions
+    : examBankQuestions;
   let resolvedAnswers: Record<number, any> = studentAnswers || {};
 
   // Resolve student answers and questions from saved Nilai.Jawaban_JSON
   if (nilai?.Jawaban_JSON) {
     try {
-      const parsed = JSON.parse(nilai.Jawaban_JSON);
+      const parsed = typeof nilai.Jawaban_JSON === 'string' ? JSON.parse(nilai.Jawaban_JSON) : nilai.Jawaban_JSON;
       if (parsed && typeof parsed === 'object') {
         if (parsed.answers && typeof parsed.answers === 'object') {
           if (Object.keys(resolvedAnswers).length === 0) {
             resolvedAnswers = parsed.answers;
           }
-          if (questions.length === 0 && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+          if (Array.isArray(parsed.questions) && parsed.questions.length > 0 && parsed.questions[0]?.soal) {
             questions = parsed.questions;
           }
-        } else if (Object.keys(resolvedAnswers).length === 0) {
+        } else if (parsed.userAnswers && typeof parsed.userAnswers === 'object') {
+          if (Object.keys(resolvedAnswers).length === 0) {
+            resolvedAnswers = parsed.userAnswers;
+          }
+        } else if (Object.keys(resolvedAnswers).length === 0 && !Array.isArray(parsed) && !parsed.questions) {
           resolvedAnswers = parsed;
         }
       }
     } catch {}
   }
 
-  // Fallback to ujian.Soal_JSON if questions still empty
-  if (questions.length === 0) {
-    try {
-      const raw = JSON.parse(ujian.Soal_JSON || '{}');
-      if (raw.questions && Array.isArray(raw.questions)) {
-        questions = raw.questions;
-      } else if (Array.isArray(raw)) {
-        questions = raw;
-      }
-    } catch {}
+  // Fallback to examBankQuestions if questions still empty or lack question stem (.soal)
+  if (questions.length === 0 || !questions[0]?.soal) {
+    if (examBankQuestions.length > 0) {
+      questions = examBankQuestions;
+    }
+  } else if (questions.length > 0 && examBankQuestions.length > 0) {
+    // Merge so questions always contain rich text, choices, rows, and pembahasan
+    questions = questions.map((q, idx) => {
+      const bankQ = examBankQuestions[idx];
+      if (!bankQ) return q;
+      return {
+        ...bankQ,
+        ...q,
+        soal: q.soal || bankQ.soal || '',
+        pembahasan: q.pembahasan || bankQ.pembahasan || '',
+        options: (q as any).options || (bankQ as any).options || [],
+        rows: (q as any).rows || (bankQ as any).rows || [],
+      };
+    });
   }
 
   const hasStudentAnswers = Object.keys(resolvedAnswers).length > 0;
@@ -295,18 +321,20 @@ export const ExamReviewModal: React.FC<ExamReviewModalProps> = ({
             {/* Right: Quick print/download for mobile */}
             <div className="flex sm:hidden items-center gap-1.5 w-full pt-1">
               <button
-                onClick={() => printExamDocument(ujian, { includeAnswers: true, includePembahasan: true })}
-                className="flex-1 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-bold flex items-center justify-center gap-1"
+                onClick={handlePrint}
+                className="flex-1 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-1 transition shadow-xs"
+                title={isTeacherView ? 'Cetak Lengkap dengan Kunci & Pembahasan' : 'Cetak Naskah Soal Siswa'}
               >
                 <Printer className="w-3.5 h-3.5" />
-                <span>Cetak / PDF</span>
+                <span>{isTeacherView ? 'Cetak Lengkap' : 'Cetak Soal (PDF)'}</span>
               </button>
               <button
-                onClick={() => downloadExamWord(ujian, { includeAnswers: true, includePembahasan: true })}
-                className="flex-1 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-bold flex items-center justify-center gap-1"
+                onClick={handleDownloadWord}
+                className="flex-1 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center justify-center gap-1 transition shadow-xs"
+                title={isTeacherView ? 'Unduh Lengkap dengan Kunci & Pembahasan (.doc)' : 'Unduh Naskah Soal Siswa (.doc)'}
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Unduh .doc</span>
+                <span>{isTeacherView ? 'Unduh Word' : 'Unduh Soal (.doc)'}</span>
               </button>
             </div>
           </div>

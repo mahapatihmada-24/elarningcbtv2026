@@ -24,11 +24,13 @@ import {
   Clock,
   Eye,
   KeyRound,
+  Download,
 } from 'lucide-react';
 import { User, Nilai, Ujian, SchoolProfile, Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, getQuestionImages } from '../../types';
 import { api } from '../../services/api';
 import { MathRenderer } from '../MathRenderer';
 import { printParentReportDocument } from '../../utils/parentReportPrintHelper';
+import { printExamDocument, downloadExamWord } from '../../utils/documentExport';
 
 interface ParentDashboardModalProps {
   isOpen: boolean;
@@ -139,11 +141,40 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
           u.ID === selectedNilai.ID_Ujian ||
           (u.Judul_Ujian &&
             selectedNilai.Judul_Ujian &&
-            u.Judul_Ujian.trim().toLowerCase() === selectedNilai.Judul_Ujian.trim().toLowerCase())
+            (u.Judul_Ujian.trim().toLowerCase() === selectedNilai.Judul_Ujian.trim().toLowerCase() ||
+             u.Judul_Ujian.toLowerCase().includes(selectedNilai.Judul_Ujian.toLowerCase()) ||
+             selectedNilai.Judul_Ujian.toLowerCase().includes(u.Judul_Ujian.toLowerCase())))
       )
     : null;
 
-  // Parse questions and student answers from Nilai.Jawaban_JSON and Ujian.Soal_JSON
+  // 1. Dapatkan bank soal lengkap dari selectedUjian / candidateUjian
+  let fullQuestionsFromUjian: Question[] = [];
+  const candidateUjian = selectedUjian || ujianList.find(
+    (u) =>
+      (selectedNilai?.ID_Ujian && u.ID === selectedNilai.ID_Ujian) ||
+      (u.Judul_Ujian && selectedNilai?.Judul_Ujian &&
+        (u.Judul_Ujian.trim().toLowerCase() === selectedNilai.Judul_Ujian.trim().toLowerCase() ||
+         u.Judul_Ujian.toLowerCase().includes(selectedNilai.Judul_Ujian.toLowerCase()) ||
+         selectedNilai.Judul_Ujian.toLowerCase().includes(u.Judul_Ujian.toLowerCase())))
+  );
+
+  if (candidateUjian?.Soal_JSON) {
+    try {
+      const raw =
+        typeof candidateUjian.Soal_JSON === 'string'
+          ? JSON.parse(candidateUjian.Soal_JSON)
+          : candidateUjian.Soal_JSON;
+      if (raw && Array.isArray(raw.questions)) {
+        fullQuestionsFromUjian = raw.questions;
+      } else if (Array.isArray(raw)) {
+        fullQuestionsFromUjian = raw;
+      }
+    } catch (e) {
+      console.warn('Gagal mem-parse candidateUjian.Soal_JSON:', e);
+    }
+  }
+
+  // 2. Parse student answers & questions dari Nilai.Jawaban_JSON
   let examQuestions: Question[] = [];
   let studentAnswers: Record<string | number, any> = {};
 
@@ -159,11 +190,16 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
           studentAnswers = parsed.answers;
         } else if (parsed.userAnswers && typeof parsed.userAnswers === 'object') {
           studentAnswers = parsed.userAnswers;
-        } else {
+        } else if (!Array.isArray(parsed) && !parsed.questions) {
           studentAnswers = parsed;
         }
 
-        if (Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+        // Ambil questions dari parsed HANYA jika berisi soal lengkap (ada properti .soal)
+        if (
+          Array.isArray(parsed.questions) &&
+          parsed.questions.length > 0 &&
+          Boolean(parsed.questions[0]?.soal)
+        ) {
           examQuestions = parsed.questions;
         }
       }
@@ -172,47 +208,24 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
     }
   }
 
-  // Fallback to selectedUjian.Soal_JSON if questions still empty
-  if (examQuestions.length === 0 && selectedUjian?.Soal_JSON) {
-    try {
-      const raw =
-        typeof selectedUjian.Soal_JSON === 'string'
-          ? JSON.parse(selectedUjian.Soal_JSON)
-          : selectedUjian.Soal_JSON;
-      if (raw.questions && Array.isArray(raw.questions)) {
-        examQuestions = raw.questions;
-      } else if (Array.isArray(raw)) {
-        examQuestions = raw;
-      }
-    } catch (e) {
-      console.warn('Gagal mem-parse Soal_JSON dari ujian terpilih:', e);
+  // 3. Fallback & merge ke fullQuestionsFromUjian agar teks soal, opsi, dan pembahasan selalu lengkap
+  if (examQuestions.length === 0 || !examQuestions[0]?.soal) {
+    if (fullQuestionsFromUjian.length > 0) {
+      examQuestions = fullQuestionsFromUjian;
     }
-  }
-
-  // Fallback searching any matching ujian in ujianList by title
-  if (examQuestions.length === 0 && selectedNilai) {
-    const fallbackUjian = ujianList.find(
-      (u) =>
-        (u.Judul_Ujian &&
-          selectedNilai.Judul_Ujian &&
-          u.Judul_Ujian.toLowerCase().includes(selectedNilai.Judul_Ujian.toLowerCase())) ||
-        (selectedNilai.Judul_Ujian &&
-          u.Judul_Ujian &&
-          selectedNilai.Judul_Ujian.toLowerCase().includes(u.Judul_Ujian.toLowerCase()))
-    );
-    if (fallbackUjian?.Soal_JSON) {
-      try {
-        const raw =
-          typeof fallbackUjian.Soal_JSON === 'string'
-            ? JSON.parse(fallbackUjian.Soal_JSON)
-            : fallbackUjian.Soal_JSON;
-        if (raw.questions && Array.isArray(raw.questions)) {
-          examQuestions = raw.questions;
-        } else if (Array.isArray(raw)) {
-          examQuestions = raw;
-        }
-      } catch {}
-    }
+  } else if (examQuestions.length > 0 && fullQuestionsFromUjian.length > 0) {
+    examQuestions = examQuestions.map((q, idx) => {
+      const fullQ = fullQuestionsFromUjian[idx];
+      if (!fullQ) return q;
+      return {
+        ...fullQ,
+        ...q,
+        soal: q.soal || fullQ.soal || '',
+        pembahasan: q.pembahasan || fullQ.pembahasan || '',
+        options: (q as any).options || (fullQ as any).options || [],
+        rows: (q as any).rows || (fullQ as any).rows || [],
+      };
+    });
   }
 
   // Helper untuk mendapatkan jawaban siswa per butir soal
@@ -270,19 +283,19 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
       return studentAnsStr.length > 0 && studentAnsStr === keyStr;
     } else if (q.type === 'pgk_mcma') {
       const mcma = q as QuestionPGKMCMA;
-      if (!Array.isArray(ans)) return false;
+      const options = Array.isArray(mcma.options) ? mcma.options : [];
+      if (!Array.isArray(ans) || options.length === 0) return false;
       const isSelected = (oIdx: number) =>
         ans[oIdx] === true || (ans as any[]).includes(oIdx);
       return (
-        mcma.options.length > 0 &&
-        mcma.options.every((opt, optIdx) => Boolean(opt.isKey) === Boolean(isSelected(optIdx)))
+        options.every((opt, optIdx) => Boolean(opt.isKey) === Boolean(isSelected(optIdx)))
       );
     } else if (q.type === 'pgk_kategori') {
       const kat = q as QuestionPGKKategori;
-      if (!ans || typeof ans !== 'object') return false;
+      const rows = Array.isArray(kat.rows) ? kat.rows : [];
+      if (!ans || typeof ans !== 'object' || rows.length === 0) return false;
       return (
-        kat.rows.length > 0 &&
-        kat.rows.every((row, rIdx) => {
+        rows.every((row, rIdx) => {
           const choice = ans[rIdx] ?? ans[String(rIdx)];
           return choice === row.key;
         })
@@ -313,13 +326,39 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
     return true;
   });
 
-  // Print Handlers
+  // Print & Download Handlers for Parents
   const handlePrintReport = () => {
     printParentReportDocument({
       student,
       nilaiList,
       schoolProfile,
       kkm,
+    });
+  };
+
+  const handlePrintExamReview = () => {
+    const examToPrint = candidateUjian || selectedUjian;
+    if (!examToPrint) {
+      alert('Data naskah ujian tidak ditemukan untuk dicetak.');
+      return;
+    }
+    // Hak Akses Orang Tua: Tampilkan lengkap kunci & pembahasan
+    printExamDocument(examToPrint, {
+      includeAnswers: true,
+      includePembahasan: true,
+    });
+  };
+
+  const handleDownloadExamWordReview = () => {
+    const examToDownload = candidateUjian || selectedUjian;
+    if (!examToDownload) {
+      alert('Data naskah ujian tidak ditemukan untuk diunduh.');
+      return;
+    }
+    // Hak Akses Orang Tua: Tampilkan lengkap kunci & pembahasan
+    downloadExamWord(examToDownload, {
+      includeAnswers: true,
+      includePembahasan: true,
     });
   };
 
@@ -1038,13 +1077,13 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                     /* UNLOCKED: RENDER FULL REVIEW PEMBAHASAN */
                     <div className="space-y-4">
                       {/* Summary Banner for Selected Exam */}
-                      <div className="bg-white p-4.5 rounded-3xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+                      <div className="bg-white p-4.5 rounded-3xl border border-slate-200 shadow-2xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                         <div className="space-y-1">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className="font-black text-slate-900 text-sm sm:text-base">
                               {selectedNilai?.Judul_Ujian}
                             </span>
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-black ${
+                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-black ${
                               Number(selectedNilai?.Nilai || 0) >= kkm
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : 'bg-rose-100 text-rose-800'
@@ -1057,26 +1096,54 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                           </p>
                         </div>
 
-                        {/* Question Filter Pills */}
-                        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-2xl">
+                        {/* Top Action Buttons for Parents: Cetak & Unduh Lengkap */}
+                        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                          <button
+                            type="button"
+                            onClick={handlePrintExamReview}
+                            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                            title="Cetak Naskah Soal Lengkap beserta Kunci & Pembahasan (PDF)"
+                          >
+                            <Printer className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Cetak Pembahasan (PDF)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleDownloadExamWordReview}
+                            className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                            title="Unduh Naskah Soal Lengkap beserta Kunci & Pembahasan (.doc)"
+                          >
+                            <Download className="w-3.5 h-3.5 text-blue-200" />
+                            <span>Unduh Word (.doc)</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Question Filter Pills */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-100/90 p-2 rounded-2xl">
+                        <div className="flex items-center gap-1 text-xs font-bold text-slate-500">
+                          <Filter className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Filter Soal:</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <button
                             onClick={() => setReviewFilterMode('wrong')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                               reviewFilterMode === 'wrong'
                                 ? 'bg-rose-600 text-white shadow-xs'
-                                : 'text-slate-600 hover:text-rose-700'
+                                : 'bg-white text-slate-600 hover:text-rose-700 border border-slate-200'
                             }`}
                           >
                             <XCircle className="w-3.5 h-3.5" />
-                            <span>Soal Salah Saja ({wrongCount})</span>
+                            <span>Soal Salah ({wrongCount})</span>
                           </button>
 
                           <button
                             onClick={() => setReviewFilterMode('all')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                               reviewFilterMode === 'all'
                                 ? 'bg-slate-900 text-white shadow-xs'
-                                : 'text-slate-600 hover:text-slate-900'
+                                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
                             }`}
                           >
                             <Layers className="w-3.5 h-3.5" />
@@ -1085,10 +1152,10 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
 
                           <button
                             onClick={() => setReviewFilterMode('correct')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
                               reviewFilterMode === 'correct'
                                 ? 'bg-emerald-600 text-white shadow-xs'
-                                : 'text-slate-600 hover:text-emerald-700'
+                                : 'bg-white text-slate-600 hover:text-emerald-700 border border-slate-200'
                             }`}
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1097,33 +1164,76 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                         </div>
                       </div>
 
+                      {/* Interactive Question Navigator Palette */}
+                      {analyzedQuestions.length > 0 && (
+                        <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-700">
+                            <span className="flex items-center gap-1.5">
+                              <Layers className="w-3.5 h-3.5 text-emerald-600" />
+                              Navigasi Butir Soal (Klik nomor untuk langsung ke soal):
+                            </span>
+                            <div className="flex items-center gap-3 text-[11px]">
+                              <span className="flex items-center gap-1 text-emerald-700 font-bold">
+                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span> Benar ({correctCount})
+                              </span>
+                              <span className="flex items-center gap-1 text-rose-700 font-bold">
+                                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span> Salah ({wrongCount})
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
+                            {analyzedQuestions.map(({ index, isCorrect }) => (
+                              <button
+                                key={index}
+                                type="button"
+                                onClick={() => {
+                                  const el = document.getElementById(`parent-soal-${index}`);
+                                  if (el) {
+                                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                  }
+                                }}
+                                className={`w-8 h-8 rounded-xl font-black text-xs transition flex items-center justify-center cursor-pointer border shadow-2xs hover:scale-105 active:scale-95 ${
+                                  isCorrect
+                                    ? 'bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100'
+                                    : 'bg-rose-50 border-rose-300 text-rose-800 hover:bg-rose-100'
+                                }`}
+                                title={`Menuju Soal No. ${index + 1} (${isCorrect ? 'Dijawab Benar' : 'Dijawab Salah'})`}
+                              >
+                                {index + 1}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Info Notice for Parents */}
                       {reviewFilterMode === 'wrong' && wrongCount > 0 && (
                         <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-2.5 text-xs text-amber-900">
                           <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
                           <span>
-                            <strong>Mode Pendampingan:</strong> Menampilkan {wrongCount} butir soal yang dijawab salah oleh ananda. Gunakan kotak pembahasan di bawah untuk memandu konsep materi kepada ananda.
+                            <strong>Mode Pendampingan:</strong> Menampilkan {wrongCount} butir soal yang dijawab salah oleh ananda. Gunakan panduan kunci dan kotak pembahasan materi di bawah untuk membimbing ananda di rumah.
                           </span>
                         </div>
                       )}
 
                       {/* List of Questions */}
                       {displayQuestions.length > 0 ? (
-                        <div className="space-y-4">
+                        <div className="space-y-5">
                           {displayQuestions.map(({ index, question, studentAnswer, isCorrect }) => {
                             const questionImages = getQuestionImages(question);
 
                             return (
                               <div
                                 key={index}
+                                id={`parent-soal-${index}`}
                                 className={`bg-white rounded-3xl p-5 sm:p-6 border shadow-2xs space-y-4 transition ${
-                                  isCorrect ? 'border-emerald-200' : 'border-rose-300 ring-1 ring-rose-200/50'
+                                  isCorrect ? 'border-emerald-200 hover:border-emerald-300' : 'border-rose-300 ring-1 ring-rose-200/50 hover:border-rose-400'
                                 }`}
                               >
                                 {/* Question Header */}
-                                <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
                                   <div className="flex items-center gap-2">
-                                    <span className="w-7 h-7 rounded-xl bg-slate-900 text-white font-black text-xs flex items-center justify-center">
+                                    <span className="w-7 h-7 rounded-xl bg-slate-900 text-white font-black text-xs flex items-center justify-center shadow-xs">
                                       {index + 1}
                                     </span>
                                     <span className="text-xs font-bold text-slate-500 uppercase">
@@ -1132,6 +1242,9 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                                         : question.type === 'pgk_mcma'
                                         ? 'Pilihan Ganda Kompleks (MCMA)'
                                         : 'Kategori / Benar-Salah'}
+                                    </span>
+                                    <span className="text-[11px] text-slate-400 font-medium">
+                                      Bobot: {question.bobot || 1}
                                     </span>
                                   </div>
 
@@ -1151,10 +1264,14 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                                   </div>
                                 </div>
 
-                                {/* Question Text & Images */}
+                                {/* Question Stem & Stimulus Images */}
                                 <div className="space-y-3">
-                                  <div className="text-sm font-semibold text-slate-900 leading-relaxed">
-                                    <MathRenderer content={question.soal} />
+                                  <div className="text-xs sm:text-sm font-semibold text-slate-900 leading-relaxed">
+                                    <MathRenderer
+                                      content={typeof question.soal === 'string' ? question.soal : ''}
+                                      images={questionImages}
+                                      onViewImage={onViewImage}
+                                    />
                                   </div>
 
                                   {questionImages.length > 0 && (
@@ -1163,7 +1280,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                                         <img
                                           key={iIdx}
                                           src={imgUrl}
-                                          alt={`Stimulus ${iIdx + 1}`}
+                                          alt={`Stimulus Soal No. ${index + 1}`}
                                           onClick={() => onViewImage && onViewImage(imgUrl, `Gambar Soal No. ${index + 1}`)}
                                           className="max-h-60 rounded-xl border border-slate-200 object-contain cursor-pointer hover:opacity-90 shadow-2xs"
                                         />
@@ -1172,10 +1289,90 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                                   )}
                                 </div>
 
-                                {/* Answers Comparison */}
-                                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs">
-                                  {question.type === 'pg' && (
-                                    <div className="space-y-2">
+                                {/* Answers Comparison & Options Display */}
+                                {question.type === 'pg' && (
+                                  <div className="space-y-3 pt-1">
+                                    {/* Option Choices Grid */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                      {(
+                                        ['a', 'b', 'c', 'd', ...((question as QuestionPG).e !== undefined ? ['e'] : [])] as (
+                                          | 'a'
+                                          | 'b'
+                                          | 'c'
+                                          | 'd'
+                                          | 'e'
+                                        )[]
+                                      ).map((letter) => {
+                                        const letterUpper = letter.toUpperCase();
+                                        const isCorrectKey = String((question as QuestionPG).kunci || '').toUpperCase() === letterUpper;
+                                        const isStudentChoice = String(studentAnswer || '').toUpperCase() === letterUpper;
+                                        const optText = (question as QuestionPG)[letter] || '';
+                                        const optImg = (question as any)[`${letter}_img`];
+
+                                        let cardStyle = 'bg-white border-slate-200 text-slate-800';
+                                        if (isCorrectKey) {
+                                          cardStyle = 'bg-emerald-50 border-emerald-300 ring-1 ring-emerald-400 text-emerald-950 font-semibold';
+                                        } else if (isStudentChoice && !isCorrectKey) {
+                                          cardStyle = 'bg-rose-50 border-rose-300 text-rose-950';
+                                        }
+
+                                        return (
+                                          <div
+                                            key={letter}
+                                            className={`p-3 rounded-xl border transition space-y-1.5 ${cardStyle}`}
+                                          >
+                                            <div className="flex items-center justify-between">
+                                              <span className="font-extrabold text-xs uppercase flex items-center gap-1.5">
+                                                <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[11px] font-black ${
+                                                  isCorrectKey
+                                                    ? 'bg-emerald-600 text-white'
+                                                    : isStudentChoice
+                                                    ? 'bg-rose-600 text-white'
+                                                    : 'bg-slate-200 text-slate-700'
+                                                }`}>
+                                                  {letterUpper}
+                                                </span>
+                                                <span>Pilihan {letterUpper}</span>
+                                              </span>
+
+                                              <div className="flex items-center gap-1">
+                                                {isCorrectKey && (
+                                                  <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold flex items-center gap-1">
+                                                    <CheckCircle2 className="w-3 h-3" />
+                                                    <span>Kunci Benar</span>
+                                                  </span>
+                                                )}
+                                                {isStudentChoice && (
+                                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                                    isCorrectKey
+                                                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                                      : 'bg-rose-100 text-rose-800 border border-rose-300'
+                                                  }`}>
+                                                    Dipilih Ananda
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            <div className="text-xs pt-0.5">
+                                              <MathRenderer content={optText} onViewImage={onViewImage} />
+                                            </div>
+
+                                            {optImg && (
+                                              <img
+                                                src={optImg}
+                                                alt={`Opsi ${letterUpper}`}
+                                                className="max-h-24 rounded-lg border border-slate-200 cursor-pointer object-contain mt-1"
+                                                onClick={() => onViewImage && onViewImage(optImg, `Opsi ${letterUpper}`)}
+                                              />
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+
+                                    {/* Summary Row */}
+                                    <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs flex flex-wrap items-center justify-between gap-2">
                                       <div className="flex items-center gap-2">
                                         <span className="text-slate-500 font-bold">Jawaban Ananda:</span>
                                         <span className={`px-2 py-0.5 rounded-lg font-black ${
@@ -1183,95 +1380,195 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                                             ? 'bg-emerald-100 text-emerald-800'
                                             : 'bg-rose-100 text-rose-800'
                                         }`}>
-                                          Pilihan {studentAnswer || '(Kosong)'}
+                                          Pilihan {studentAnswer ? String(studentAnswer) : '(Kosong)'}
                                         </span>
                                       </div>
-                                      {!isCorrect && (
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-slate-500 font-bold">Kunci Jawaban Benar:</span>
-                                          <span className="px-2 py-0.5 rounded-lg font-black bg-emerald-100 text-emerald-800">
-                                            Pilihan {(question as QuestionPG).kunci}
-                                          </span>
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-slate-500 font-bold">Kunci Jawaban Benar:</span>
+                                        <span className="px-2 py-0.5 rounded-lg font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                          Pilihan {(question as QuestionPG).kunci}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {question.type === 'pgk_mcma' && (
+                                  <div className="space-y-2 pt-1">
+                                    <span className="font-bold text-xs text-slate-700 block">
+                                      Pilihan Jawaban (Bisa Memilih Lebih Dari Satu):
+                                    </span>
+                                    {(((question as QuestionPGKMCMA).options || [])).map((opt, oIdx) => {
+                                      const isChosen = Boolean(
+                                        studentAnswer &&
+                                          (studentAnswer[oIdx] === true ||
+                                            (Array.isArray(studentAnswer) && (studentAnswer.includes(oIdx) || studentAnswer.includes(String(oIdx)))))
+                                      );
+                                      const isKey = Boolean(opt?.isKey);
+                                      const optText = typeof opt === 'string' ? opt : (opt?.text || '');
+                                      const optImg = (opt && typeof opt === 'object') ? (opt.img || (opt as any).gambar) : null;
+
+                                      return (
+                                        <div
+                                          key={oIdx}
+                                          className={`p-3 rounded-xl border flex items-start gap-2.5 transition text-xs ${
+                                            isKey
+                                              ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-semibold'
+                                              : isChosen && !isKey
+                                              ? 'bg-rose-50 border-rose-300 text-rose-950'
+                                              : 'bg-white border-slate-200 text-slate-800'
+                                          }`}
+                                        >
+                                          <div className="shrink-0 mt-0.5">
+                                            <span className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black ${
+                                              isKey ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
+                                            }`}>
+                                              {oIdx + 1}
+                                            </span>
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <MathRenderer content={optText} onViewImage={onViewImage} />
+                                            {optImg && (
+                                              <img
+                                                src={optImg}
+                                                alt={`Opsi ${oIdx + 1}`}
+                                                className="max-h-24 rounded-lg border border-slate-200 cursor-pointer object-contain mt-1"
+                                                onClick={() => onViewImage && onViewImage(optImg, `Opsi ${oIdx + 1}`)}
+                                              />
+                                            )}
+                                          </div>
+                                          <div className="shrink-0 flex items-center gap-1 text-[10px] font-bold">
+                                            {isKey && (
+                                              <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white">
+                                                ✓ Kunci Benar
+                                              </span>
+                                            )}
+                                            {isChosen && (
+                                              <span className={`px-2 py-0.5 rounded-full ${
+                                                isKey ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                                              }`}>
+                                                Dipilih Ananda
+                                              </span>
+                                            )}
+                                          </div>
                                         </div>
-                                      )}
-                                    </div>
-                                  )}
+                                      );
+                                    })}
+                                  </div>
+                                )}
 
-                                  {question.type === 'pgk_mcma' && (
-                                    <div className="space-y-1.5">
-                                      <span className="font-bold text-slate-700 block">Pilihan Jawaban:</span>
-                                      {(question as QuestionPGKMCMA).options.map((opt, oIdx) => {
-                                        const isChosen = Boolean(
-                                          studentAnswer &&
-                                            (studentAnswer[oIdx] === true ||
-                                              (Array.isArray(studentAnswer) && studentAnswer.includes(oIdx)))
-                                        );
-                                        const isKey = Boolean(opt.isKey);
-                                        return (
-                                          <div
-                                            key={oIdx}
-                                            className={`p-2 rounded-xl flex items-center justify-between ${
-                                              isKey
-                                                ? 'bg-emerald-100/60 text-emerald-900 font-bold'
-                                                : isChosen && !isKey
-                                                ? 'bg-rose-100/60 text-rose-900 font-bold'
-                                                : 'text-slate-600'
-                                            }`}
-                                          >
-                                            <div className="flex items-center gap-2">
-                                              <span>{isChosen ? '☑' : '☐'}</span>
-                                              <span>{opt.text}</span>
-                                            </div>
-                                            <span className="text-[10px]">
-                                              {isKey ? '✓ Kunci Benar' : isChosen ? '✗ Dipilih Ananda' : ''}
-                                            </span>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
+                                {question.type === 'pgk_kategori' && (
+                                  <div className="overflow-x-auto pt-1">
+                                    <table className="w-full text-xs text-left border-collapse border border-slate-200 rounded-xl overflow-hidden">
+                                      <thead>
+                                        <tr className="bg-slate-100 text-slate-800">
+                                          <th className="p-2.5 border border-slate-200 font-bold">Pernyataan</th>
+                                          <th className="p-2.5 border border-slate-200 text-center font-bold w-24">
+                                            {(question as QuestionPGKKategori).col1 || 'Benar'}
+                                          </th>
+                                          <th className="p-2.5 border border-slate-200 text-center font-bold w-24">
+                                            {(question as QuestionPGKKategori).col2 || 'Salah'}
+                                          </th>
+                                          <th className="p-2.5 border border-slate-200 text-center font-bold w-36">
+                                            Status Ananda
+                                          </th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {(((question as QuestionPGKKategori).rows || [])).map((row, rIdx) => {
+                                          const studentChoice = studentAnswer ? (studentAnswer[rIdx] ?? studentAnswer[String(rIdx)]) : null;
+                                          const isRowCorrect = studentChoice === row.key;
+                                          const rowImg = row.img || (row as any).gambar;
 
-                                  {question.type === 'pgk_kategori' && (
-                                    <div className="space-y-1.5">
-                                      <span className="font-bold text-slate-700 block">Baris Pernyataan:</span>
-                                      {(question as QuestionPGKKategori).rows.map((row, rIdx) => {
-                                        const studentChoice = studentAnswer ? (studentAnswer[rIdx] ?? studentAnswer[String(rIdx)]) : null;
-                                        const isRowCorrect = studentChoice === row.key;
-                                        return (
-                                          <div
-                                            key={rIdx}
-                                            className={`p-2 rounded-xl flex justify-between items-center text-xs ${
-                                              isRowCorrect ? 'bg-emerald-50 text-emerald-900' : 'bg-rose-50 text-rose-900'
-                                            }`}
-                                          >
-                                            <span>{row.text}</span>
-                                            <span className="font-black">
-                                              Kunci: {row.key === 'col1' ? (question as QuestionPGKKategori).col1 : (question as QuestionPGKKategori).col2}
-                                              {studentChoice && !isRowCorrect ? ` (Ananda: ${studentChoice === 'col1' ? (question as QuestionPGKKategori).col1 : (question as QuestionPGKKategori).col2})` : !studentChoice ? ' (Ananda: Kosong)' : ''}
-                                            </span>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
+                                          return (
+                                            <tr key={rIdx} className="hover:bg-slate-50">
+                                              <td className="p-2.5 border border-slate-200">
+                                                <MathRenderer content={row.text || ''} onViewImage={onViewImage} />
+                                                {rowImg && (
+                                                  <img
+                                                    src={rowImg}
+                                                    alt={`Pernyataan ${rIdx + 1}`}
+                                                    className="max-h-20 rounded-lg border border-slate-200 cursor-pointer object-contain mt-1"
+                                                    onClick={() => onViewImage && onViewImage(rowImg, `Pernyataan ${rIdx + 1}`)}
+                                                  />
+                                                )}
+                                              </td>
+                                              <td className={`p-2.5 border border-slate-200 text-center font-bold ${
+                                                row.key === 'col1' ? 'bg-emerald-100 text-emerald-900' : ''
+                                              }`}>
+                                                {row.key === 'col1' ? '✓ Kunci' : studentChoice === 'col1' ? 'Dipilih Ananda' : '-'}
+                                              </td>
+                                              <td className={`p-2.5 border border-slate-200 text-center font-bold ${
+                                                row.key === 'col2' ? 'bg-emerald-100 text-emerald-900' : ''
+                                              }`}>
+                                                {row.key === 'col2' ? '✓ Kunci' : studentChoice === 'col2' ? 'Dipilih Ananda' : '-'}
+                                              </td>
+                                              <td className="p-2.5 border border-slate-200 text-center">
+                                                {studentChoice ? (
+                                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                    isRowCorrect ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                                                  }`}>
+                                                    {isRowCorrect ? 'Tepat' : 'Keliru'}
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-slate-400 text-[10px]">Kosong</span>
+                                                )}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
 
                                 {/* KOTAK PEMBAHASAN SOAL KHUSUS PENDAMPINGAN ORANG TUA */}
-                                <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-2xl border border-emerald-200 space-y-2">
-                                  <div className="flex items-center gap-2 text-emerald-900">
-                                    <BookOpen className="w-4 h-4 text-emerald-700 shrink-0" />
-                                    <span className="text-xs font-black uppercase tracking-wider">
-                                      💡 Pembahasan & Panduan Materi untuk Orang Tua:
+                                <div className="p-4 bg-gradient-to-r from-emerald-50 via-teal-50/50 to-emerald-50 rounded-2xl border-2 border-emerald-300 space-y-2.5 shadow-xs">
+                                  <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-emerald-200">
+                                    <div className="flex items-center gap-2 text-emerald-950 font-black text-xs sm:text-sm">
+                                      <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                                        <BookOpen className="w-4 h-4" />
+                                      </div>
+                                      <span>Pembahasan & Panduan Materi untuk Orang Tua</span>
+                                    </div>
+                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold border ${
+                                      question.pembahasan && String(question.pembahasan).trim()
+                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                        : 'bg-amber-100 text-amber-800 border-amber-300'
+                                    }`}>
+                                      {question.pembahasan && String(question.pembahasan).trim()
+                                        ? '✓ Ada Pembahasan Lengkap'
+                                        : 'Kunci Jawaban Tersedia'}
                                     </span>
                                   </div>
 
-                                  <div className="text-xs text-slate-700 leading-relaxed pl-6 border-l-2 border-emerald-400">
-                                    {question.pembahasan && question.pembahasan.trim() ? (
-                                      <MathRenderer content={question.pembahasan} />
+                                  <div className="text-xs sm:text-sm text-slate-800 leading-relaxed pt-1">
+                                    {question.pembahasan && String(question.pembahasan).trim() ? (
+                                      <div className="p-3.5 bg-white rounded-xl border border-emerald-200 shadow-2xs">
+                                        <MathRenderer
+                                          content={String(question.pembahasan)}
+                                          onViewImage={onViewImage}
+                                          className="text-slate-900 whitespace-pre-line"
+                                        />
+                                      </div>
                                     ) : (
-                                      <span className="italic text-slate-400">
-                                        (Belum ada catatan pembahasan tertulis khusus untuk butir soal ini. Silakan diskusikan bersama ananda sesuai konsep materi pelajaran).
-                                      </span>
+                                      <div className="p-3 bg-white/80 rounded-xl border border-emerald-200/80 text-xs text-slate-700 space-y-1">
+                                        <p className="font-bold text-emerald-950">
+                                          {question.type === 'pg'
+                                            ? `Kunci Jawaban Benar: Pilihan ${(question as QuestionPG).kunci || 'A'}`
+                                            : question.type === 'pgk_mcma'
+                                            ? `Kunci Jawaban Benar: Opsi ${((question as QuestionPGKMCMA).options || [])
+                                                .map((o, optIdx) => (o.isKey ? `No. ${optIdx + 1}` : null))
+                                                .filter(Boolean)
+                                                .join(', ')}`
+                                            : `Kunci Jawaban Benar: ${((question as QuestionPGKKategori).rows || [])
+                                                .map((r, rIdx) => `Pernyataan ${rIdx + 1} = ${r.key === 'col1' ? (question as QuestionPGKKategori).col1 || 'Benar' : (question as QuestionPGKKategori).col2 || 'Salah'}`)
+                                                .join(', ')}`}
+                                        </p>
+                                        <p className="italic text-slate-500 text-[11px]">
+                                          (Guru belum menambahkan teks catatan langkah penyelesaian khusus untuk butir soal ini. Panduan kunci di atas dapat dijadikan acuan bersama ananda).
+                                        </p>
+                                      </div>
                                     )}
                                   </div>
                                 </div>
