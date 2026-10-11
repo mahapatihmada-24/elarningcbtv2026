@@ -492,7 +492,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
       Judul_Ujian: judul.trim(),
       Mapel: mapel.trim(),
       Kelas: kelas.trim(),
-      Durasi_Menit: Number(durasi),
+      Durasi_Menit: Math.max(1, Number(durasi) || 1),
       Jadwal_Mulai: jadwalMulai || undefined,
       Jadwal_Selesai: jadwalSelesai || undefined,
       Token_Ujian: tokenUjian.trim() || undefined,
@@ -535,7 +535,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
       Judul_Ujian: judul || 'Ujian Baru (Draft)',
       Mapel: mapel,
       Kelas: kelas,
-      Durasi_Menit: Number(durasi) || 60,
+      Durasi_Menit: Math.max(1, Number(durasi) || 1),
       Soal_JSON: JSON.stringify({
         config: { sesi, max_attempts: maxAttempts, acak_soal: acakSoal, acak_opsi: acakOpsi },
         questions,
@@ -700,17 +700,29 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Durasi (Menit)</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Durasi Ujian (Menit Bebas)
+              </label>
               <input
                 type="number"
-                value={durasi}
-                min={5}
-                max={240}
-                onChange={(e) => setDurasi(Number(e.target.value))}
-                placeholder="60"
+                value={durasi === 0 ? '' : durasi}
+                min={1}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '') {
+                    setDurasi(0);
+                  } else {
+                    const num = parseInt(val, 10);
+                    setDurasi(isNaN(num) ? 0 : Math.max(1, num));
+                  }
+                }}
+                placeholder="Contoh: 1, 2, 10, 60..."
                 required
                 className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 font-bold"
               />
+              <span className="text-[10px] text-slate-500 block mt-1">
+                Durasi bebas tanpa batasan minimal 5 menit (contoh: 1, 2, 15, 60 menit).
+              </span>
             </div>
           </div>
 

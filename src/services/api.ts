@@ -89,6 +89,7 @@ const STORAGE_KEY_MASTER_KELAS = 'cbt_db_master_kelas';
 const STORAGE_KEY_MASTER_MAPEL = 'cbt_db_master_mapel';
 const STORAGE_KEY_ANNOUNCEMENTS = 'cbt_db_announcements';
 const STORAGE_KEY_EXAM_RESETS = 'cbt_db_exam_resets';
+const STORAGE_KEY_PENDING_SUBMISSIONS = 'cbt_pending_submissions';
 
 // Initialize LocalStorage with seed data if empty
 function ensureLocalDbInitialized() {
@@ -318,6 +319,42 @@ function notifyExamResetsSync(detail?: any) {
 function saveLocalExamResets(resets: ExamResetPermission[]) {
   localStorage.setItem(STORAGE_KEY_EXAM_RESETS, JSON.stringify(resets));
   notifyExamResetsSync();
+}
+
+export interface PendingExamSubmission {
+  id_nilai: string;
+  id_ujian: string;
+  judul_ujian: string;
+  nama_murid: string;
+  kelas: string;
+  nilai: number;
+  pelanggaran: number;
+  jawaban_json?: string;
+  timestamp: number;
+}
+
+function getPendingSubmissions(): PendingExamSubmission[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY_PENDING_SUBMISSIONS) || '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePendingSubmission(item: Omit<PendingExamSubmission, 'timestamp'>) {
+  try {
+    const current = getPendingSubmissions().filter((p) => p.id_nilai !== item.id_nilai);
+    current.push({ ...item, timestamp: Date.now() });
+    localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(current));
+  } catch {}
+}
+
+function removePendingSubmission(idNilai: string) {
+  try {
+    const current = getPendingSubmissions().filter((p) => p.id_nilai !== idNilai);
+    localStorage.setItem(STORAGE_KEY_PENDING_SUBMISSIONS, JSON.stringify(current));
+  } catch {}
 }
 
 function getLocalSchoolProfile(): SchoolProfile {
@@ -1060,6 +1097,11 @@ export const api = {
     const soalJsonStr =
       typeof ujianData.soal === 'string' ? ujianData.soal : JSON.stringify(ujianData.soal);
 
+    const finalDurasi =
+      ujianData.Durasi_Menit !== undefined && Number(ujianData.Durasi_Menit) > 0
+        ? Number(ujianData.Durasi_Menit)
+        : 60;
+
     if (currentDataSource === 'FIREBASE') {
       try {
         if (ujianData.ID) {
@@ -1068,7 +1110,7 @@ export const api = {
             Judul_Ujian: ujianData.Judul_Ujian || 'Ujian',
             Mapel: ujianData.Mapel || 'Umum',
             Kelas: ujianData.Kelas || 'Semua',
-            Durasi_Menit: Number(ujianData.Durasi_Menit) || 60,
+            Durasi_Menit: finalDurasi,
             Token_Ujian: ujianData.Token_Ujian || '',
             Jadwal_Mulai: ujianData.Jadwal_Mulai || '',
             Jadwal_Selesai: ujianData.Jadwal_Selesai || '',
@@ -1086,7 +1128,7 @@ export const api = {
             Judul_Ujian: ujianData.Judul_Ujian || 'Ujian Baru',
             Mapel: ujianData.Mapel || 'Umum',
             Kelas: ujianData.Kelas || 'Semua',
-            Durasi_Menit: Number(ujianData.Durasi_Menit) || 60,
+            Durasi_Menit: finalDurasi,
             Token_Ujian: ujianData.Token_Ujian || '',
             Jadwal_Mulai: ujianData.Jadwal_Mulai || '',
             Jadwal_Selesai: ujianData.Jadwal_Selesai || '',
@@ -1117,7 +1159,7 @@ export const api = {
             judul_ujian: ujianData.Judul_Ujian || '',
             mapel: ujianData.Mapel || '',
             kelas: ujianData.Kelas || '',
-            durasi: ujianData.Durasi_Menit || 60,
+            durasi: finalDurasi,
             token_ujian: ujianData.Token_Ujian || '',
             jadwal_mulai: ujianData.Jadwal_Mulai || '',
             jadwal_selesai: ujianData.Jadwal_Selesai || '',
@@ -1139,7 +1181,7 @@ export const api = {
           Judul_Ujian: ujianData.Judul_Ujian || list[idx].Judul_Ujian,
           Mapel: ujianData.Mapel || list[idx].Mapel,
           Kelas: ujianData.Kelas || list[idx].Kelas,
-          Durasi_Menit: Number(ujianData.Durasi_Menit) || list[idx].Durasi_Menit,
+          Durasi_Menit: finalDurasi,
           Token_Ujian: ujianData.Token_Ujian !== undefined ? ujianData.Token_Ujian : list[idx].Token_Ujian,
           Jadwal_Mulai: ujianData.Jadwal_Mulai !== undefined ? ujianData.Jadwal_Mulai : list[idx].Jadwal_Mulai,
           Jadwal_Selesai: ujianData.Jadwal_Selesai !== undefined ? ujianData.Jadwal_Selesai : list[idx].Jadwal_Selesai,
@@ -1157,7 +1199,7 @@ export const api = {
       Judul_Ujian: ujianData.Judul_Ujian || 'Ujian Baru',
       Mapel: ujianData.Mapel || 'Matematika',
       Kelas: ujianData.Kelas || '6A',
-      Durasi_Menit: Number(ujianData.Durasi_Menit) || 60,
+      Durasi_Menit: finalDurasi,
       Token_Ujian: ujianData.Token_Ujian || '',
       Jadwal_Mulai: ujianData.Jadwal_Mulai || '',
       Jadwal_Selesai: ujianData.Jadwal_Selesai || '',
@@ -1295,6 +1337,7 @@ export const api = {
   },
 
   async submitHasilUjian(payload: {
+    id_nilai?: string;
     id_ujian: string;
     judul_ujian: string;
     nama_murid: string;
@@ -1309,8 +1352,11 @@ export const api = {
       now.getHours()
     )}:${pad(now.getMinutes())}`;
 
+    const assignedId = payload.id_nilai || ('NILAI-' + Date.now());
+    const payloadWithId = { ...payload, id_nilai: assignedId };
+
     const newNilai: Nilai = {
-      ID: 'NILAI-' + Date.now(),
+      ID: assignedId,
       ID_Ujian: payload.id_ujian,
       Judul_Ujian: payload.judul_ujian,
       Nama_Murid: payload.nama_murid,
@@ -1325,7 +1371,7 @@ export const api = {
     const list = getLocalNilai();
     const existingIdx = list.findIndex(
       (n) =>
-        n.ID_Ujian === payload.id_ujian &&
+        (n.ID === assignedId || n.ID_Ujian === payload.id_ujian) &&
         n.Nama_Murid.trim().toLowerCase() === payload.nama_murid.trim().toLowerCase()
     );
     if (existingIdx >= 0) {
@@ -1335,30 +1381,63 @@ export const api = {
     }
     saveLocalNilai(list);
 
+    // Simpan ke antrean cadangan lokal untuk proteksi perangkat seluler
+    savePendingSubmission(payloadWithId);
+
     // Konsumsi/hapus status izin ujian ulang setelah siswa berhasil mengirimkan ujian baru
     try {
       this.consumeExamReset(payload.id_ujian, payload.nama_murid);
     } catch {}
 
+    // 2. Simpan ke database online (Firebase / GAS) dengan propagasi error untuk penanganan retry mobile
     if (currentDataSource === 'FIREBASE') {
       try {
-        const res = await firebaseService.submitHasilUjian(payload);
+        const res = await firebaseService.submitHasilUjian(payloadWithId);
+        removePendingSubmission(assignedId);
         return res;
       } catch (err) {
         console.warn('Firebase submitHasilUjian error:', err);
+        throw err;
       }
     }
 
     if (currentDataSource === 'GAS') {
       try {
-        const res = await callGasServer<ApiResponse>('submitHasilUjian', [payload]);
-        if (res && res.success) return res;
+        const res = await callGasServer<ApiResponse>('submitHasilUjian', [payloadWithId]);
+        if (res && res.success) {
+          removePendingSubmission(assignedId);
+          return res;
+        }
       } catch (err) {
         console.warn('GAS submitHasilUjian error:', err);
+        throw err;
       }
     }
 
+    removePendingSubmission(assignedId);
     return { success: true, message: 'Hasil ujian berhasil disimpan ke sistem!' };
+  },
+
+  async syncPendingSubmissions(): Promise<number> {
+    const queue = getPendingSubmissions();
+    if (queue.length === 0) return 0;
+    let synced = 0;
+    for (const item of queue) {
+      try {
+        if (currentDataSource === 'FIREBASE') {
+          await firebaseService.submitHasilUjian(item);
+          removePendingSubmission(item.id_nilai);
+          synced++;
+        } else if (currentDataSource === 'GAS') {
+          await callGasServer<ApiResponse>('submitHasilUjian', [item]);
+          removePendingSubmission(item.id_nilai);
+          synced++;
+        }
+      } catch (e) {
+        console.warn('Pending submission sync failed for item:', item.id_nilai, e);
+      }
+    }
+    return synced;
   },
 
   async getExamResets(namaMurid?: string): Promise<ExamResetPermission[]> {

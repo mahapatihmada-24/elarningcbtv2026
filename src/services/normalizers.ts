@@ -44,7 +44,7 @@ export function normalizeUjian(u: any): Ujian {
     Judul_Ujian: String(u.Judul_Ujian || u.judul_ujian || u.judul || ''),
     Mapel: String(u.Mapel || u.mapel || ''),
     Kelas: String(u.Kelas || u.kelas || 'Semua'),
-    Durasi_Menit: Number(u.Durasi_Menit ?? u.durasi_menit ?? u.durasi ?? 60),
+    Durasi_Menit: Math.max(1, Number(u.Durasi_Menit ?? u.durasi_menit ?? u.durasi) || 60),
     Token_Ujian: u.Token_Ujian || u.token_ujian || u.token || '',
     Jadwal_Mulai: u.Jadwal_Mulai || u.jadwal_mulai || '',
     Jadwal_Selesai: u.Jadwal_Selesai || u.jadwal_selesai || '',

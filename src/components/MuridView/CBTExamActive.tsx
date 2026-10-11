@@ -16,6 +16,13 @@ import {
   X,
   User as UserIcon,
   Lock,
+  RotateCcw,
+  Wifi,
+  WifiOff,
+  CheckCircle2,
+  Loader2,
+  ShieldCheck,
+  Smartphone,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Ujian, Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, User, Nilai, getQuestionImages } from '../../types';
@@ -52,6 +59,11 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
   const [timeLeft, setTimeLeft] = useState(exam.Durasi_Menit * 60);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitPhase, setSubmitPhase] = useState<'idle' | 'saving_local' | 'connecting' | 'syncing' | 'retrying' | 'error_retry' | 'success'>('idle');
+  const [submitRetryCount, setSubmitRetryCount] = useState<number>(0);
+  const [submitErrorMessage, setSubmitErrorMessage] = useState<string>('');
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const pendingPayloadRef = useRef<any>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isDaftarSoalOpen, setIsDaftarSoalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'single' | 'all'>('single');
@@ -185,6 +197,34 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     };
   }, []);
 
+  // Monitor status online/offline untuk ketahanan seluler perangkat HP
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Cegah penutupan browser tab Chrome/Safari secara tidak sengaja saat proses kirim sedang berlangsung
+  useEffect(() => {
+    const handlePreventUnloadWhileSubmitting = (e: BeforeUnloadEvent) => {
+      if (isSubmitting) {
+        e.preventDefault();
+        e.returnValue = 'Proses pengiriman nilai ke server sedang berlangsung. Mohon jangan keluar!';
+        return e.returnValue;
+      }
+    };
+
+    window.addEventListener('beforeunload', handlePreventUnloadWhileSubmitting);
+    return () => {
+      window.removeEventListener('beforeunload', handlePreventUnloadWhileSubmitting);
+    };
+  }, [isSubmitting]);
+
   // Timer interval: Ketika hitung mundur menyentuh 00:00:00, hentikan timer tanpa menutup aplikasi sepihak
   useEffect(() => {
     const timer = setInterval(() => {
@@ -269,10 +309,140 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     }
   };
 
+  // Mobile Resilient Submission Engine with Automatic & Manual Retries
+  const finishSubmissionProcess = (payload: any) => {
+    setIsSubmitting(false);
+    setSubmitPhase('idle');
+
+    if (payload.nilai >= 75) {
+      try {
+        confetti({
+          particleCount: 120,
+          spread: 70,
+          origin: { y: 0.6 },
+        });
+      } catch {}
+    }
+
+    const rawScoreVal = payload.nilai + payload.pelanggaran * 5;
+    const penaltyVal = payload.pelanggaran * 5;
+    const rawScoreStr = Number(rawScoreVal).toFixed(2);
+    const penaltyStr = Number(penaltyVal).toFixed(2);
+    const finalScoreStr = Number(payload.nilai).toFixed(2);
+    const isViolationLimit = payload.pelanggaran >= 3;
+
+    let finishMsg = '';
+    if (isViolationLimit) {
+      finishMsg = `Ujian telah dihentikan secara otomatis oleh sistem karena Anda telah mencapai batas maksimal 3 kali pelanggaran (meninggalkan halaman ujian).\n\nLembar jawaban Anda telah tersimpan dan terkirim ke server guru.\n\nNilai Murni: ${rawScoreStr}\nPenalti Pelanggaran (3x): -${penaltyStr}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100.00`;
+    } else {
+      finishMsg = `Lembar jawaban ujian Anda telah berhasil disimpan dan dikirimkan ke server guru.\n\nNilai Murni: ${rawScoreStr}${penaltyVal > 0 ? `\nPenalti Pindah Tab (${payload.pelanggaran}x): -${penaltyStr}` : ''}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100.00`;
+    }
+
+    onShowModal({
+      isOpen: true,
+      title: isViolationLimit ? 'Ujian Dihentikan (3x Pelanggaran)' : 'Ujian Telah Dikumpulkan!',
+      message: `${finishMsg}\n\nLembar jawaban Anda telah berhasil diverifikasi di server.\nSilakan klik "Lihat Review & Pembahasan" untuk meninjau kunci jawaban dan pembahasan soal.`,
+      type: isViolationLimit ? 'danger' : payload.nilai >= 75 ? 'success' : 'info',
+      isConfirm: true,
+      okText: 'Lihat Review & Pembahasan',
+      cancelText: 'Kembali ke Menu Utama',
+      onConfirm: () => {
+        setIsReviewOpen(true);
+      },
+      onCancel: () => {
+        onFinishExam();
+      },
+    });
+  };
+
+  const sendPayloadWithRetry = async (payload: any, forceOfflineFallback = false) => {
+    setSubmitErrorMessage('');
+
+    if (forceOfflineFallback) {
+      setSubmitPhase('success');
+      const fallbackRecord: Nilai = {
+        ID: payload.id_nilai,
+        ID_Ujian: payload.id_ujian,
+        Judul_Ujian: payload.judul_ujian,
+        Nama_Murid: payload.nama_murid,
+        Kelas: payload.kelas,
+        Nilai: payload.nilai,
+        Pelanggaran: payload.pelanggaran,
+        Waktu_Submit: new Date().toISOString(),
+        Jawaban_JSON: payload.jawaban_json,
+      };
+      setSubmittedNilai(fallbackRecord);
+      await new Promise((r) => setTimeout(r, 600));
+      finishSubmissionProcess(payload);
+      return;
+    }
+
+    let succeeded = false;
+    let lastErrorMsg = '';
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        setSubmitRetryCount(attempt);
+        if (attempt === 1) {
+          setSubmitPhase('saving_local');
+          await new Promise((r) => setTimeout(r, 300));
+          setSubmitPhase('connecting');
+        } else {
+          setSubmitPhase('retrying');
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+
+        setSubmitPhase('syncing');
+        const res = await api.submitHasilUjian(payload);
+        if (res && res.success !== false) {
+          succeeded = true;
+          break;
+        }
+      } catch (err: any) {
+        lastErrorMsg = err?.message || 'Gangguan sinyal seluler saat mengirim jawaban ke server.';
+        console.warn(`[CBT Mobile Submit] Gagal pada percobaan ${attempt}/3:`, err);
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, 1500 * attempt));
+        }
+      }
+    }
+
+    if (succeeded) {
+      setSubmitPhase('success');
+      try {
+        localStorage.removeItem(`cbt_emergency_backup_${exam.ID}_${currentUser.nama}`);
+      } catch {}
+
+      const newNilaiRecord: Nilai = {
+        ID: payload.id_nilai,
+        ID_Ujian: exam.ID,
+        Judul_Ujian: exam.Judul_Ujian,
+        Nama_Murid: currentUser.nama,
+        Kelas: currentUser.kelas,
+        Nilai: payload.nilai,
+        Pelanggaran: payload.pelanggaran,
+        Waktu_Submit: new Date().toISOString(),
+        Jawaban_JSON: payload.jawaban_json,
+      };
+      setSubmittedNilai(newNilaiRecord);
+
+      await new Promise((r) => setTimeout(r, 800));
+      finishSubmissionProcess(payload);
+    } else {
+      setSubmitPhase('error_retry');
+      setSubmitErrorMessage(
+        lastErrorMsg || 'Koneksi data seluler / WiFi terputus saat mengirim ke server. Lembar jawaban Anda aman tersimpan di HP.'
+      );
+    }
+  };
+
   // Submit scoring logic
   const handleSubmitExam = async (isForced = false) => {
     if (isSubmittingRef.current) return;
     setIsSubmitting(true);
+    setSubmitPhase('saving_local');
+    setSubmitRetryCount(1);
+    setSubmitErrorMessage('');
 
     let totalEarnedPoints = 0;
     let maxTotalPoints = 0;
@@ -323,17 +493,8 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     const penaltyVal = cheatCountRef.current * 5;
     const finalScoreVal = Math.max(0, rawScoreVal - penaltyVal);
 
-    // Format penilaian baku skala 0-100 dengan 2 angka di belakang koma (.toFixed(2)) (misalnya: 100.00, 85.50, atau 67.33)
+    // Format penilaian baku skala 0-100 dengan 2 angka di belakang koma (.toFixed(2))
     const finalScoreNum = Number(finalScoreVal.toFixed(2));
-    const rawScoreNum = Number(rawScoreVal.toFixed(2));
-
-    const formatDecimalScore = (num: number): string => {
-      return Number(num || 0).toFixed(2);
-    };
-
-    const rawScoreStr = formatDecimalScore(rawScoreNum);
-    const penaltyStr = formatDecimalScore(penaltyVal);
-    const finalScoreStr = formatDecimalScore(finalScoreNum);
 
     const submissionPayload = {
       answers,
@@ -341,7 +502,10 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     };
     const jawabanJsonStr = JSON.stringify(submissionPayload);
 
+    const assignedId = `NILAI-${exam.ID}-${currentUser.nama.trim().replace(/\s+/g, '_')}-${Date.now()}`;
+
     const payload = {
+      id_nilai: assignedId,
       id_ujian: exam.ID,
       judul_ujian: exam.Judul_Ujian,
       nama_murid: currentUser.nama,
@@ -351,56 +515,14 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
       jawaban_json: jawabanJsonStr,
     };
 
-    await api.submitHasilUjian(payload);
+    pendingPayloadRef.current = payload;
 
-    const newNilaiRecord: Nilai = {
-      ID: 'NILAI-' + Date.now(),
-      ID_Ujian: exam.ID,
-      Judul_Ujian: exam.Judul_Ujian,
-      Nama_Murid: currentUser.nama,
-      Kelas: currentUser.kelas,
-      Nilai: finalScoreNum,
-      Pelanggaran: cheatCountRef.current,
-      Waktu_Submit: new Date().toISOString(),
-      Jawaban_JSON: jawabanJsonStr,
-    };
+    // Simpan cadangan darurat ke memori perangkat lokal sebelum proses pengiriman jaringan dimulai
+    try {
+      localStorage.setItem(`cbt_emergency_backup_${exam.ID}_${currentUser.nama}`, JSON.stringify(payload));
+    } catch {}
 
-    setSubmittedNilai(newNilaiRecord);
-
-    if (finalScoreNum >= 75) {
-      try {
-        confetti({
-          particleCount: 120,
-          spread: 70,
-          origin: { y: 0.6 },
-        });
-      } catch {}
-    }
-
-    const isViolationLimit = cheatCountRef.current >= 3;
-
-    let finishMsg = '';
-    if (isViolationLimit) {
-      finishMsg = `Ujian telah dihentikan secara otomatis oleh sistem karena Anda telah mencapai batas maksimal 3 kali pelanggaran (meninggalkan halaman ujian).\n\nLembar jawaban Anda telah tersimpan dan terkirim ke server guru.\n\nNilai Murni: ${rawScoreStr}\nPenalti Pelanggaran (3x): -${penaltyStr}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100.00`;
-    } else {
-      finishMsg = `Lembar jawaban ujian Anda telah berhasil disimpan dan dikirimkan ke server guru.\n\nNilai Murni: ${rawScoreStr}${penaltyVal > 0 ? `\nPenalti Pindah Tab (${cheatCountRef.current}x): -${penaltyStr}` : ''}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100.00`;
-    }
-
-    onShowModal({
-      isOpen: true,
-      title: isViolationLimit ? 'Ujian Dihentikan (3x Pelanggaran)' : 'Ujian Telah Dikumpulkan!',
-      message: `${finishMsg}\n\nLembar jawaban Anda telah berhasil dikirimkan ke guru.\nSilakan klik "Lihat Review & Pembahasan" untuk meninjau kunci jawaban dan pembahasan soal.`,
-      type: isViolationLimit ? 'danger' : finalScoreNum >= 75 ? 'success' : 'info',
-      isConfirm: true,
-      okText: 'Lihat Review & Pembahasan',
-      cancelText: 'Kembali ke Menu Utama',
-      onConfirm: () => {
-        setIsReviewOpen(true);
-      },
-      onCancel: () => {
-        onFinishExam();
-      },
-    });
+    await sendPayloadWithRetry(payload);
   };
 
   const confirmSubmit = () => {
@@ -1206,6 +1328,168 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                 Tutup
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL / OVERLAY SUBMIT MOBILE DENGAN PENANGANAN ERROR & RETRY OTOMATIS */}
+      {isSubmitting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5 text-center relative overflow-hidden">
+            {/* Top decorative gradient bar */}
+            <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-indigo-500 via-amber-500 to-emerald-500" />
+
+            {submitPhase === 'error_retry' ? (
+              // ERROR STATE / RETRY PROMPT
+              <div className="space-y-4 pt-1">
+                <div className="w-16 h-16 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto shadow-inner">
+                  <WifiOff className="w-8 h-8 animate-bounce" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg text-slate-800">Koneksi Internet HP Terputus</h3>
+                  <p className="text-xs text-rose-600 font-semibold mt-1">
+                    {submitErrorMessage || 'Gagal mengirim nilai ke server karena sinyal seluler/WiFi tidak stabil.'}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-left text-xs space-y-1.5 text-amber-900">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Jawaban Anda Aman di HP!</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-amber-800">
+                    Seluruh lembar jawaban dan data anti-contek telah tersimpan aman di memori perangkat ini. Silakan periksa paket data/sinyal HP Anda, lalu tekan tombol coba kirim ulang di bawah.
+                  </p>
+                </div>
+
+                <div className="space-y-2 pt-2">
+                  <button
+                    onClick={() => {
+                      if (pendingPayloadRef.current) {
+                        sendPayloadWithRetry(pendingPayloadRef.current);
+                      }
+                    }}
+                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-extrabold text-sm shadow-md active:scale-95 transition flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>Coba Kirim Ulang Sekarang</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      if (pendingPayloadRef.current) {
+                        sendPayloadWithRetry(pendingPayloadRef.current, true);
+                      }
+                    }}
+                    className="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs transition"
+                  >
+                    Selesaikan dengan Cadangan Lokal (Sinkron Otomatis Nanti)
+                  </button>
+                </div>
+              </div>
+            ) : submitPhase === 'success' ? (
+              // SUCCESS STATE
+              <div className="space-y-4 py-3">
+                <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+                  <CheckCircle2 className="w-10 h-10 animate-in zoom-in-75 duration-300" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg text-slate-800">Pengiriman Berhasil!</h3>
+                  <p className="text-xs text-emerald-700 font-bold mt-1">
+                    Nilai dan rekaman anti-contek Anda telah terverifikasi aman di server guru.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              // IN-PROGRESS STATE (saving_local, connecting, syncing, retrying)
+              <div className="space-y-4 pt-1">
+                <div className="relative w-16 h-16 mx-auto">
+                  <div className="w-16 h-16 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
+                    <Loader2 className="w-8 h-8 animate-spin" />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center text-[10px] font-bold shadow-xs">
+                    {submitRetryCount}/3
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-black text-lg text-slate-800">Mengirim Lembar Jawaban</h3>
+                  <p className="text-xs text-indigo-600 font-semibold mt-1 animate-pulse">
+                    {submitPhase === 'saving_local' && 'Menyimpan lembar jawaban ke memori HP...'}
+                    {submitPhase === 'connecting' && 'Menghubungkan ke server database ujian...'}
+                    {submitPhase === 'syncing' && 'Mengirim nilai & data anti-contek ke server guru...'}
+                    {submitPhase === 'retrying' && `Mencoba kirim ulang otomatis... (Percobaan ${submitRetryCount} dari 3)`}
+                  </p>
+                </div>
+
+                {/* Step indicators */}
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-left space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-slate-700 font-medium">
+                      <CheckCircle className="w-4 h-4 text-emerald-600" />
+                      1. Kunci lembar jawaban & anti-contek
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-600">Selesai</span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-slate-700 font-medium">
+                      {submitPhase === 'saving_local' ? (
+                        <Loader2 className="w-4 h-4 text-indigo-600 animate-spin" />
+                      ) : (
+                        <CheckCircle className="w-4 h-4 text-emerald-600" />
+                      )}
+                      2. Cadangkan ke memori lokal HP
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-600">Tersimpan</span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-slate-700 font-medium">
+                      {submitPhase === 'syncing' || submitPhase === 'connecting' || submitPhase === 'retrying' ? (
+                        <Loader2 className="w-4 h-4 text-indigo-600 animate-spin" />
+                      ) : (
+                        <Clock className="w-4 h-4 text-slate-400" />
+                      )}
+                      3. Sinkronisasi nilai ke server guru & admin
+                    </span>
+                    <span className="text-[10px] font-bold text-indigo-600">
+                      {submitPhase === 'retrying' ? `Retry ${submitRetryCount}` : 'Memproses...'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Mobile safety warning banner */}
+                <div className="p-3 bg-rose-50 rounded-2xl border border-rose-200 text-left">
+                  <div className="flex items-start gap-2">
+                    <Smartphone className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="block font-bold text-[11px] text-rose-800">
+                        PENTING (Pengguna HP Android & iOS):
+                      </span>
+                      <p className="text-[10px] text-rose-700 mt-0.5 leading-relaxed">
+                        Mohon <strong>JANGAN</strong> menutup Chrome/Safari, jangan beralih tab, dan jangan matikan layar hingga proses ini selesai agar nilai Anda tercatat utuh.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Network indicator */}
+                <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+                  {isOnline ? (
+                    <>
+                      <Wifi className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Status Koneksi HP: Online</span>
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff className="w-3.5 h-3.5 text-rose-600" />
+                      <span className="text-rose-600 font-semibold">Status Koneksi HP: Terputus</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

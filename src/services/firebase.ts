@@ -472,6 +472,7 @@ export const firebaseService = {
 
   async submitHasilUjian(payload: {
     id_ujian: string;
+    id_nilai?: string;
     judul_ujian: string;
     nama_murid: string;
     kelas: string;
@@ -485,7 +486,7 @@ export const firebaseService = {
       now.getHours()
     )}:${pad(now.getMinutes())}`;
 
-    const newId = 'NILAI-' + Date.now();
+    const newId = payload.id_nilai || ('NILAI-' + Date.now());
     const newNilai: Nilai = {
       ID: newId,
       ID_Ujian: payload.id_ujian,
@@ -498,8 +499,21 @@ export const firebaseService = {
       Jawaban_JSON: payload.jawaban_json,
     };
 
-    await withTimeout(setDoc(doc(db, COLLECTIONS.NILAI, newId), newNilai), 5000);
-    return { success: true, message: 'Hasil ujian berhasil disimpan ke database Firebase!' };
+    let lastErr: unknown = null;
+    // Retry up to 3 times with exponential backoff for mobile cellular resilience
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await withTimeout(setDoc(doc(db, COLLECTIONS.NILAI, newId), newNilai), 12000);
+        return { success: true, message: 'Hasil ujian berhasil disimpan ke database Firebase!', data: newNilai };
+      } catch (err) {
+        lastErr = err;
+        console.warn(`[Firebase] Gagal mengirim hasil ujian (Percobaan ${attempt}/3):`, err);
+        if (attempt < 3) {
+          await new Promise((r) => setTimeout(r, 1200 * attempt));
+        }
+      }
+    }
+    throw lastErr || new Error('Gagal menyimpan hasil ujian ke database Firebase.');
   },
 
   async resetNilaiMurid(
