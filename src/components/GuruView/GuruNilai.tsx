@@ -197,13 +197,28 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
       onShowModal({
         isOpen: true,
         title: 'Data Kosong',
-        message: 'Tidak ada data nilai yang sesuai dengan filter untuk diekspor.',
+        message: 'Tidak ada data nilai yang sesuai dengan filter untuk diekspor ke Excel.',
         type: 'warning',
       });
       return;
     }
-    const filterTitle = filterBankSoal !== 'ALL' ? filterBankSoal : 'Semua_Ujian';
-    exportNilaiToExcel(filterTitle, filteredNilai, schoolProfile || undefined);
+    try {
+      const filterTitle = filterBankSoal !== 'ALL' ? filterBankSoal : 'Semua_Ujian';
+      exportNilaiToExcel(filterTitle, filteredNilai, schoolProfile || undefined);
+      onShowModal({
+        isOpen: true,
+        title: 'Ekspor Excel Berhasil',
+        message: `Berhasil mengekspor rekap hasil ${filteredNilai.length} siswa untuk "${filterTitle}" ke file Excel (.xlsx).`,
+        type: 'success',
+      });
+    } catch (err: any) {
+      onShowModal({
+        isOpen: true,
+        title: 'Gagal Ekspor Excel',
+        message: err?.message || 'Terjadi kesalahan saat mengunduh file Excel.',
+        type: 'danger',
+      });
+    }
   };
 
   // Print PDF Laporan Rekap Nilai & Anti-Contek

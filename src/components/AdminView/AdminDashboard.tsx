@@ -275,7 +275,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Bank Soal */}
         <div
-          onClick={() => onNavigateTab('guru-cbt')}
+          onClick={() => onNavigateTab('guru_cbt')}
           className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-2">
@@ -292,7 +292,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Materi */}
         <div
-          onClick={() => onNavigateTab('guru-materi')}
+          onClick={() => onNavigateTab('guru_materi')}
           className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-2">
@@ -307,7 +307,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Hasil Ujian */}
         <div
-          onClick={() => onNavigateTab('guru-nilai')}
+          onClick={() => onNavigateTab('guru_nilai')}
           className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-2">
@@ -322,7 +322,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
         {/* Nilai Rata-rata */}
         <div
-          onClick={() => onNavigateTab('guru-nilai')}
+          onClick={() => onNavigateTab('guru_nilai')}
           className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm hover:border-indigo-300 hover:shadow-md transition cursor-pointer group"
         >
           <div className="flex items-center justify-between mb-2">

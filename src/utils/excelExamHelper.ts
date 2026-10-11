@@ -1,5 +1,43 @@
 import * as XLSX from 'xlsx';
-import { Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, McmaOption, Nilai, SchoolProfile } from '../types';
+import { Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, McmaOption, Nilai, SchoolProfile, Ujian } from '../types';
+
+/**
+ * Robust cross-browser Excel workbook downloader.
+ * Supports standard browsers, iframes, mobile Chrome/Safari, and fallbacks.
+ */
+export function saveWorkbookFile(wb: XLSX.WorkBook, filename: string): void {
+  try {
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8',
+    });
+
+    if (typeof (navigator as any)?.msSaveBlob === 'function') {
+      (navigator as any).msSaveBlob(blob, filename);
+      return;
+    }
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, 1000);
+  } catch (err) {
+    console.warn('Direct Blob download error, trying XLSX.writeFile fallback:', err);
+    try {
+      XLSX.writeFile(wb, filename);
+    } catch (e) {
+      console.error('All excel download methods failed:', e);
+      throw e;
+    }
+  }
+}
 
 /**
  * Downloads official Question Bank Excel (.xlsx) template for teachers.
@@ -160,22 +198,7 @@ export function downloadExamExcelTemplate(): void {
   XLSX.utils.book_append_sheet(wb, wsPetunjuk, 'PETUNJUK');
 
   const filename = 'Template_Bank_Soal_CBT.xlsx';
-  try {
-    XLSX.writeFile(wb, filename);
-  } catch {
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([wbout], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
+  saveWorkbookFile(wb, filename);
 }
 
 /**
@@ -307,23 +330,7 @@ export function exportQuestionsToExcel(judulUjian: string, questions: Question[]
 
   const safeTitle = (judulUjian || 'Soal_CBT').replace(/[^a-zA-Z0-9_-]/g, '_');
   const filename = `Soal_${safeTitle}_${Date.now()}.xlsx`;
-
-  try {
-    XLSX.writeFile(wb, filename);
-  } catch {
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([wbout], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
+  saveWorkbookFile(wb, filename);
 }
 
 /**
@@ -843,21 +850,98 @@ export function exportNilaiToExcel(
 
   const safeTitle = (judulUjian || 'Rekap_Nilai').replace(/[^a-zA-Z0-9_-]/g, '_');
   const filename = `Rekap_Nilai_${safeTitle}_${Date.now()}.xlsx`;
-
-  try {
-    XLSX.writeFile(wb, filename);
-  } catch {
-    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([wbout], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
+  saveWorkbookFile(wb, filename);
 }
+
+/**
+ * Exports all CBT exams summary catalog to an Excel file (.xlsx).
+ */
+export function exportAllExamsSummaryToExcel(
+  ujianList: Ujian[],
+  school?: Partial<SchoolProfile>
+): void {
+  const wb = XLSX.utils.book_new();
+
+  const schoolName = school?.namaSekolah || 'SD NEGERI HARJOSARI KIDUL 01';
+
+  const topRows = [
+    [schoolName.toUpperCase()],
+    ['DAFTAR & KATALOG PAKET UJIAN BERBASIS KOMPUTER (CBT)'],
+    [`Tanggal Unduh: ${new Date().toLocaleDateString('id-ID')} | Total Paket: ${ujianList.length}`],
+    [],
+  ];
+
+  const headers = [
+    'No',
+    'Kode Ujian',
+    'Judul Ujian',
+    'Mata Pelajaran',
+    'Rombel / Kelas',
+    'Durasi (Menit)',
+    'Jumlah Butir Soal',
+    'Token Ujian',
+    'Status Ujian',
+    'Sesi Ujian',
+    'Maks Percobaan',
+    'Jadwal Mulai',
+    'Jadwal Selesai',
+  ];
+
+  const dataRows = ujianList.map((u, idx) => {
+    let questionCount = 0;
+    let sesi = 'Semua';
+    let maxAttempts = '1';
+    try {
+      const raw = JSON.parse(u.Soal_JSON || '{}');
+      if (raw.questions && Array.isArray(raw.questions)) {
+        questionCount = raw.questions.length;
+      } else if (Array.isArray(raw)) {
+        questionCount = raw.length;
+      }
+      if (raw.config) {
+        sesi = raw.config.sesi || 'Semua';
+        maxAttempts = String(raw.config.max_attempts ?? 1);
+      }
+    } catch {}
+
+    return [
+      idx + 1,
+      u.ID || '-',
+      u.Judul_Ujian || '-',
+      u.Mapel || '-',
+      u.Kelas || '-',
+      u.Durasi_Menit || 60,
+      questionCount,
+      u.Token_Ujian || '-',
+      u.Status || 'Aktif',
+      sesi,
+      maxAttempts,
+      u.Jadwal_Mulai || '-',
+      u.Jadwal_Selesai || '-',
+    ];
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet([...topRows, headers, ...dataRows]);
+
+  ws['!cols'] = [
+    { wch: 6 },  // No
+    { wch: 15 }, // Kode
+    { wch: 35 }, // Judul
+    { wch: 20 }, // Mapel
+    { wch: 14 }, // Kelas
+    { wch: 15 }, // Durasi
+    { wch: 18 }, // Jumlah Soal
+    { wch: 14 }, // Token
+    { wch: 14 }, // Status
+    { wch: 14 }, // Sesi
+    { wch: 16 }, // Maks Percobaan
+    { wch: 20 }, // Jadwal Mulai
+    { wch: 20 }, // Jadwal Selesai
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'KATALOG_UJIAN_CBT');
+
+  const filename = `Katalog_Ujian_CBT_${Date.now()}.xlsx`;
+  saveWorkbookFile(wb, filename);
+}
+
