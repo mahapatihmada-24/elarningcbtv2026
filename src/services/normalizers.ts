@@ -11,6 +11,7 @@ export function normalizeUser(u: any): User {
     role: validRole,
     kelas: String(u.kelas || u.Kelas || '-'),
     parentPin: u.parentPin || u.ParentPin || u.pin_ortu || u.pinOrtu ? String(u.parentPin || u.ParentPin || u.pin_ortu || u.pinOrtu) : undefined,
+    nip: u.nip || u.NIP || u.Nip ? String(u.nip || u.NIP || u.Nip).trim() : undefined,
   };
 }
 

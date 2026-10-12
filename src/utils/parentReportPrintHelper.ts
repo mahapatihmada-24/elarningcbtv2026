@@ -10,6 +10,7 @@ export interface ParentReportPrintParams {
   nilaiList: Nilai[];
   schoolProfile?: SchoolProfile | null;
   kkm?: number;
+  guruKelas?: User | { nama: string; nip?: string } | null;
 }
 
 export function generateParentReportHtml({
@@ -17,14 +18,45 @@ export function generateParentReportHtml({
   nilaiList,
   schoolProfile,
   kkm = 75,
+  guruKelas,
 }: ParentReportPrintParams): string {
   const schoolName = schoolProfile?.namaSekolah || DEFAULT_SCHOOL_NAME;
   const schoolSubtitle = DEFAULT_SCHOOL_SUBTITLE;
   const schoolAddress = schoolProfile?.alamat || DEFAULT_SCHOOL_ADDRESS;
   const thnAjar = schoolProfile?.tahunAjaran || '2025/2026';
   const semester = schoolProfile?.semester || 'Genap';
-  const kepsek = schoolProfile?.kepalaSekolah || 'Hj. Siti Rokhmah, S.Pd.SD';
-  const nipKepsek = schoolProfile?.nipKepalaSekolah || '196805121992032008';
+
+  // Resolusi data Guru Kelas yang bersangkutan untuk penandatangan
+  let resolvedGuru = guruKelas;
+  if (!resolvedGuru) {
+    try {
+      const rawUsers = JSON.parse(localStorage.getItem('cbt_db_users') || '[]');
+      if (Array.isArray(rawUsers)) {
+        const studentClass = (student.kelas || '').trim().toLowerCase();
+        const teachers = rawUsers.filter(
+          (u: any) => String(u.role || '').toLowerCase() === 'guru'
+        );
+        resolvedGuru =
+          teachers.find((t: any) => {
+            const tClass = String(t.kelas || '').trim().toLowerCase();
+            return (
+              tClass &&
+              tClass !== '-' &&
+              (tClass === studentClass || tClass.includes(studentClass))
+            );
+          }) ||
+          teachers.find((t: any) => {
+            const tClass = String(t.kelas || '').trim().toLowerCase();
+            return tClass === 'semua' || tClass === '-';
+          }) ||
+          teachers[0] ||
+          null;
+      }
+    } catch {}
+  }
+
+  const namaGuruKelas = resolvedGuru?.nama ? resolvedGuru.nama.trim() : 'Guru Kelas';
+  const nipGuruKelas = resolvedGuru?.nip ? String(resolvedGuru.nip).trim() : '';
 
   const dateStr = new Date().toLocaleDateString('id-ID', {
     day: 'numeric',
@@ -408,10 +440,10 @@ export function generateParentReportHtml({
       </td>
       <td>
         <div>Adiwerna, ${dateStr}</div>
-        <div style="font-weight: bold;">Guru Kelas / Wali Kelas,</div>
+        <div style="font-weight: bold;">Guru Kelas,</div>
         <div class="sig-space"></div>
-        <div style="font-weight: bold; text-decoration: underline;">${schoolProfile?.kepalaSekolah || 'Guru Kelas'}</div>
-        <div style="font-size: 8.5pt; color: #475569;">NIP. ${nipKepsek}</div>
+        <div style="font-weight: bold; text-decoration: underline;">${namaGuruKelas}</div>
+        ${nipGuruKelas ? `<div style="font-size: 8.5pt; color: #475569;">NIP. ${nipGuruKelas}</div>` : ''}
       </td>
     </tr>
   </table>

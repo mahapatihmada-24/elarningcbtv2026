@@ -7,6 +7,7 @@ export interface User {
   role: Role;
   kelas: string;
   parentPin?: string;
+  nip?: string;
 }
 
 export interface Materi {

@@ -202,6 +202,23 @@ function ensureLocalDbInitialized() {
 
   if (!localStorage.getItem(STORAGE_KEY_USERS)) {
     safeSetItem(STORAGE_KEY_USERS, JSON.stringify(INITIAL_USERS));
+  } else {
+    try {
+      const existingUsers = JSON.parse(localStorage.getItem(STORAGE_KEY_USERS) || '[]');
+      if (Array.isArray(existingUsers)) {
+        let changed = false;
+        existingUsers.forEach((u: any) => {
+          if (u.username === 'guru' && !u.nip) {
+            u.nip = '199208152019031008';
+            if (!u.kelas || u.kelas === '-') u.kelas = '6A';
+            changed = true;
+          }
+        });
+        if (changed) {
+          safeSetItem(STORAGE_KEY_USERS, JSON.stringify(existingUsers));
+        }
+      }
+    } catch {}
   }
   if (!localStorage.getItem(STORAGE_KEY_MATERI)) {
     safeSetItem(STORAGE_KEY_MATERI, JSON.stringify(INITIAL_MATERI));

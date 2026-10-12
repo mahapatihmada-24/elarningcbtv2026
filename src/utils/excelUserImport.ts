@@ -156,6 +156,7 @@ export async function parseUserExcelFile(file: File): Promise<ParsedUserResult> 
     let passwordVal = '';
     let kelasVal = '';
     let roleVal = '';
+    let nipVal = '';
 
     for (const rawKey of Object.keys(row)) {
       const k = cleanHeaderKey(rawKey);
@@ -171,6 +172,8 @@ export async function parseUserExcelFile(file: File): Promise<ParsedUserResult> 
         kelasVal = val;
       } else if (k === 'role' || k === 'peran' || k === 'jabatan' || k === 'tipe') {
         roleVal = val;
+      } else if (k === 'nip' || k === 'nomorindukpegawai' || k === 'noindukpegawai') {
+        nipVal = val;
       }
     }
 
@@ -242,6 +245,7 @@ export async function parseUserExcelFile(file: File): Promise<ParsedUserResult> 
       password: finalPassword,
       role: finalRole,
       kelas: finalKelas,
+      nip: nipVal || undefined,
     });
   });
 

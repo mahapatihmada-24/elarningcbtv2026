@@ -630,7 +630,6 @@ export default function App() {
                   <MuridCBTList
                     currentUser={{ ...currentUser, role: 'admin', kelas: currentUser.kelas || 'Semua' }}
                     onStartExam={(exam) => setActiveExam(exam)}
-                    onOpenParentPortal={() => setIsParentPinModalOpen(true)}
                   />
                 )}
               </div>
@@ -810,7 +809,6 @@ export default function App() {
                     <MuridCBTList
                       currentUser={currentUser}
                       onStartExam={(exam) => setActiveExam(exam)}
-                      onOpenParentPortal={() => setIsParentPinModalOpen(true)}
                     />
                     {visibleAnnouncements.length > 0 && (
                       <AnnouncementBoard

@@ -13,7 +13,8 @@ export const INITIAL_USERS: User[] = [
     username: 'guru',
     password: 'guru123',
     role: 'guru',
-    kelas: '-',
+    kelas: '6A',
+    nip: '199208152019031008',
   },
   {
     nama: 'Arsyad',

@@ -47,6 +47,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<Role>('murid');
   const [kelas, setKelas] = useState('6A');
+  const [nip, setNip] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Edit user modal state
@@ -55,6 +56,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
   const [editPassword, setEditPassword] = useState('');
   const [editRole, setEditRole] = useState<Role>('murid');
   const [editKelas, setEditKelas] = useState('6A');
+  const [editNip, setEditNip] = useState('');
   const [isUpdatingUser, setIsUpdatingUser] = useState(false);
 
   // Reset password modal state
@@ -107,7 +109,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
       username: username.trim(),
       password: password.trim(),
       role,
-      kelas: role === 'murid' ? kelas.trim() : '-',
+      kelas: role === 'murid' ? kelas.trim() : (role === 'guru' ? (kelas.trim() || '-') : '-'),
+      nip: role === 'guru' ? (nip.trim() || undefined) : undefined,
     });
     setIsSubmitting(false);
 
@@ -123,6 +126,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
       setNama('');
       setUsername('');
       setPassword('');
+      setNip('');
       fetchUsersAndClasses();
     } else {
       onShowModal({
@@ -142,6 +146,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
     setEditPassword(u.password || '123456');
     setEditRole(u.role || 'murid');
     setEditKelas(u.kelas || (classList[0] || '6A'));
+    setEditNip(u.nip || '');
   };
 
   const handleSaveEditUser = async (e: React.FormEvent) => {
@@ -163,7 +168,8 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
         ...editingUser,
         nama: editNama.trim(),
         role: editRole,
-        kelas: editRole === 'murid' ? editKelas : '-',
+        kelas: editRole === 'murid' ? editKelas : (editRole === 'guru' ? (editKelas || '-') : '-'),
+        nip: editRole === 'guru' ? (editNip.trim() || undefined) : undefined,
         password: editPassword.trim() || editingUser.password || '123456',
       };
 
@@ -270,10 +276,11 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
   // Export all users to Excel
   const handleExportUsersExcel = () => {
     const wb = XLSX.utils.book_new();
-    const headers = ['No', 'Nama Lengkap', 'Username', 'Password', 'Role', 'Kelas'];
+    const headers = ['No', 'Nama Lengkap', 'NIP', 'Username', 'Password', 'Role', 'Kelas'];
     const rows = users.map((u, idx) => [
       idx + 1,
       u.nama,
+      u.nip || '-',
       u.username,
       u.password || '******',
       u.role,
@@ -666,6 +673,50 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
               )}
             </div>
 
+            {role === 'guru' && (
+              <div className="space-y-3 p-3 bg-blue-50/70 rounded-xl border border-blue-200/80 animate-in fade-in duration-150">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900">
+                  <Briefcase className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Data Guru & Penandatangan Laporan</span>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    NIP (Nomor Induk Pegawai)
+                  </label>
+                  <input
+                    type="text"
+                    value={nip}
+                    onChange={(e) => setNip(e.target.value)}
+                    placeholder="misal: 198503202010011012"
+                    className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    Kosongkan jika Guru Honorer / belum memiliki NIP.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Guru Kelas / Penugasan Rombel
+                  </label>
+                  <select
+                    value={kelas}
+                    onChange={(e) => setKelas(e.target.value)}
+                    className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none font-semibold"
+                  >
+                    <option value="-">Bukan Guru Kelas (Guru Mapel / Umum)</option>
+                    <option value="Semua">Semua Kelas</option>
+                    {classList
+                      .filter((c) => c !== 'Semua')
+                      .map((c) => (
+                        <option key={c} value={c}>
+                          Guru Kelas {c}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={isSubmitting}
@@ -863,7 +914,14 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
 
                     return (
                       <tr key={u.username} className="hover:bg-slate-50/80 transition">
-                        <td className="p-3 font-semibold text-slate-800">{u.nama}</td>
+                        <td className="p-3 font-semibold text-slate-800">
+                          <div>{u.nama}</div>
+                          {u.role === 'guru' && u.nip && (
+                            <div className="text-[10.5px] font-mono text-blue-700 bg-blue-50 border border-blue-200/60 px-1.5 py-0.2 rounded w-fit mt-1 font-normal">
+                              NIP. {u.nip}
+                            </div>
+                          )}
+                        </td>
                         <td className="p-3 font-mono text-slate-600">{u.username}</td>
                         <td className="p-3">
                           <span
@@ -1024,6 +1082,50 @@ export const AdminView: React.FC<AdminViewProps> = ({ onShowModal }) => {
                   </div>
                 )}
               </div>
+
+              {editRole === 'guru' && (
+                <div className="space-y-3 p-3 bg-blue-50/70 rounded-xl border border-blue-200/80 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900">
+                    <Briefcase className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Data Guru & Penandatangan Laporan</span>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      NIP (Nomor Induk Pegawai)
+                    </label>
+                    <input
+                      type="text"
+                      value={editNip}
+                      onChange={(e) => setEditNip(e.target.value)}
+                      placeholder="misal: 198503202010011012"
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 bg-white font-mono focus:outline-indigo-600"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Kosongkan jika Guru Honorer / tidak ada NIP.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      Guru Kelas / Penugasan Rombel
+                    </label>
+                    <select
+                      value={editKelas}
+                      onChange={(e) => setEditKelas(e.target.value)}
+                      className="w-full text-xs p-2.5 rounded-xl border border-slate-300 bg-white font-semibold focus:outline-indigo-600"
+                    >
+                      <option value="-">Bukan Guru Kelas (Guru Mapel / Umum)</option>
+                      <option value="Semua">Semua Kelas</option>
+                      {classList
+                        .filter((c) => c !== 'Semua')
+                        .map((c) => (
+                          <option key={c} value={c}>
+                            Guru Kelas {c}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1">Password</label>

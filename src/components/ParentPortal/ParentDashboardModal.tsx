@@ -51,6 +51,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
   const [nilaiList, setNilaiList] = useState<Nilai[]>([]);
   const [ujianList, setUjianList] = useState<Ujian[]>([]);
   const [schoolProfile, setSchoolProfile] = useState<SchoolProfile | null>(null);
+  const [guruKelas, setGuruKelas] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Filter in Rekap Nilai
@@ -66,14 +67,35 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [hasil, exams, profile] = await Promise.all([
+      const [hasil, exams, profile, allUsers] = await Promise.all([
         api.getHasilMurid(student.nama),
         api.getUjianList(student.kelas || 'Semua', 'guru'),
         api.getSchoolProfile().catch(() => null),
+        api.getUsers().catch(() => []),
       ]);
       setNilaiList(hasil || []);
       setUjianList(exams || []);
       if (profile) setSchoolProfile(profile);
+
+      // Cari Guru Kelas yang bersangkutan untuk tanda tangan rapor
+      const studentClass = (student.kelas || '').trim().toLowerCase();
+      const teachers = (allUsers || []).filter((u) => u.role === 'guru');
+      const matchedTeacher =
+        teachers.find((t) => {
+          const tClass = (t.kelas || '').trim().toLowerCase();
+          return (
+            tClass &&
+            tClass !== '-' &&
+            (tClass === studentClass || tClass.includes(studentClass))
+          );
+        }) ||
+        teachers.find((t) => {
+          const tClass = (t.kelas || '').trim().toLowerCase();
+          return tClass === 'semua' || tClass === '-';
+        }) ||
+        teachers[0] ||
+        null;
+      setGuruKelas(matchedTeacher);
 
       // Auto select first exam for review if exists
       if (hasil && hasil.length > 0) {
@@ -333,6 +355,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
       nilaiList,
       schoolProfile,
       kkm,
+      guruKelas,
     });
   };
 

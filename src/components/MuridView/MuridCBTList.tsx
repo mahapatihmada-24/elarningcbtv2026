@@ -18,7 +18,6 @@ import {
   BookOpen,
   Lightbulb,
   Lock,
-  HeartHandshake,
 } from 'lucide-react';
 import { Ujian, Nilai, User, SchoolProfile, Question, ExamResetPermission } from '../../types';
 import { api } from '../../services/api';
@@ -30,10 +29,9 @@ import { ExportExamModal } from '../ExportExamModal';
 interface MuridCBTListProps {
   currentUser: User;
   onStartExam: (exam: Ujian) => void;
-  onOpenParentPortal?: () => void;
 }
 
-export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStartExam, onOpenParentPortal }) => {
+export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStartExam }) => {
   const [ujianList, setUjianList] = useState<Ujian[]>([]);
   const [hasilList, setHasilList] = useState<Nilai[]>([]);
   const [resetsList, setResetsList] = useState<ExamResetPermission[]>([]);
@@ -224,17 +222,6 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
           >
             Perbarui Daftar
           </button>
-          {onOpenParentPortal && (
-            <button
-              type="button"
-              onClick={onOpenParentPortal}
-              title="Akses Portal Orang Tua via PIN untuk memantau nilai & perkembangan belajar"
-              className="text-xs font-bold px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white transition shadow-xs flex items-center gap-1.5 active:scale-95 cursor-pointer"
-            >
-              <HeartHandshake className="w-3.5 h-3.5 text-emerald-100" />
-              <span>Portal Orang Tua</span>
-            </button>
-          )}
         </div>
       </div>
 
