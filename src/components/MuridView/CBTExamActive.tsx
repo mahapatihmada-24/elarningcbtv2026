@@ -1038,12 +1038,12 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                     <table className="w-full text-xs sm:text-sm text-left border-collapse">
                       <thead className="bg-blue-100 text-blue-900 border-b border-blue-200">
                         <tr>
-                          <th className="p-3 font-bold text-slate-800">Pernyataan Soal</th>
+                          <th className="p-3 font-bold text-slate-800">Pernyataan</th>
                           <th className="p-3 w-28 text-center font-extrabold text-blue-900 border-l border-blue-200">
-                            {q.col1 || 'Sebelum'}
+                            {q.col1 || 'Benar'}
                           </th>
                           <th className="p-3 w-28 text-center font-extrabold text-blue-900 border-l border-blue-200">
-                            {q.col2 || 'Sesudah'}
+                            {q.col2 || 'Salah'}
                           </th>
                         </tr>
                       </thead>

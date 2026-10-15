@@ -684,7 +684,7 @@ export const GenerateSoalKisiKisiModal: React.FC<GenerateSoalKisiKisiModalProps>
                           <table className="w-full text-xs text-left border border-slate-200 rounded-xl overflow-hidden">
                             <thead className="bg-slate-100 font-bold text-slate-700 text-[11px]">
                               <tr>
-                                <th className="p-2">Pernyataan Soal</th>
+                                <th className="p-2">Pernyataan</th>
                                 <th className="p-2 w-24 text-center">{(q as QuestionPGKKategori).col1 || 'Benar'}</th>
                                 <th className="p-2 w-24 text-center">{(q as QuestionPGKKategori).col2 || 'Salah'}</th>
                               </tr>

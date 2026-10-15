@@ -16,6 +16,12 @@ interface RekapNilaiPrintModalProps {
   nilaiList: Nilai[];
   schoolProfile?: SchoolProfile | null;
   kkm?: number;
+  namaGuru?: string;
+  nipGuru?: string;
+  guruPengampu?: {
+    nama?: string;
+    nip?: string;
+  } | null;
 }
 
 export const RekapNilaiPrintModal: React.FC<RekapNilaiPrintModalProps> = ({
@@ -26,6 +32,9 @@ export const RekapNilaiPrintModal: React.FC<RekapNilaiPrintModalProps> = ({
   nilaiList,
   schoolProfile,
   kkm = 75,
+  namaGuru,
+  nipGuru,
+  guruPengampu,
 }) => {
   const printParams: RekapNilaiPrintParams = useMemo(
     () => ({
@@ -34,8 +43,11 @@ export const RekapNilaiPrintModal: React.FC<RekapNilaiPrintModalProps> = ({
       nilaiList,
       schoolProfile,
       kkm,
+      namaGuru,
+      nipGuru,
+      guruPengampu,
     }),
-    [judulUjian, kelas, nilaiList, schoolProfile, kkm]
+    [judulUjian, kelas, nilaiList, schoolProfile, kkm, namaGuru, nipGuru, guruPengampu]
   );
 
   const htmlContent = useMemo(() => {

@@ -11,15 +11,23 @@ export interface RekapNilaiPrintParams {
   nilaiList: Nilai[];
   schoolProfile?: SchoolProfile | null;
   kkm?: number;
+  namaGuru?: string;
+  nipGuru?: string;
+  guruPengampu?: {
+    nama?: string;
+    nip?: string;
+  } | null;
 }
 
-export function generateRekapNilaiHtml({
-  judulUjian,
-  kelas,
-  nilaiList,
-  schoolProfile,
-  kkm = 75,
-}: RekapNilaiPrintParams): string {
+export function generateRekapNilaiHtml(params: RekapNilaiPrintParams): string {
+  const { judulUjian, kelas, nilaiList, schoolProfile, kkm = 75 } = params;
+  const rawNamaGuru = params.namaGuru || params.guruPengampu?.nama || 'Wildan Pramadika, S.Pd.';
+  const rawNipGuru = params.nipGuru !== undefined ? params.nipGuru : params.guruPengampu?.nip;
+  const namaGuru = (rawNamaGuru || '').trim() || 'Wildan Pramadika, S.Pd.';
+  const cleanNipGuru = (rawNipGuru || '').trim();
+  const nipGuruDisplay = cleanNipGuru
+    ? (cleanNipGuru.toUpperCase().startsWith('NIP') ? cleanNipGuru : `NIP. ${cleanNipGuru}`)
+    : '';
   const schoolName = schoolProfile?.namaSekolah || DEFAULT_SCHOOL_NAME;
   const schoolSubtitle = DEFAULT_SCHOOL_SUBTITLE;
   const schoolAddress = schoolProfile?.alamat || DEFAULT_SCHOOL_ADDRESS;
@@ -439,8 +447,8 @@ export function generateRekapNilaiHtml({
           Adiwerna, ${dateStr}<br>
           <strong>Guru Pengampu / Proktor CBT</strong>
           <br><br><br><br>
-          <strong><u>_________________________</u></strong><br>
-          NIP. -
+          <strong><u>${namaGuru}</u></strong><br>
+          ${nipGuruDisplay ? `<span>${nipGuruDisplay}</span>` : ''}
         </td>
       </tr>
     </table>

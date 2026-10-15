@@ -597,7 +597,10 @@ export default function App() {
                 )}
 
                 {activeTab === 'guru_nilai' && (
-                  <GuruNilai onShowModal={handleShowModal} />
+                  <GuruNilai
+                    onShowModal={handleShowModal}
+                    currentUser={currentUser}
+                  />
                 )}
 
                 {/* Admin direct access to Murid modules */}
@@ -719,7 +722,10 @@ export default function App() {
                 )}
 
                 {activeTab === 'nilai' && (
-                  <GuruNilai onShowModal={handleShowModal} />
+                  <GuruNilai
+                    onShowModal={handleShowModal}
+                    currentUser={currentUser}
+                  />
                 )}
 
                 {activeTab === 'pengumuman' && (

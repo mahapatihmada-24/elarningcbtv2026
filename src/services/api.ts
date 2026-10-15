@@ -1442,7 +1442,7 @@ export const api = {
     if (currentDataSource === 'FIREBASE' && !isFirestoreOffline()) {
       try {
         const list = await firebaseService.getHasilMurid(namaMurid);
-        if (Array.isArray(list)) return list;
+        if (Array.isArray(list) && list.length > 0) return list;
       } catch (err) {
         // Fall back to local
       }

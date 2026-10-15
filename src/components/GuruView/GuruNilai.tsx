@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Award,
   RefreshCw,
@@ -15,7 +15,7 @@ import {
   MessageSquare,
   Check,
 } from 'lucide-react';
-import { Nilai, SchoolProfile } from '../../types';
+import { Nilai, SchoolProfile, User } from '../../types';
 import { api } from '../../services/api';
 import { ModalState } from '../ConfirmModal';
 import { exportNilaiToExcel } from '../../utils/excelExamHelper';
@@ -23,11 +23,13 @@ import { RekapNilaiPrintModal } from '../RekapNilaiPrintModal';
 
 interface GuruNilaiProps {
   onShowModal: (modal: Partial<ModalState>) => void;
+  currentUser?: User | null;
 }
 
-export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
+export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }) => {
   const [nilaiList, setNilaiList] = useState<Nilai[]>([]);
   const [schoolProfile, setSchoolProfile] = useState<SchoolProfile | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [filterKelas, setFilterKelas] = useState('ALL');
@@ -55,12 +57,14 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
       // Sinkronkan antrean darurat yang belum terunggah jika ada
       api.syncPendingSubmissions().catch(() => {});
 
-      const [nData, sProfile] = await Promise.all([
+      const [nData, sProfile, uData] = await Promise.all([
         api.getNilaiList(),
         api.getSchoolProfile(),
+        api.getUsers().catch(() => []),
       ]);
       setNilaiList(nData || []);
       setSchoolProfile(sProfile || null);
+      setUsers(uData || []);
     } finally {
       if (silent !== true) setIsLoading(false);
     }
@@ -265,6 +269,54 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
     tuntas: filteredNilai.filter((n) => Number(n.Nilai || 0) >= kkm).length,
     pelanggaranTotal: filteredNilai.reduce((acc, curr) => acc + (curr.Pelanggaran || 0), 0),
   };
+
+  const resolvedGuru = useMemo(() => {
+    // 1. Jika pengguna saat ini adalah guru yang sedang login
+    if (currentUser && currentUser.role === 'guru') {
+      return {
+        nama: currentUser.nama,
+        nip: currentUser.nip,
+      };
+    }
+
+    // 2. Jika difilter per kelas, cari guru kelas tersebut
+    if (filterKelas && filterKelas !== 'ALL' && users.length > 0) {
+      const teacherForClass = users.find(
+        (u) =>
+          u.role === 'guru' &&
+          u.kelas &&
+          u.kelas.trim().toLowerCase() === filterKelas.trim().toLowerCase()
+      );
+      if (teacherForClass) {
+        return {
+          nama: teacherForClass.nama,
+          nip: teacherForClass.nip,
+        };
+      }
+    }
+
+    // 3. Cari guru pengampu dari daftar akun guru
+    const anyTeacher = users.find((u) => u.role === 'guru');
+    if (anyTeacher) {
+      return {
+        nama: anyTeacher.nama,
+        nip: anyTeacher.nip,
+      };
+    }
+
+    // 4. Fallback jika admin yang login atau default
+    if (currentUser && currentUser.role === 'admin') {
+      return {
+        nama: currentUser.nama || 'Wildan Pramadika, S.Pd.',
+        nip: currentUser.nip,
+      };
+    }
+
+    return {
+      nama: 'Wildan Pramadika, S.Pd.',
+      nip: '199208152019031008',
+    };
+  }, [currentUser, filterKelas, users]);
 
   return (
     <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
@@ -648,6 +700,7 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
           </div>
         </div>
       )}
+
       {/* Modal Rekap Nilai & Log Anti-Contek Resmi A4 Landscape */}
       <RekapNilaiPrintModal
         isOpen={isPrintModalOpen}
@@ -657,6 +710,8 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal }) => {
         nilaiList={filteredNilai}
         schoolProfile={schoolProfile}
         kkm={kkm}
+        namaGuru={resolvedGuru.nama}
+        nipGuru={resolvedGuru.nip}
       />
     </div>
   );

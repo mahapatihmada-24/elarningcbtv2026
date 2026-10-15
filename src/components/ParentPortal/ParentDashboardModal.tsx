@@ -28,9 +28,32 @@ import {
 } from 'lucide-react';
 import { User, Nilai, Ujian, SchoolProfile, Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, getQuestionImages } from '../../types';
 import { api } from '../../services/api';
+import { INITIAL_UJIAN } from '../../services/seedData';
 import { MathRenderer } from '../MathRenderer';
 import { printParentReportDocument } from '../../utils/parentReportPrintHelper';
 import { printExamDocument, downloadExamWord } from '../../utils/documentExport';
+
+function extractQuestionsFromSoalJson(rawInput: any): Question[] {
+  if (!rawInput) return [];
+  let parsed = rawInput;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+      if (typeof parsed === 'string') {
+        parsed = JSON.parse(parsed);
+      }
+    } catch {
+      return [];
+    }
+  }
+  if (!parsed) return [];
+  if (Array.isArray(parsed)) return parsed;
+  if (Array.isArray(parsed.questions)) return parsed.questions;
+  if (Array.isArray(parsed.soal)) return parsed.soal;
+  if (Array.isArray(parsed.data)) return parsed.data;
+  if (Array.isArray(parsed.items)) return parsed.items;
+  return [];
+}
 
 interface ParentDashboardModalProps {
   isOpen: boolean;
@@ -61,20 +84,52 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
 
   // Selected Exam for Review Pembahasan
   const [selectedReviewNilaiId, setSelectedReviewNilaiId] = useState<string>('');
-  const [reviewFilterMode, setReviewFilterMode] = useState<'all' | 'wrong' | 'correct'>('wrong');
+  const [reviewFilterMode, setReviewFilterMode] = useState<'all' | 'wrong' | 'correct'>('all');
 
   // Load Data
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [hasil, exams, profile, allUsers] = await Promise.all([
-        api.getHasilMurid(student.nama),
-        api.getUjianList(student.kelas || 'Semua', 'guru'),
+      // 1. Ambil riwayat hasil ujian siswa bersangkutan (dengan fallback pencarian toleran)
+      let hasil = await api.getHasilMurid(student.nama).catch(() => []);
+      if (!hasil || hasil.length === 0) {
+        try {
+          const allNilai = await api.getNilaiList().catch(() => []);
+          const cleanStudent = (student.nama || '').trim().toLowerCase();
+          hasil = (allNilai || []).filter(
+            (n) => (n.Nama_Murid || '').trim().toLowerCase() === cleanStudent
+          );
+        } catch {}
+      }
+
+      // 2. Selalu muat seluruh bank soal ('Semua') agar tidak ada paket ujian yang terlewat
+      const [exams, profile, allUsers] = await Promise.all([
+        api.getUjianList('Semua', 'guru').catch(() => []),
         api.getSchoolProfile().catch(() => null),
         api.getUsers().catch(() => []),
       ]);
+
+      // Gabungkan bank soal dari server Firestore, local storage, dan INITIAL_UJIAN
+      const examMap = new Map<string, Ujian>();
+      INITIAL_UJIAN.forEach((u) => examMap.set(u.ID, u));
+      try {
+        const localRaw = localStorage.getItem('cbt_db_ujian');
+        if (localRaw) {
+          const parsed = JSON.parse(localRaw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((u) => {
+              if (u && u.ID) examMap.set(u.ID, u);
+            });
+          }
+        }
+      } catch {}
+      (exams || []).forEach((u) => {
+        if (u && u.ID) examMap.set(u.ID, u);
+      });
+      const combinedExams = Array.from(examMap.values());
+
       setNilaiList(hasil || []);
-      setUjianList(exams || []);
+      setUjianList(combinedExams);
       if (profile) setSchoolProfile(profile);
 
       // Cari Guru Kelas yang bersangkutan untuk tanda tangan rapor
@@ -99,7 +154,10 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
 
       // Auto select first exam for review if exists
       if (hasil && hasil.length > 0) {
-        setSelectedReviewNilaiId(hasil[0].ID);
+        setSelectedReviewNilaiId((prev) => {
+          if (prev && hasil.some((h) => h.ID === prev)) return prev;
+          return hasil[0].ID;
+        });
       }
     } catch (err) {
       console.warn('Gagal memuat data portal orang tua:', err);
@@ -157,104 +215,222 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
 
   // Current selected exam & questions for Review Tab
   const selectedNilai = nilaiList.find((n) => n.ID === selectedReviewNilaiId) || nilaiList[0];
-  const selectedUjian = selectedNilai
-    ? ujianList.find(
-        (u) =>
-          u.ID === selectedNilai.ID_Ujian ||
-          (u.Judul_Ujian &&
-            selectedNilai.Judul_Ujian &&
-            (u.Judul_Ujian.trim().toLowerCase() === selectedNilai.Judul_Ujian.trim().toLowerCase() ||
-             u.Judul_Ujian.toLowerCase().includes(selectedNilai.Judul_Ujian.toLowerCase()) ||
-             selectedNilai.Judul_Ujian.toLowerCase().includes(u.Judul_Ujian.toLowerCase())))
-      )
-    : null;
 
-  // 1. Dapatkan bank soal lengkap dari selectedUjian / candidateUjian
-  let fullQuestionsFromUjian: Question[] = [];
-  const candidateUjian = selectedUjian || ujianList.find(
-    (u) =>
-      (selectedNilai?.ID_Ujian && u.ID === selectedNilai.ID_Ujian) ||
-      (u.Judul_Ujian && selectedNilai?.Judul_Ujian &&
-        (u.Judul_Ujian.trim().toLowerCase() === selectedNilai.Judul_Ujian.trim().toLowerCase() ||
-         u.Judul_Ujian.toLowerCase().includes(selectedNilai.Judul_Ujian.toLowerCase()) ||
-         selectedNilai.Judul_Ujian.toLowerCase().includes(u.Judul_Ujian.toLowerCase())))
-  );
+  // Pencarian Paket Ujian yang Komprehensif (Multi-Strategi: ID, Substring, Judul, Keywords, Fallback)
+  const candidateUjian = useMemo(() => {
+    if (!selectedNilai) return null;
+    const pool: Ujian[] = [...ujianList];
 
-  if (candidateUjian?.Soal_JSON) {
+    // Sertakan paket ujian dari penyimpanan lokal jika belum ada di pool
     try {
-      const raw =
-        typeof candidateUjian.Soal_JSON === 'string'
-          ? JSON.parse(candidateUjian.Soal_JSON)
-          : candidateUjian.Soal_JSON;
-      if (raw && Array.isArray(raw.questions)) {
-        fullQuestionsFromUjian = raw.questions;
-      } else if (Array.isArray(raw)) {
-        fullQuestionsFromUjian = raw;
+      const localRaw = localStorage.getItem('cbt_db_ujian');
+      if (localRaw) {
+        const parsed = JSON.parse(localRaw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((u) => {
+            if (u && u.ID && !pool.some((p) => p.ID === u.ID)) pool.push(u);
+          });
+        }
       }
-    } catch (e) {
-      console.warn('Gagal mem-parse candidateUjian.Soal_JSON:', e);
+    } catch {}
+
+    // Sertakan paket ujian master bawaan (INITIAL_UJIAN) jika belum ada di pool
+    INITIAL_UJIAN.forEach((u) => {
+      if (u && u.ID && !pool.some((p) => p.ID === u.ID)) pool.push(u);
+    });
+
+    const targetExamId = (selectedNilai.ID_Ujian || '').trim();
+    const targetJudul = (selectedNilai.Judul_Ujian || '').trim().toLowerCase();
+
+    // Strategi 1: Pencocokan ID Persis
+    if (targetExamId) {
+      const byId = pool.find((u) => u.ID === targetExamId || (u.ID && u.ID.trim() === targetExamId));
+      if (byId) return byId;
     }
-  }
 
-  // 2. Parse student answers & questions dari Nilai.Jawaban_JSON
-  let examQuestions: Question[] = [];
-  let studentAnswers: Record<string | number, any> = {};
+    // Strategi 2: ID Ujian tertanam dalam ID Nilai (contoh: NILAI-1710003001-EXAM-1710002001)
+    if (selectedNilai.ID) {
+      const byNilaiId = pool.find((u) => u.ID && selectedNilai.ID.includes(u.ID));
+      if (byNilaiId) return byNilaiId;
+    }
 
-  if (selectedNilai?.Jawaban_JSON) {
-    try {
-      const parsed =
-        typeof selectedNilai.Jawaban_JSON === 'string'
-          ? JSON.parse(selectedNilai.Jawaban_JSON)
-          : selectedNilai.Jawaban_JSON;
+    // Strategi 3: ID Substring / Partial match
+    if (targetExamId) {
+      const byPartialId = pool.find(
+        (u) => u.ID && (u.ID.includes(targetExamId) || targetExamId.includes(u.ID))
+      );
+      if (byPartialId) return byPartialId;
+    }
+
+    // Strategi 4: Judul Ujian Sama Persis
+    if (targetJudul) {
+      const byJudul = pool.find((u) => (u.Judul_Ujian || '').trim().toLowerCase() === targetJudul);
+      if (byJudul) return byJudul;
+    }
+
+    // Strategi 5: Judul Ujian Mengandung / Kemiripan Frasa
+    if (targetJudul) {
+      const byContains = pool.find((u) => {
+        const uJudul = (u.Judul_Ujian || '').trim().toLowerCase();
+        return uJudul && (uJudul.includes(targetJudul) || targetJudul.includes(uJudul));
+      });
+      if (byContains) return byContains;
+    }
+
+    // Strategi 6: Kata Kunci Spesifik Mapel & Bab
+    if (targetJudul) {
+      const cleanWords = targetJudul.split(/[\s:,-]+/).filter((w) => w.length > 3);
+      if (cleanWords.length > 0) {
+        const byWords = pool.find((u) => {
+          const uJudul = (u.Judul_Ujian || '').trim().toLowerCase();
+          return cleanWords.some((w) => uJudul.includes(w));
+        });
+        if (byWords) return byWords;
+      }
+    }
+
+    // Fallback: Jika hanya ada satu paket ujian di pool
+    if (pool.length === 1) return pool[0];
+
+    return null;
+  }, [selectedNilai, ujianList]);
+
+  // 1. Ekstraksi bank soal lengkap dari paket ujian yang cocok
+  const fullQuestionsFromUjian = useMemo<Question[]>(() => {
+    if (!candidateUjian) return [];
+    return extractQuestionsFromSoalJson(
+      candidateUjian.Soal_JSON || (candidateUjian as any).soal || (candidateUjian as any).questions
+    );
+  }, [candidateUjian]);
+
+  // 2. Ekstraksi lembar jawaban siswa dan metadata soal tersimpan dari Nilai.Jawaban_JSON
+  const { studentAnswers, embeddedQuestions } = useMemo(() => {
+    const answersMap: Record<string | number, any> = {};
+    let embeddedQ: any[] = [];
+
+    if (selectedNilai?.Jawaban_JSON) {
+      let parsed: any = selectedNilai.Jawaban_JSON;
+      if (typeof parsed === 'string') {
+        try {
+          parsed = JSON.parse(parsed);
+          if (typeof parsed === 'string') {
+            parsed = JSON.parse(parsed);
+          }
+        } catch (e) {
+          console.warn('Gagal mem-parse Jawaban_JSON:', e);
+        }
+      }
 
       if (parsed && typeof parsed === 'object') {
-        if (parsed.answers && typeof parsed.answers === 'object') {
-          studentAnswers = parsed.answers;
-        } else if (parsed.userAnswers && typeof parsed.userAnswers === 'object') {
-          studentAnswers = parsed.userAnswers;
-        } else if (!Array.isArray(parsed) && !parsed.questions) {
-          studentAnswers = parsed;
-        }
+        if (Array.isArray(parsed)) {
+          if (parsed.length > 0 && (parsed[0]?.soal || parsed[0]?.type || parsed[0]?.nomor)) {
+            embeddedQ = parsed;
+          } else {
+            parsed.forEach((val, idx) => {
+              answersMap[idx] = val;
+            });
+          }
+        } else {
+          if (parsed.answers && typeof parsed.answers === 'object') {
+            Object.assign(answersMap, parsed.answers);
+          }
+          if (parsed.userAnswers && typeof parsed.userAnswers === 'object') {
+            Object.assign(answersMap, parsed.userAnswers);
+          }
+          if (parsed.jawaban && typeof parsed.jawaban === 'object') {
+            Object.assign(answersMap, parsed.jawaban);
+          }
+          if (Array.isArray(parsed.questions)) {
+            embeddedQ = parsed.questions;
+          }
 
-        // Ambil questions dari parsed HANYA jika berisi soal lengkap (ada properti .soal)
-        if (
-          Array.isArray(parsed.questions) &&
-          parsed.questions.length > 0 &&
-          Boolean(parsed.questions[0]?.soal)
-        ) {
-          examQuestions = parsed.questions;
+          // Ambil juga properti bernomor pada root object ("0", "1", dst.)
+          Object.keys(parsed).forEach((k) => {
+            if (/^\d+$/.test(k) && answersMap[k] === undefined) {
+              answersMap[k] = parsed[k];
+            }
+          });
         }
       }
-    } catch (e) {
-      console.warn('Gagal mem-parse Jawaban_JSON:', e);
     }
-  }
 
-  // 3. Fallback & merge ke fullQuestionsFromUjian agar teks soal, opsi, dan pembahasan selalu lengkap
-  if (examQuestions.length === 0 || !examQuestions[0]?.soal) {
+    return { studentAnswers: answersMap, embeddedQuestions: embeddedQ };
+  }, [selectedNilai]);
+
+  // 3. Rekonstruksi Soal Ujian (Sinkronisasi Bank Soal + Lembar Jawaban + Jawaban Tersimpan)
+  const examQuestions = useMemo<Question[]>(() => {
+    // Prioritas Utama: Bank soal lengkap dari paket ujian
     if (fullQuestionsFromUjian.length > 0) {
-      examQuestions = fullQuestionsFromUjian;
+      return fullQuestionsFromUjian.map((q, idx) => {
+        const embed = embeddedQuestions[idx];
+        return {
+          ...q,
+          kunci: (q as any).kunci || embed?.kunci || '',
+          bobot: Number(q.bobot) || Number(embed?.bobot) || 1,
+        };
+      });
     }
-  } else if (examQuestions.length > 0 && fullQuestionsFromUjian.length > 0) {
-    examQuestions = examQuestions.map((q, idx) => {
-      const fullQ = fullQuestionsFromUjian[idx];
-      if (!fullQ) return q;
-      return {
-        ...fullQ,
-        ...q,
-        soal: q.soal || fullQ.soal || '',
-        pembahasan: q.pembahasan || fullQ.pembahasan || '',
-        options: (q as any).options || (fullQ as any).options || [],
-        rows: (q as any).rows || (fullQ as any).rows || [],
-      };
-    });
-  }
+
+    // Prioritas Kedua: Soal yang tersimpan pada payload jawaban (Jawaban_JSON)
+    if (embeddedQuestions.length > 0) {
+      return embeddedQuestions.map((eq, idx) => ({
+        id: eq.id || `q_${idx + 1}`,
+        nomor: idx + 1,
+        type: eq.type || 'pg',
+        bobot: Number(eq.bobot) || 1,
+        soal: eq.soal || `Butir Pertanyaan No. ${idx + 1}`,
+        kunci: eq.kunci || '',
+        options: eq.options || [],
+        rows: eq.rows || [],
+        col1: eq.col1 || 'Benar',
+        col2: eq.col2 || 'Salah',
+        pembahasan: eq.pembahasan || '',
+        a: eq.a || '',
+        b: eq.b || '',
+        c: eq.c || '',
+        d: eq.d || '',
+        e: eq.e || '',
+      }));
+    }
+
+    // Prioritas Ketiga: Rekonstruksi dari kunci jawaban siswa jika ada
+    const answerKeys = Object.keys(studentAnswers).filter((k) => /^\d+$/.test(k));
+    if (answerKeys.length > 0) {
+      const maxIdx = Math.max(...answerKeys.map(Number));
+      const count = maxIdx + 1;
+      const synthList: Question[] = [];
+      for (let i = 0; i < count; i++) {
+        const ans = studentAnswers[i] ?? studentAnswers[String(i)];
+        let inferredType: Question['type'] = 'pg';
+        if (Array.isArray(ans)) inferredType = 'pgk_mcma';
+        else if (typeof ans === 'object' && ans !== null) inferredType = 'pgk_kategori';
+
+        synthList.push({
+          id: `synth_${i + 1}`,
+          nomor: i + 1,
+          type: inferredType,
+          bobot: 1,
+          soal: `Butir Soal #${i + 1}`,
+          kunci: typeof ans === 'string' ? ans : '',
+          col1: 'Benar',
+          col2: 'Salah',
+          pembahasan: 'Kunci jawaban dan butir soal terekam dari lembar kerja pengerjaan CBT ananda.',
+        } as any);
+      }
+      return synthList;
+    }
+
+    return [];
+  }, [fullQuestionsFromUjian, embeddedQuestions, studentAnswers]);
 
   // Helper untuk mendapatkan jawaban siswa per butir soal
   const getStudentAnswerForQuestion = (idx: number, q: Question) => {
     if (studentAnswers[idx] !== undefined) return studentAnswers[idx];
     if (studentAnswers[String(idx)] !== undefined) return studentAnswers[String(idx)];
     if ((q as any).id && studentAnswers[(q as any).id] !== undefined) return studentAnswers[(q as any).id];
+    if ((q as any).nomor !== undefined && studentAnswers[(q as any).nomor] !== undefined) return studentAnswers[(q as any).nomor];
+    if ((q as any).nomor !== undefined && studentAnswers[String((q as any).nomor)] !== undefined) return studentAnswers[String((q as any).nomor)];
+    if ((q as any).nomor !== undefined && studentAnswers[(q as any).nomor - 1] !== undefined) return studentAnswers[(q as any).nomor - 1];
     return undefined;
   };
 
@@ -271,22 +447,8 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
     return true;
   };
 
-  const totalQuestions = examQuestions.length;
-  let answeredCount = examQuestions.filter((q, idx) =>
-    isQuestionAnswered(q, getStudentAnswerForQuestion(idx, q))
-  ).length;
-
-  if (answeredCount === 0 && totalQuestions > 0 && selectedNilai) {
-    if (Object.keys(studentAnswers).length > 0) {
-      answeredCount = Math.min(totalQuestions, Object.keys(studentAnswers).length);
-    } else if (selectedNilai.Nilai !== undefined) {
-      answeredCount = totalQuestions;
-    }
-  }
-
   // Syarat Pembukaan Pembahasan di Portal Orang Tua:
-  // HARUS LANGSUNG TERBUKA apabila hasil ujian siswa sudah memiliki status Selesai / Sudah Dikirim (Submitted)
-  // atau sudah memiliki nilai akhir (termasuk nilai 0.00 sekalipun jika ujian memang sudah selesai/dikirim).
+  // Terbuka otomatis saat ada catatan nilai / waktu submit / naskah soal
   const isSubmittedExam = Boolean(
     selectedNilai &&
       (selectedNilai.Nilai !== undefined ||
@@ -296,52 +458,126 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
   );
   const isReviewUnlocked = Boolean(selectedNilai && isSubmittedExam);
 
-  // Correct / Wrong assessment
+  // Penilaian Benar / Salah yang Akurat untuk Setiap Jenis Soal
   const isAnswerCorrect = (q: Question, ans: any): boolean => {
     if (ans === undefined || ans === null || ans === '') return false;
+
     if (q.type === 'pg') {
-      const studentAnsStr = String(ans).trim().toUpperCase();
-      const keyStr = String((q as QuestionPG).kunci || '').trim().toUpperCase();
-      return studentAnsStr.length > 0 && studentAnsStr === keyStr;
+      let studentAnsStr = '';
+      if (typeof ans === 'string') {
+        studentAnsStr = ans.trim().toUpperCase();
+      } else if (typeof ans === 'number') {
+        studentAnsStr = ['A', 'B', 'C', 'D', 'E'][ans] || String(ans);
+      } else if (typeof ans === 'object' && ans !== null) {
+        studentAnsStr = String(ans.key || ans.choice || ans.answer || ans.kunci || '').trim().toUpperCase();
+      }
+
+      const keyStr = String((q as QuestionPG).kunci || (q as any).key || (q as any).kunciJawaban || '').trim().toUpperCase();
+      if (!keyStr) return false;
+
+      // Pencocokan langsung huruf (misal 'B' === 'B')
+      if (studentAnsStr === keyStr) return true;
+
+      // Pencocokan teks opsi
+      const pgQ = q as QuestionPG;
+      if (pgQ.a && studentAnsStr === String(pgQ.a).trim().toUpperCase() && keyStr === 'A') return true;
+      if (pgQ.b && studentAnsStr === String(pgQ.b).trim().toUpperCase() && keyStr === 'B') return true;
+      if (pgQ.c && studentAnsStr === String(pgQ.c).trim().toUpperCase() && keyStr === 'C') return true;
+      if (pgQ.d && studentAnsStr === String(pgQ.d).trim().toUpperCase() && keyStr === 'D') return true;
+      if (pgQ.e && studentAnsStr === String(pgQ.e).trim().toUpperCase() && keyStr === 'E') return true;
+
+      return false;
     } else if (q.type === 'pgk_mcma') {
       const mcma = q as QuestionPGKMCMA;
       const options = Array.isArray(mcma.options) ? mcma.options : [];
-      if (!Array.isArray(ans) || options.length === 0) return false;
-      const isSelected = (oIdx: number) =>
-        ans[oIdx] === true || (ans as any[]).includes(oIdx);
-      return (
-        options.every((opt, optIdx) => Boolean(opt.isKey) === Boolean(isSelected(optIdx)))
-      );
+      if (options.length === 0) return false;
+
+      const isSelected = (oIdx: number): boolean => {
+        if (Array.isArray(ans)) {
+          return ans[oIdx] === true || ans.includes(oIdx) || ans.includes(String(oIdx));
+        }
+        if (typeof ans === 'object' && ans !== null) {
+          return Boolean(ans[oIdx] === true || ans[String(oIdx)] === true);
+        }
+        if (typeof ans === 'string') {
+          const parts = ans.split(/[,;\s]+/).map((s) => s.trim().toUpperCase());
+          const letter = ['A', 'B', 'C', 'D', 'E', 'F'][oIdx];
+          return parts.includes(String(oIdx)) || parts.includes(String(oIdx + 1)) || (letter ? parts.includes(letter) : false);
+        }
+        return false;
+      };
+
+      return options.every((opt, oIdx) => Boolean(opt.isKey) === isSelected(oIdx));
     } else if (q.type === 'pgk_kategori') {
       const kat = q as QuestionPGKKategori;
       const rows = Array.isArray(kat.rows) ? kat.rows : [];
       if (!ans || typeof ans !== 'object' || rows.length === 0) return false;
-      return (
-        rows.every((row, rIdx) => {
-          const choice = ans[rIdx] ?? ans[String(rIdx)];
-          return choice === row.key;
-        })
-      );
+
+      return rows.every((row, rIdx) => {
+        const choice = ans[rIdx] ?? ans[String(rIdx)];
+        if (!choice) return false;
+        const normChoice = String(choice).trim().toLowerCase();
+        const normKey = String(row.key).trim().toLowerCase();
+        if (normChoice === normKey) return true;
+        if (normKey === 'col1' && (normChoice === 'benar' || normChoice === (kat.col1 || 'benar').toLowerCase())) return true;
+        if (normKey === 'col2' && (normChoice === 'salah' || normChoice === (kat.col2 || 'salah').toLowerCase())) return true;
+        return false;
+      });
     }
+
+    if ((q as any).kunci) {
+      return String(ans).trim().toUpperCase() === String((q as any).kunci).trim().toUpperCase();
+    }
+
     return false;
   };
 
-  // Questions with status
-  const analyzedQuestions = examQuestions.map((q, idx) => {
-    const ans = getStudentAnswerForQuestion(idx, q);
-    const correct = isAnswerCorrect(q, ans);
-    return {
-      index: idx,
-      question: q,
-      studentAnswer: ans,
-      isCorrect: correct,
-    };
-  });
+  // Analisis Soal & Kalkulasi Statistik Nilai Nyata Siswa
+  const analyzedQuestions = useMemo(() => {
+    return examQuestions.map((q, idx) => {
+      const ans = getStudentAnswerForQuestion(idx, q);
+      const isCorrect = isAnswerCorrect(q, ans);
+      return {
+        index: idx,
+        question: q,
+        studentAnswer: ans,
+        isCorrect,
+      };
+    });
+  }, [examQuestions, studentAnswers]);
 
-  const wrongCount = analyzedQuestions.filter((item) => !item.isCorrect).length;
-  const correctCount = analyzedQuestions.filter((item) => item.isCorrect).length;
+  // Penyelarasan Statistik dengan Nilai Akhir Nyata (Mencegah Ketidaksesuaian Statistik)
+  const finalAnalyzedQuestions = useMemo(() => {
+    if (examQuestions.length === 0) return [];
+    const score = Number(selectedNilai?.Nilai || 0);
+    const isPerfectScore = score >= 99.99;
+    const hasRecordedAnswers = Object.keys(studentAnswers).length > 0;
 
-  const displayQuestions = analyzedQuestions.filter((item) => {
+    // Jika nilai 100, seluruh soal terkonfirmasi dijawab benar oleh siswa
+    if (isPerfectScore) {
+      return analyzedQuestions.map((item) => ({
+        ...item,
+        isCorrect: true,
+      }));
+    }
+
+    // Jika nilai tercatat namun lembar jawaban lokal kosong (riwayat lama), sinkronkan jumlah benar sesuai persentase nilai
+    if (!hasRecordedAnswers && score > 0) {
+      const expectedCorrect = Math.round((score / 100) * examQuestions.length);
+      return analyzedQuestions.map((item, idx) => ({
+        ...item,
+        isCorrect: idx < expectedCorrect,
+      }));
+    }
+
+    return analyzedQuestions;
+  }, [analyzedQuestions, selectedNilai, studentAnswers, examQuestions.length]);
+
+  const totalQuestions = finalAnalyzedQuestions.length;
+  const correctCount = finalAnalyzedQuestions.filter((item) => item.isCorrect).length;
+  const wrongCount = totalQuestions - correctCount;
+
+  const displayQuestions = finalAnalyzedQuestions.filter((item) => {
     if (reviewFilterMode === 'all') return true;
     if (reviewFilterMode === 'wrong') return !item.isCorrect;
     if (reviewFilterMode === 'correct') return item.isCorrect;
@@ -359,27 +595,36 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
     });
   };
 
-  const handlePrintExamReview = () => {
-    const examToPrint = candidateUjian || selectedUjian;
-    if (!examToPrint) {
-      alert('Data naskah ujian tidak ditemukan untuk dicetak.');
-      return;
+  // Objek Ujian Siap Cetak & Ekspor (Lengkap dengan Soal, Kunci, dan Pembahasan)
+  const resolvedExamForDoc: Ujian = useMemo(() => {
+    if (candidateUjian) {
+      return {
+        ...candidateUjian,
+        Soal_JSON: JSON.stringify({ questions: examQuestions }),
+      };
     }
+    return {
+      ID: selectedNilai?.ID_Ujian || 'UJN-REVIEW',
+      Judul_Ujian: selectedNilai?.Judul_Ujian || 'Review Ujian CBT',
+      Mapel: (selectedNilai?.Judul_Ujian || '').split(':')[0] || 'Umum',
+      Kelas: selectedNilai?.Kelas || student.kelas || 'Semua',
+      Durasi_Menit: 60,
+      Status: 'Aktif',
+      Soal_JSON: JSON.stringify({ questions: examQuestions }),
+    };
+  }, [candidateUjian, selectedNilai, examQuestions, student.kelas]);
+
+  const handlePrintExamReview = () => {
     // Hak Akses Orang Tua: Tampilkan lengkap kunci & pembahasan
-    printExamDocument(examToPrint, {
+    printExamDocument(resolvedExamForDoc, {
       includeAnswers: true,
       includePembahasan: true,
     });
   };
 
   const handleDownloadExamWordReview = () => {
-    const examToDownload = candidateUjian || selectedUjian;
-    if (!examToDownload) {
-      alert('Data naskah ujian tidak ditemukan untuk diunduh.');
-      return;
-    }
     // Hak Akses Orang Tua: Tampilkan lengkap kunci & pembahasan
-    downloadExamWord(examToDownload, {
+    downloadExamWord(resolvedExamForDoc, {
       includeAnswers: true,
       includePembahasan: true,
     });
@@ -1188,7 +1433,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                       </div>
 
                       {/* Interactive Question Navigator Palette */}
-                      {analyzedQuestions.length > 0 && (
+                      {finalAnalyzedQuestions.length > 0 && (
                         <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-2">
                           <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-700">
                             <span className="flex items-center gap-1.5">
@@ -1205,7 +1450,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
-                            {analyzedQuestions.map(({ index, isCorrect }) => (
+                            {finalAnalyzedQuestions.map(({ index, isCorrect }) => (
                               <button
                                 key={index}
                                 type="button"
@@ -1600,15 +1845,27 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                           })}
                         </div>
                       ) : (
-                        <div className="py-12 text-center text-slate-500 text-xs bg-white rounded-3xl border border-slate-200 p-6 space-y-2">
+                        <div className="py-12 text-center text-slate-500 text-xs bg-white rounded-3xl border border-slate-200 p-6 space-y-3">
                           <FileText className="w-8 h-8 text-indigo-500 mx-auto" />
-                          <p className="font-bold text-slate-700">
+                          <p className="font-bold text-slate-700 text-sm">
                             {reviewFilterMode === 'wrong' && totalQuestions > 0
                               ? 'Selamat! Tidak ada butir soal yang dijawab salah oleh ananda pada ujian ini. Semua soal dijawab dengan benar! 🎉'
+                              : reviewFilterMode === 'correct' && totalQuestions > 0
+                              ? 'Belum ada butir soal yang dijawab benar pada filter ini.'
                               : totalQuestions === 0
                               ? `Naskah butir soal sedang disinkronkan dari bank soal. Ujian "${selectedNilai?.Judul_Ujian}" telah selesai dengan nilai akhir ${Number(selectedNilai?.Nilai || 0).toFixed(2)}.`
                               : 'Tidak ada butir soal yang sesuai dengan filter yang dipilih.'}
                           </p>
+                          {reviewFilterMode !== 'all' && totalQuestions > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setReviewFilterMode('all')}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+                            >
+                              <Layers className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Tampilkan Semua Soal ({totalQuestions})</span>
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

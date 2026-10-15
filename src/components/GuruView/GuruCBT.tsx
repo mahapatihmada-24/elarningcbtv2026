@@ -24,6 +24,7 @@ import {
   Copy,
   BookOpen,
   Lightbulb,
+  FileText,
 } from 'lucide-react';
 import {
   Ujian,
@@ -56,6 +57,11 @@ import {
   exportAllExamsSummaryToExcel,
   parseQuestionsFromExcel,
 } from '../../utils/excelExamHelper';
+import {
+  downloadExamWordTemplate,
+  exportQuestionsToWord,
+  parseQuestionsFromWord,
+} from '../../utils/wordExamHelper';
 
 interface GuruCBTProps {
   onShowModal: (modal: Partial<ModalState>) => void;
@@ -211,6 +217,104 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
         isOpen: true,
         title: 'Gagal Ekspor Excel',
         message: err?.message || 'Terjadi kesalahan saat mengunduh file Excel.',
+        type: 'danger',
+      });
+    }
+  };
+
+  const handleImportWordFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const parsed = await parseQuestionsFromWord(file);
+      if (!parsed || parsed.length === 0) {
+        throw new Error('Tidak ada butir soal yang dapat dibaca dari file Word.');
+      }
+      setQuestions(parsed);
+      setCurrentPerQIdx(0);
+      onShowModal({
+        isOpen: true,
+        title: 'Impor Word Berhasil',
+        message: `Berhasil mengimpor ${parsed.length} butir soal dari file Word "${file.name}"! Seluruh tipe soal (PG, PGK Kategori, Menjodohkan/MCMA) telah dimasukkan ke bank soal.`,
+        type: 'success',
+      });
+    } catch (err: any) {
+      onShowModal({
+        isOpen: true,
+        title: 'Gagal Impor Word',
+        message: err?.message || 'Terjadi kendala saat membaca file Word (.docx). Silakan unduh "Format Word" sebagai panduan baku.',
+        type: 'danger',
+      });
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleExportWord = async () => {
+    if (questions.length === 0) {
+      onShowModal({
+        isOpen: true,
+        title: 'Tidak Ada Soal',
+        message: 'Tidak ada butir soal pada formulir aktif untuk diekspor ke Word.',
+        type: 'warning',
+      });
+      return;
+    }
+    try {
+      await exportQuestionsToWord(judul || 'Bank_Soal', questions, schoolProfile);
+      onShowModal({
+        isOpen: true,
+        title: 'Ekspor Word Berhasil',
+        message: `Berhasil mengekspor ${questions.length} butir soal dari "${judul || 'Bank Soal'}" ke dokumen Word (.docx) lengkap dengan kunci jawaban dan pembahasan!`,
+        type: 'success',
+      });
+    } catch (err: any) {
+      onShowModal({
+        isOpen: true,
+        title: 'Gagal Ekspor Word',
+        message: err?.message || 'Terjadi kesalahan saat mengunduh dokumen Word.',
+        type: 'danger',
+      });
+    }
+  };
+
+  const handleExportUjianToWord = async (u: Ujian) => {
+    let questionsToExport: Question[] = [];
+    try {
+      const raw = JSON.parse(u.Soal_JSON || '{}');
+      if (raw.questions && Array.isArray(raw.questions)) {
+        questionsToExport = raw.questions;
+      } else if (Array.isArray(raw)) {
+        questionsToExport = raw;
+      }
+    } catch {
+      questionsToExport = [];
+    }
+
+    if (questionsToExport.length === 0) {
+      onShowModal({
+        isOpen: true,
+        title: 'Tidak Ada Butir Soal',
+        message: `Paket ujian "${u.Judul_Ujian}" belum memiliki butir soal untuk diekspor ke Word.`,
+        type: 'warning',
+      });
+      return;
+    }
+
+    try {
+      await exportQuestionsToWord(u.Judul_Ujian || 'Bank_Soal', questionsToExport, schoolProfile);
+      onShowModal({
+        isOpen: true,
+        title: 'Ekspor Word Berhasil',
+        message: `Berhasil mengekspor ${questionsToExport.length} butir soal dari ujian "${u.Judul_Ujian}" ke dokumen Word (.docx).`,
+        type: 'success',
+      });
+    } catch (err: any) {
+      onShowModal({
+        isOpen: true,
+        title: 'Gagal Ekspor Word',
+        message: err?.message || 'Terjadi kesalahan saat mengunduh dokumen Word.',
         type: 'danger',
       });
     }
@@ -960,8 +1064,8 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
               </button>
             </div>
 
-            {/* Excel Actions & Kisi-Kisi Generator */}
-            <div className="flex items-center gap-1.5">
+            {/* Action Buttons: Kisi-Kisi, Excel, and Word */}
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setIsGenerateSoalModalOpen(true)}
@@ -972,10 +1076,11 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                 <span>Buat dari Kisi-Kisi</span>
               </button>
 
+              {/* Excel Group */}
               <button
                 type="button"
                 onClick={downloadExamExcelTemplate}
-                className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-bold shadow-xs transition flex items-center gap-1"
+                className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-bold shadow-xs transition flex items-center gap-1 cursor-pointer"
                 title="Unduh Format Excel Soal"
               >
                 <Download className="w-3 h-3 text-emerald-600" />
@@ -999,11 +1104,46 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
               <button
                 type="button"
                 onClick={handleExportExcel}
-                className="px-2.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white text-xs font-bold shadow-xs transition flex items-center gap-1"
+                className="px-2.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:scale-95 text-white text-xs font-bold shadow-xs transition flex items-center gap-1 cursor-pointer"
                 title="Ekspor Seluruh Butir Soal ke Excel (.xlsx)"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-200" />
                 <span>Ekspor Excel</span>
+              </button>
+
+              {/* Word Group (Berdampingan dengan Excel untuk seluruh jenis soal) */}
+              <button
+                type="button"
+                onClick={downloadExamWordTemplate}
+                className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-blue-50 text-blue-800 border border-blue-300 text-xs font-bold shadow-xs transition flex items-center gap-1 cursor-pointer"
+                title="Unduh Format & Templat Dokumen Word (.docx) Soal (PG, PGK Kategori, Menjodohkan/MCMA)"
+              >
+                <Download className="w-3 h-3 text-blue-600" />
+                <span className="hidden sm:inline">Format Word</span>
+              </button>
+
+              <label
+                className="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold shadow-xs transition flex items-center gap-1 cursor-pointer"
+                title="Unggah dan Impor Kumpulan Soal dari Berkas Word (.docx)"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-100" />
+                <span>Impor Word</span>
+                <input
+                  type="file"
+                  accept=".docx"
+                  onChange={handleImportWordFile}
+                  className="hidden"
+                />
+              </label>
+
+              <button
+                type="button"
+                onClick={handleExportWord}
+                className="px-2.5 py-1.5 rounded-xl bg-blue-700 hover:bg-blue-800 active:scale-95 text-white text-xs font-bold shadow-xs transition flex items-center gap-1 cursor-pointer"
+                title="Ekspor Seluruh Butir Soal ke Dokumen Word (.docx)"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-200" />
+                <span>Ekspor Word</span>
               </button>
             </div>
           </div>
@@ -1292,11 +1432,19 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                       </button>
                       <button
                         onClick={() => handleExportUjianToExcel(u)}
-                        className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 transition flex items-center gap-1.5 font-bold text-xs shadow-xs shrink-0"
+                        className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300 transition flex items-center gap-1.5 font-bold text-xs shadow-xs shrink-0 cursor-pointer"
                         title="Ekspor Seluruh Butir Soal ke Excel (.xlsx)"
                       >
                         <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
                         <span>Ekspor Excel</span>
+                      </button>
+                      <button
+                        onClick={() => handleExportUjianToWord(u)}
+                        className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-800 hover:bg-blue-100 border border-blue-300 transition flex items-center gap-1.5 font-bold text-xs shadow-xs shrink-0 cursor-pointer"
+                        title="Ekspor Seluruh Butir Soal ke Word (.docx)"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Ekspor Word</span>
                       </button>
                       <button
                         onClick={() => setReviewModalExam(u)}
