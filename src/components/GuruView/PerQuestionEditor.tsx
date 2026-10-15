@@ -23,6 +23,8 @@ import {
   KeyRound,
   Lightbulb,
   Check,
+  Save,
+  Loader2,
 } from 'lucide-react';
 import { Question, QuestionType, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, getQuestionImages } from '../../types';
 import { MathRenderer } from '../MathRenderer';
@@ -42,6 +44,9 @@ interface PerQuestionEditorProps {
   onSwitchToAllView: () => void;
   onViewImage: (url: string, title?: string) => void;
   onOpenGenerateKisiKisi?: () => void;
+  onSaveSingleQuestion?: (index: number, question: Question) => Promise<boolean | void> | void;
+  isSavingQuestion?: boolean;
+  savedQuestionIdx?: number | null;
 }
 
 export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
@@ -57,6 +62,9 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
   onSwitchToAllView,
   onViewImage,
   onOpenGenerateKisiKisi,
+  onSaveSingleQuestion,
+  isSavingQuestion,
+  savedQuestionIdx,
 }) => {
   if (questions.length === 0) {
     return (
@@ -90,6 +98,26 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pembahasanRef = useRef<HTMLTextAreaElement>(null);
   const qImages = getQuestionImages(q);
+
+  const [internalSaving, setInternalSaving] = React.useState(false);
+  const [internalSaved, setInternalSaved] = React.useState(false);
+
+  const isSavingThisQ = Boolean(isSavingQuestion || internalSaving);
+  const isThisQSaved = Boolean(savedQuestionIdx === activeIndex || internalSaved);
+
+  const handleSaveQuestion = async () => {
+    if (!onSaveSingleQuestion) return;
+    setInternalSaving(true);
+    try {
+      await onSaveSingleQuestion(activeIndex, q);
+      setInternalSaved(true);
+      setTimeout(() => setInternalSaved(false), 3000);
+    } catch (e) {
+      console.warn('Gagal menyimpan soal:', e);
+    } finally {
+      setInternalSaving(false);
+    }
+  };
 
   const handleFieldChange = (field: string, val: unknown) => {
     onUpdateQuestion(activeIndex, {
@@ -440,6 +468,38 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
                 className="w-14 text-center p-1.5 rounded-lg border border-slate-300 font-bold text-xs"
               />
             </label>
+
+            {/* Tombol Simpan Per Butir Soal Khusus di Top Card Bar */}
+            {onSaveSingleQuestion && (
+              <button
+                type="button"
+                onClick={handleSaveQuestion}
+                disabled={isSavingThisQ}
+                className={`px-3.5 py-1.5 rounded-xl font-bold text-xs shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer ${
+                  isThisQSaved
+                    ? 'bg-emerald-700 text-white ring-2 ring-emerald-300'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200'
+                } disabled:opacity-60`}
+                title="Simpan Butir Soal Ini Sekarang (Asynchronous - Tetap di Halaman Ini)"
+              >
+                {isSavingThisQ ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Menyimpan...</span>
+                  </>
+                ) : isThisQSaved ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                    <span>Tersimpan! ✓</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Simpan Soal Ini</span>
+                  </>
+                )}
+              </button>
+            )}
 
             <button
               type="button"
@@ -1218,17 +1278,48 @@ Langkah pengerjaan:
             type="button"
             disabled={activeIndex === 0}
             onClick={() => onSelectIndex(activeIndex - 1)}
-            className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4" />
             <span>Soal Sebelumnya</span>
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {onSaveSingleQuestion && (
+              <button
+                type="button"
+                onClick={handleSaveQuestion}
+                disabled={isSavingThisQ}
+                className={`px-4 py-2 rounded-xl font-bold text-xs shadow-sm transition active:scale-95 flex items-center gap-1.5 cursor-pointer ${
+                  isThisQSaved
+                    ? 'bg-emerald-700 text-white ring-2 ring-emerald-300'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                } disabled:opacity-60`}
+                title="Simpan Butir Soal Ini secara Asynchronous Tanpa Menutup Form"
+              >
+                {isSavingThisQ ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Menyimpan Soal...</span>
+                  </>
+                ) : isThisQSaved ? (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                    <span>Soal #{activeIndex + 1} Tersimpan! ✓</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3.5 h-3.5" />
+                    <span>Simpan Butir Soal #{activeIndex + 1}</span>
+                  </>
+                )}
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => onAddQuestion('pg')}
-              className="px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition flex items-center gap-1"
+              className="px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Tambah Soal</span>
@@ -1239,7 +1330,7 @@ Langkah pengerjaan:
             type="button"
             disabled={activeIndex === questions.length - 1}
             onClick={() => onSelectIndex(activeIndex + 1)}
-            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
+            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed shadow-md cursor-pointer"
           >
             <span>Soal Selanjutnya</span>
             <ChevronRight className="w-4 h-4" />

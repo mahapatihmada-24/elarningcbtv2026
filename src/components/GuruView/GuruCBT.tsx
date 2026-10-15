@@ -25,6 +25,8 @@ import {
   BookOpen,
   Lightbulb,
   FileText,
+  Save,
+  Loader2,
 } from 'lucide-react';
 import {
   Ujian,
@@ -105,6 +107,11 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
   const [questions, setQuestions] = useState<Question[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+
+  // State untuk penyimpanan per butir soal (asynchronous tanpa keluar formulir)
+  const [savingSingleQIdx, setSavingSingleQIdx] = useState<number | null>(null);
+  const [savedSingleQIdx, setSavedSingleQIdx] = useState<number | null>(null);
+  const [singleSaveToast, setSingleSaveToast] = useState<{ title: string; message: string } | null>(null);
 
   // School profile & Kisi-Kisi states
   const [schoolProfile, setSchoolProfile] = useState<SchoolProfile | null>(null);
@@ -651,6 +658,72 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
     reader.readAsDataURL(file);
   };
 
+  // Penyimpanan Per Butir Soal secara Asynchronous tanpa menutup sesi editor
+  const handleSaveSingleQuestion = async (idx: number, updatedQ?: Question) => {
+    const targetQ = updatedQ || questions[idx];
+    if (!targetQ) return;
+
+    setSavingSingleQIdx(idx);
+
+    // Pastikan state pertanyaan ter-update
+    const updatedQuestions = [...questions];
+    updatedQuestions[idx] = targetQ;
+    setQuestions(updatedQuestions);
+
+    const questionTypeLabel =
+      targetQ.type === 'pg'
+        ? 'Pilihan Ganda'
+        : targetQ.type === 'pgk_kategori'
+        ? 'PGK Kategori / Menjodohkan'
+        : 'PGK Centang';
+
+    try {
+      const res = await api.saveSingleQuestionDraft(
+        id || undefined,
+        idx,
+        targetQ,
+        updatedQuestions,
+        {
+          Judul_Ujian: judul.trim() || 'Draft Ujian Baru',
+          Mapel: mapel.trim() || 'Umum',
+          Kelas: kelas.trim() || 'Semua',
+          Durasi_Menit: Math.max(1, Number(durasi) || 1),
+          Token_Ujian: tokenUjian.trim() || undefined,
+          Jadwal_Mulai: jadwalMulai || undefined,
+          Jadwal_Selesai: jadwalSelesai || undefined,
+          Kisi_Kisi_JSON: currentKisiKisi ? JSON.stringify(currentKisiKisi) : undefined,
+          Status: 'Aktif',
+        }
+      );
+
+      // Jika exam belum memiliki ID, ikat ID yang baru dibuat agar update berikutnya terus ke paket yang sama
+      if (!id && res.id) {
+        setId(res.id);
+      }
+
+      setSavedSingleQIdx(idx);
+      setSingleSaveToast({
+        title: `Butir Soal #${idx + 1} Tersimpan! ✓`,
+        message: `Soal ${questionTypeLabel} No. ${idx + 1} berhasil disimpan ke database/penyimpanan. Anda dapat langsung melanjutkan menulis soal berikutnya dengan nyaman!`,
+      });
+
+      setTimeout(() => setSavedSingleQIdx(null), 3000);
+      setTimeout(() => setSingleSaveToast(null), 4000);
+
+      // Sinkronkan daftar ujian di latar belakang
+      api.getUjianList('Semua', 'guru').then((list) => setUjianList(list)).catch(() => {});
+    } catch (err) {
+      console.warn('Gagal menyimpan butir soal:', err);
+      setSingleSaveToast({
+        title: `Tersimpan Sementara di Cache Lokal`,
+        message: `Butir soal No. ${idx + 1} diamankan di memori peramban. Sesi tetap aktif dan Anda dapat melanjutkan menulis soal.`,
+      });
+      setTimeout(() => setSingleSaveToast(null), 4000);
+    } finally {
+      setSavingSingleQIdx(null);
+    }
+  };
+
   const handleSaveUjian = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!judul.trim() || questions.length === 0) {
@@ -676,8 +749,9 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
     };
 
     setIsSaving(true);
+    const targetExamId = id || undefined;
     const res = await api.saveUjian({
-      ID: id || undefined,
+      ID: targetExamId,
       Judul_Ujian: judul.trim(),
       Mapel: mapel.trim(),
       Kelas: kelas.trim(),
@@ -687,15 +761,22 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
       Token_Ujian: tokenUjian.trim() || undefined,
       Kisi_Kisi_JSON: currentKisiKisi ? JSON.stringify(currentKisiKisi) : undefined,
       soal: payload,
-      Status: 'Aktif',
+      Status: 'Aktif', // Otomatisasi Status Aktif (Launching)
     });
+
+    // Otomatisasi Status Aktif (Launching) pada database/server untuk ID paket ujian
+    const activeExamId = targetExamId || (res as any)?.id;
+    if (activeExamId) {
+      await api.toggleStatusUjian(activeExamId, 'Aktif').catch(() => {});
+    }
+
     setIsSaving(false);
 
     if (res.success) {
       onShowModal({
         isOpen: true,
-        title: 'Berhasil Diterbitkan',
-        message: res.message || 'Ujian CBT telah berhasil disimpan dan disinkronkan.',
+        title: 'Paket Ujian Aktif & Diterbitkan! 🚀',
+        message: `Paket soal "${judul.trim()}" (${questions.length} butir soal) berhasil disimpan dan statusnya otomatis AKTIF / LAUNCHING. Paket soal kini langsung siap diakses dan dikerjakan oleh siswa di Beranda CBT!`,
         type: 'success',
         isConfirm: false,
       });
@@ -704,8 +785,8 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
     } else {
       onShowModal({
         isOpen: true,
-        title: 'Gagal',
-        message: res.message || 'Terjadi kesalahan.',
+        title: 'Gagal Menyimpan Ujian',
+        message: res.message || 'Terjadi kesalahan saat menyimpan paket ujian.',
         type: 'error',
         isConfirm: false,
       });
@@ -1167,6 +1248,9 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
               onSwitchToAllView={() => setEditMode('semua')}
               onViewImage={onViewImage}
               onOpenGenerateKisiKisi={() => setIsGenerateSoalModalOpen(true)}
+              onSaveSingleQuestion={handleSaveSingleQuestion}
+              isSavingQuestion={savingSingleQIdx === currentPerQIdx}
+              savedQuestionIdx={savedSingleQIdx}
             />
           ) : (
             /* MODE TAMPILKAN SEMUA SOAL */
@@ -1216,6 +1300,36 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {/* Tombol Simpan Per Butir Soal di Card Daftar Panjang */}
+                      <button
+                        type="button"
+                        onClick={() => handleSaveSingleQuestion(qIdx, q)}
+                        disabled={savingSingleQIdx === qIdx}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs ${
+                          savedSingleQIdx === qIdx
+                            ? 'bg-emerald-700 text-white ring-2 ring-emerald-300'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        } disabled:opacity-50`}
+                        title="Simpan Butir Soal Ini Sekarang (Asynchronous Tanpa Menutup Sesi)"
+                      >
+                        {savingSingleQIdx === qIdx ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>Menyimpan...</span>
+                          </>
+                        ) : savedSingleQIdx === qIdx ? (
+                          <>
+                            <CheckCircle2 className="w-3 h-3 text-white" />
+                            <span>Tersimpan! ✓</span>
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-3 h-3 text-white" />
+                            <span>Simpan Soal</span>
+                          </>
+                        )}
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => {
@@ -1230,7 +1344,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                         <button
                           type="button"
                           onClick={() => removeQuestion(qIdx)}
-                          className="p-1 rounded text-rose-500 hover:bg-rose-50"
+                          className="p-1 rounded text-rose-500 hover:bg-rose-50 cursor-pointer"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1297,14 +1411,27 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
             </div>
           )}
 
-          {/* Submit Button */}
-          <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
+          {/* Submit Button (Otomatisasi Status Aktif / Launching) */}
+          <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <span className="text-[11px] text-slate-500 font-medium">
+              💡 Tombol <strong>Simpan Perubahan</strong> otomatis mengatur paket ujian menjadi <strong>Status Aktif (Launching)</strong> sehingga siswa langsung dapat mengaksesnya.
+            </span>
             <button
               type="submit"
               disabled={isSaving}
-              className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs sm:text-sm shadow-md transition disabled:opacity-50"
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 active:scale-95 text-white font-black text-xs sm:text-sm shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shrink-0"
             >
-              {isSaving ? 'Menyimpan Ujian...' : id ? 'Simpan Perubahan' : 'Terbitkan Ujian CBT'}
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <span>Menyimpan & Mengaktifkan Ujian...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  <span>{id ? 'Simpan Perubahan & Aktifkan (Launching)' : 'Terbitkan & Aktifkan Ujian CBT (Launching)'}</span>
+                </>
+              )}
             </button>
           </div>
         </form>
@@ -1562,6 +1689,19 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
           userRole="guru"
           isTeacher={true}
         />
+      )}
+
+      {/* Floating Notification Toast for Asynchronous Single-Question Save */}
+      {singleSaveToast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 bg-slate-900/95 text-white rounded-2xl shadow-2xl backdrop-blur-md border border-emerald-500/50 animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+          <div className="text-xs max-w-sm">
+            <p className="font-black text-emerald-400">{singleSaveToast.title}</p>
+            <p className="text-slate-200 text-[11px] leading-relaxed">{singleSaveToast.message}</p>
+          </div>
+        </div>
       )}
     </div>
   );

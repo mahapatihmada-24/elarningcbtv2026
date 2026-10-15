@@ -1247,7 +1247,7 @@ export const api = {
       .reverse();
   },
 
-  async saveUjian(ujianData: Partial<Ujian> & { soal: unknown }): Promise<ApiResponse> {
+  async saveUjian(ujianData: Partial<Ujian> & { soal: unknown }): Promise<ApiResponse & { id?: string }> {
     const list = getLocalUjian();
     const soalJsonStr =
       typeof ujianData.soal === 'string' ? ujianData.soal : JSON.stringify(ujianData.soal);
@@ -1271,15 +1271,17 @@ export const api = {
             Jadwal_Selesai: ujianData.Jadwal_Selesai || '',
             Kisi_Kisi_JSON: ujianData.Kisi_Kisi_JSON || '',
             Soal_JSON: soalJsonStr,
-            Status: ujianData.Status || 'Aktif',
+            Status: 'Aktif', // Otomatisasi Status Aktif (Launching)
           };
           const res = await firebaseService.updateUjian(payload);
           const idx = list.findIndex((u) => u.ID === ujianData.ID);
           if (idx !== -1) list[idx] = payload;
           saveLocalUjian(list);
-          return res;
+          return { ...res, id: payload.ID };
         } else {
-          const res = await firebaseService.addUjian({
+          const newExamId = 'EXAM-' + Date.now();
+          const payload: Ujian = {
+            ID: newExamId,
             Judul_Ujian: ujianData.Judul_Ujian || 'Ujian Baru',
             Mapel: ujianData.Mapel || 'Umum',
             Kelas: ujianData.Kelas || 'Semua',
@@ -1289,8 +1291,9 @@ export const api = {
             Jadwal_Selesai: ujianData.Jadwal_Selesai || '',
             Kisi_Kisi_JSON: ujianData.Kisi_Kisi_JSON || '',
             Soal_JSON: soalJsonStr,
-            Status: ujianData.Status || 'Aktif',
-          });
+            Status: 'Aktif', // Otomatisasi Status Aktif (Launching)
+          };
+          const res = await firebaseService.addUjian(payload);
           try {
             const allUj = await firebaseService.getUjianList();
             if (allUj && allUj.length > 0) {
@@ -1299,7 +1302,7 @@ export const api = {
           } catch (fetchErr) {
             console.warn('Could not refresh exam list from Firebase immediately:', fetchErr);
           }
-          return res;
+          return { ...res, id: newExamId };
         }
       } catch (err) {
         console.warn('Firebase saveUjian error:', err);
@@ -1319,10 +1322,10 @@ export const api = {
             jadwal_mulai: ujianData.Jadwal_Mulai || '',
             jadwal_selesai: ujianData.Jadwal_Selesai || '',
             soal: ujianData.soal,
-            status: ujianData.Status || 'Aktif',
+            status: 'Aktif', // Otomatisasi Status Aktif (Launching)
           },
         ]);
-        if (res && res.success) return res;
+        if (res && res.success) return { ...res, id: ujianData.ID };
       } catch (err) {
         console.warn('GAS saveUjian error:', err);
       }
@@ -1342,15 +1345,15 @@ export const api = {
           Jadwal_Selesai: ujianData.Jadwal_Selesai !== undefined ? ujianData.Jadwal_Selesai : list[idx].Jadwal_Selesai,
           Kisi_Kisi_JSON: ujianData.Kisi_Kisi_JSON !== undefined ? ujianData.Kisi_Kisi_JSON : list[idx].Kisi_Kisi_JSON,
           Soal_JSON: soalJsonStr,
-          Status: ujianData.Status || list[idx].Status,
+          Status: 'Aktif', // Otomatisasi Status Aktif (Launching)
         };
         saveLocalUjian(list);
-        return { success: true, message: 'Ujian CBT berhasil diperbarui!' };
+        return { success: true, message: 'Ujian CBT berhasil diperbarui dan berstatus Aktif (Launching)!', id: ujianData.ID };
       }
     }
 
     const newUjian: Ujian = {
-      ID: 'EXAM-' + Date.now(),
+      ID: ujianData.ID || 'EXAM-' + Date.now(),
       Judul_Ujian: ujianData.Judul_Ujian || 'Ujian Baru',
       Mapel: ujianData.Mapel || 'Matematika',
       Kelas: ujianData.Kelas || '6A',
@@ -1360,11 +1363,67 @@ export const api = {
       Jadwal_Selesai: ujianData.Jadwal_Selesai || '',
       Kisi_Kisi_JSON: ujianData.Kisi_Kisi_JSON || '',
       Soal_JSON: soalJsonStr,
-      Status: (ujianData.Status as 'Aktif' | 'Non-Aktif') || 'Aktif',
+      Status: 'Aktif', // Otomatisasi Status Aktif (Launching)
     };
     list.push(newUjian);
     saveLocalUjian(list);
-    return { success: true, message: 'Ujian CBT berhasil diterbitkan!' };
+    return { success: true, message: 'Ujian CBT berhasil diterbitkan dan berstatus Aktif (Launching)!', id: newUjian.ID };
+  },
+
+  /**
+   * Simpan Draft Per Butir Soal secara Asynchronous tanpa menutup sesi editor
+   */
+  async saveSingleQuestionDraft(
+    examId: string | undefined,
+    questionIndex: number,
+    question: any,
+    allQuestions: any[],
+    examMeta?: Partial<Ujian>
+  ): Promise<{ success: boolean; id?: string; message: string }> {
+    const list = getLocalUjian();
+    const updatedQuestions = [...allQuestions];
+    updatedQuestions[questionIndex] = question;
+
+    // Simpan cepat ke localStorage cache draft
+    try {
+      localStorage.setItem(`cbt_draft_q_${examId || 'current'}`, JSON.stringify(updatedQuestions));
+      localStorage.setItem(
+        'cbt_last_saved_question',
+        JSON.stringify({
+          examId,
+          index: questionIndex,
+          timestamp: new Date().toISOString(),
+          type: question.type,
+        })
+      );
+    } catch {}
+
+    const payload = {
+      config: { sesi: 'Semua', max_attempts: 1, acak_soal: true, acak_opsi: true },
+      questions: updatedQuestions,
+    };
+
+    if (examId) {
+      const res = await this.saveUjian({
+        ID: examId,
+        ...(examMeta || {}),
+        soal: payload,
+        Status: 'Aktif',
+      });
+      return { success: true, id: examId, message: `Butir soal No. ${questionIndex + 1} berhasil disimpan ke database!` };
+    } else {
+      const tempId = 'EXAM-' + Date.now();
+      const res = await this.saveUjian({
+        ID: tempId,
+        Judul_Ujian: examMeta?.Judul_Ujian || 'Draft Ujian Baru',
+        Mapel: examMeta?.Mapel || 'Umum',
+        Kelas: examMeta?.Kelas || 'Semua',
+        Durasi_Menit: examMeta?.Durasi_Menit || 60,
+        soal: payload,
+        Status: 'Aktif',
+      });
+      return { success: true, id: tempId, message: `Butir soal No. ${questionIndex + 1} berhasil disimpan ke paket ujian!` };
+    }
   },
 
   async toggleStatusUjian(id: string, newStatus: 'Aktif' | 'Non-Aktif'): Promise<ApiResponse> {
