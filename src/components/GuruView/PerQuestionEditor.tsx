@@ -469,38 +469,6 @@ export const PerQuestionEditor: React.FC<PerQuestionEditorProps> = ({
               />
             </label>
 
-            {/* Tombol Simpan Per Butir Soal Khusus di Top Card Bar */}
-            {onSaveSingleQuestion && (
-              <button
-                type="button"
-                onClick={handleSaveQuestion}
-                disabled={isSavingThisQ}
-                className={`px-3.5 py-1.5 rounded-xl font-bold text-xs shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer ${
-                  isThisQSaved
-                    ? 'bg-emerald-700 text-white ring-2 ring-emerald-300'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200'
-                } disabled:opacity-60`}
-                title="Simpan Butir Soal Ini Sekarang (Asynchronous - Tetap di Halaman Ini)"
-              >
-                {isSavingThisQ ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Menyimpan...</span>
-                  </>
-                ) : isThisQSaved ? (
-                  <>
-                    <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                    <span>Tersimpan! ✓</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-3.5 h-3.5" />
-                    <span>Simpan Soal Ini</span>
-                  </>
-                )}
-              </button>
-            )}
-
             <button
               type="button"
               onClick={() => onDuplicateQuestion(activeIndex)}
