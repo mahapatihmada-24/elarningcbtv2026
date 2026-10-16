@@ -438,9 +438,27 @@ export async function saveUjianViaRest(ujian: Ujian): Promise<boolean> {
     };
     const body = JSON.stringify(payload);
     const headers = { 'Content-Type': 'application/json' };
-    const urlUjian = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/ujian/${cleanId}?key=${cfg.apiKey}`;
-    const res = await fetch(urlUjian, { method: 'PATCH', headers, body });
-    return res.ok;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    try {
+      const urlPatch = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/ujian/${cleanId}?key=${cfg.apiKey}`;
+      const res = await fetch(urlPatch, { method: 'PATCH', headers, body, signal: controller.signal });
+      if (res.ok) {
+        clearTimeout(timeoutId);
+        return true;
+      }
+
+      // Jika dokumen belum ada (404), buat dokumen baru via POST
+      const urlCreate = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/ujian?documentId=${cleanId}&key=${cfg.apiKey}`;
+      const resCreate = await fetch(urlCreate, { method: 'POST', headers, body, signal: controller.signal });
+      clearTimeout(timeoutId);
+      return resCreate.ok;
+    } catch {
+      clearTimeout(timeoutId);
+      return false;
+    }
   } catch (e) {
     console.warn('[REST API] Gagal kirim ujian via REST:', e);
     return false;
@@ -452,8 +470,11 @@ export async function getUjianListViaRest(): Promise<Ujian[]> {
   try {
     const cfg = getActiveFirebaseConfig();
     if (!cfg.projectId || !cfg.apiKey) return [];
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
     const url = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/ujian?pageSize=300&key=${cfg.apiKey}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
     if (!res.ok) return [];
     const data = await res.json();
     if (Array.isArray(data.documents)) {
@@ -597,7 +618,7 @@ export const firebaseService = {
       const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.UJIAN)), 8000);
       const list: Ujian[] = [];
       snap.forEach((d) => {
-        list.push(normalizeUjian(d.data()));
+        list.push(normalizeUjian({ ...d.data(), ID: d.id, id: d.id }));
       });
       if (list.length > 0) return list;
     } catch (err) {

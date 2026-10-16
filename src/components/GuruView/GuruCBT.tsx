@@ -40,7 +40,7 @@ import {
   KisiKisiItem,
   SchoolProfile,
 } from '../../types';
-import { api } from '../../services/api';
+import { api, sortExamsNewestFirst } from '../../services/api';
 import { ModalState } from '../ConfirmModal';
 import { MathRenderer } from '../MathRenderer';
 import { BulkQuestionModal } from './BulkQuestionModal';
@@ -413,7 +413,30 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
         api.getMasterKelas(),
         api.getSchoolProfile().catch(() => null),
       ]);
-      setUjianList(uList || []);
+      setUjianList((prev) => {
+        const remoteArr = uList || [];
+        const mergedMap = new Map<string, Ujian>();
+        remoteArr.forEach((u) => {
+          if (u && u.ID) mergedMap.set(u.ID, u);
+        });
+        prev.forEach((p) => {
+          if (p && p.ID) {
+            const existing = mergedMap.get(p.ID);
+            if (!existing) {
+              mergedMap.set(p.ID, p);
+            } else {
+              try {
+                const existingCount = JSON.parse(existing.Soal_JSON || '{}')?.questions?.length || 0;
+                const localCount = JSON.parse(p.Soal_JSON || '{}')?.questions?.length || 0;
+                if (localCount > existingCount) {
+                  mergedMap.set(p.ID, p);
+                }
+              } catch {}
+            }
+          }
+        });
+        return sortExamsNewestFirst(Array.from(mergedMap.values()));
+      });
       if (sProfile) setSchoolProfile(sProfile);
       if (Array.isArray(mList) && mList.length > 0) {
         setMapelList(mList);
@@ -854,26 +877,22 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
           Status: 'Aktif',
         };
 
-        // Langsung masukkan ke state ujianList seketika agar langsung tampil di Bank Paket Ujian tanpa jeda
+        // Langsung masukkan ke state ujianList seketika di posisi teratas agar langsung tampil di Bank Paket Ujian
         setUjianList((prev) => {
-          const exists = prev.some((u) => u.ID === savedExam.ID);
-          if (exists) {
-            return prev.map((u) => (u.ID === savedExam.ID ? savedExam : u));
-          }
-          return [savedExam, ...prev];
+          const filtered = prev.filter((u) => u.ID !== savedExam.ID);
+          return [savedExam, ...filtered];
         });
 
-        // Bersihkan draft aktif karena telah sukses disimpan dan diterbitkan
+        // Simpan cadangan permanen naskah butir soal agar tidak pernah hilang
         try {
-          localStorage.removeItem('cbt_active_editor_draft');
-          localStorage.removeItem(`cbt_draft_q_${targetExamId || 'current'}`);
+          localStorage.setItem(`cbt_backup_exam_${savedExam.ID}`, JSON.stringify(savedExam));
+          localStorage.setItem('cbt_last_saved_exam_backup', JSON.stringify(savedExam));
         } catch {}
-        setRecoverableDraft(null);
 
         onShowModal({
           isOpen: true,
           title: 'Paket Ujian Aktif & Diterbitkan! 🚀',
-          message: `Paket soal "${judul.trim()}" (${questions.length} butir soal) berhasil disimpan dan diterbitkan ke Bank Paket Ujian dengan status otomatis AKTIF / LAUNCHING! Siswa kini langsung dapat mengaksesnya di Beranda CBT.`,
+          message: `Paket soal "${judul.trim()}" (${questions.length} butir soal) berhasil disimpan dan resmi masuk ke Bank Paket Ujian dengan status otomatis AKTIF / LAUNCHING! Siswa kini langsung dapat mengaksesnya di Beranda CBT.`,
           type: 'success',
           isConfirm: false,
         });

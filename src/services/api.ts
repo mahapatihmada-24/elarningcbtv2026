@@ -323,6 +323,20 @@ function saveLocalMateri(materi: Materi[]) {
   safeSetItem(STORAGE_KEY_MATERI, JSON.stringify(materi.map(normalizeMateri)));
 }
 
+export function sortExamsNewestFirst(exams: Ujian[]): Ujian[] {
+  if (!Array.isArray(exams)) return [];
+  return [...exams].sort((a, b) => {
+    const extractTime = (id: string = '') => {
+      const match = id.match(/\d{10,}/);
+      return match ? Number(match[0]) : 0;
+    };
+    const aTime = extractTime(a.ID);
+    const bTime = extractTime(b.ID);
+    if (aTime && bTime && aTime !== bTime) return bTime - aTime;
+    return String(b.ID || '').localeCompare(String(a.ID || ''));
+  });
+}
+
 let inMemoryUjianList: Ujian[] | null = null;
 
 function getLocalUjian(): Ujian[] {
@@ -1161,122 +1175,91 @@ export const api = {
     const isAllClasses = !cleanTarget || cleanTarget === 'all' || cleanTarget === 'semua';
     const isPrivileged = role === 'guru' || role === 'admin';
 
+    let remoteList: Ujian[] | null = null;
+
     if (currentDataSource === 'FIREBASE' && !isFirestoreOffline()) {
       try {
         const allUjian = await firebaseService.getUjianList();
         if (Array.isArray(allUjian) && allUjian.length > 0) {
-          // Merge cerdas dengan list lokal agar naskah soal lokal tidak terhapus
-          const localList = getLocalUjian();
-          const mergedMap = new Map<string, Ujian>();
-          allUjian.forEach((u) => {
-            if (u && u.ID) mergedMap.set(u.ID, normalizeUjian(u));
-          });
-          localList.forEach((localU) => {
-            if (localU && localU.ID) {
-              const remoteU = mergedMap.get(localU.ID);
-              if (!remoteU) {
-                mergedMap.set(localU.ID, localU);
-              } else {
-                try {
-                  const remoteParsed = JSON.parse(remoteU.Soal_JSON || '{}');
-                  const localParsed = JSON.parse(localU.Soal_JSON || '{}');
-                  const remoteCount = Array.isArray(remoteParsed.questions)
-                    ? remoteParsed.questions.length
-                    : Array.isArray(remoteParsed)
-                    ? remoteParsed.length
-                    : 0;
-                  const localCount = Array.isArray(localParsed.questions)
-                    ? localParsed.questions.length
-                    : Array.isArray(localParsed)
-                    ? localParsed.length
-                    : 0;
-                  if (localCount > remoteCount) {
-                    mergedMap.set(localU.ID, localU);
-                  }
-                } catch {}
-              }
-            }
-          });
-          const merged = Array.from(mergedMap.values());
-          saveLocalUjian(merged);
-          if (isPrivileged) {
-            if (isAllClasses) return [...merged].reverse();
-            return merged
-              .filter(
-                (u) =>
-                  u.Kelas === 'Semua' ||
-                  (u.Kelas || '').toLowerCase() === cleanTarget
-              )
-              .reverse();
-          }
-          if (isAllClasses) {
-            return merged.filter((u) => u.Status === 'Aktif').reverse();
-          }
-          return merged
-            .filter(
-              (u) =>
-                u.Status === 'Aktif' &&
-                (u.Kelas === 'Semua' ||
-                  (u.Kelas || '').toLowerCase() === cleanTarget)
-            )
-            .reverse();
+          remoteList = allUjian;
         }
       } catch (err) {
         console.warn('Firebase getUjianList error, fallback ke penyimpanan lokal:', err);
       }
     }
 
-    if (currentDataSource === 'GAS') {
+    if (!remoteList && currentDataSource === 'GAS') {
       try {
         const res = await callGasServer<Ujian[]>('getUjianList', [targetKelas, role]);
         if (Array.isArray(res)) {
-          const normalized = res.map(normalizeUjian);
-          saveLocalUjian(normalized);
-          if (isPrivileged) {
-            if (isAllClasses) return normalized;
-            return normalized.filter(
-              (u) =>
-                u.Kelas === 'Semua' ||
-                (u.Kelas || '').toLowerCase() === cleanTarget
-            );
-          }
-          if (isAllClasses) {
-            return normalized.filter((u) => u.Status === 'Aktif');
-          }
-          return normalized.filter(
-            (u) =>
-              u.Status === 'Aktif' &&
-              (u.Kelas === 'Semua' ||
-                (u.Kelas || '').toLowerCase() === cleanTarget)
-          );
+          remoteList = res.map(normalizeUjian);
         }
       } catch (err) {
         console.warn('GAS getUjianList error, fallback to local:', err);
       }
     }
 
-    const list = getLocalUjian();
+    const localList = getLocalUjian();
+    let finalList: Ujian[];
+
+    if (remoteList && Array.isArray(remoteList) && remoteList.length > 0) {
+      // Merge cerdas dengan list lokal agar naskah soal lokal tidak terhapus
+      const mergedMap = new Map<string, Ujian>();
+      remoteList.forEach((u) => {
+        if (u && u.ID) mergedMap.set(u.ID, normalizeUjian(u));
+      });
+      localList.forEach((localU) => {
+        if (localU && localU.ID) {
+          const remoteU = mergedMap.get(localU.ID);
+          if (!remoteU) {
+            mergedMap.set(localU.ID, localU);
+          } else {
+            try {
+              const remoteParsed = JSON.parse(remoteU.Soal_JSON || '{}');
+              const localParsed = JSON.parse(localU.Soal_JSON || '{}');
+              const remoteCount = Array.isArray(remoteParsed.questions)
+                ? remoteParsed.questions.length
+                : Array.isArray(remoteParsed)
+                ? remoteParsed.length
+                : 0;
+              const localCount = Array.isArray(localParsed.questions)
+                ? localParsed.questions.length
+                : Array.isArray(localParsed)
+                ? localParsed.length
+                : 0;
+              if (localCount > remoteCount) {
+                mergedMap.set(localU.ID, localU);
+              }
+            } catch {}
+          }
+        }
+      });
+      finalList = Array.from(mergedMap.values());
+      saveLocalUjian(finalList);
+    } else {
+      finalList = localList;
+    }
+
+    // Urutkan selalu paket ujian terbaru di paling atas (index 0) berdasarkan timestamp ID
+    finalList = sortExamsNewestFirst(finalList);
+
     if (isPrivileged) {
-      if (isAllClasses) return [...list].reverse();
-      return list
-        .filter(
-          (u) =>
-            u.Kelas === 'Semua' ||
-            (u.Kelas || '').toLowerCase() === cleanTarget
-        )
-        .reverse();
+      if (isAllClasses) return finalList;
+      return finalList.filter(
+        (u) =>
+          u.Kelas === 'Semua' ||
+          (u.Kelas || '').toLowerCase() === cleanTarget
+      );
     }
     if (isAllClasses) {
-      return list.filter((u) => u.Status === 'Aktif').reverse();
+      return finalList.filter((u) => u.Status === 'Aktif');
     }
-    return list
-      .filter(
-        (u) =>
-          u.Status === 'Aktif' &&
-          (u.Kelas === 'Semua' ||
-            (u.Kelas || '').toLowerCase() === cleanTarget)
-      )
-      .reverse();
+    return finalList.filter(
+      (u) =>
+        u.Status === 'Aktif' &&
+        (u.Kelas === 'Semua' ||
+          (u.Kelas || '').toLowerCase() === cleanTarget)
+    );
   },
 
   async saveUjian(ujianData: Partial<Ujian> & { soal: unknown }): Promise<ApiResponse & { id?: string; ujian?: Ujian }> {
@@ -1289,7 +1272,7 @@ export const api = {
         ? Number(ujianData.Durasi_Menit)
         : 60;
 
-    const examId = ujianData.ID || 'EXAM-' + Date.now();
+    const examId = ujianData.ID || 'UJN-' + Date.now();
     const payload: Ujian = {
       ID: examId,
       Judul_Ujian: ujianData.Judul_Ujian || 'Ujian Baru',
@@ -1304,14 +1287,15 @@ export const api = {
       Status: 'Aktif', // Otomatisasi Status Aktif (Launching)
     };
 
-    // 1. Simpan seketika ke LocalStorage dan memori internal agar tidak akan pernah hilang
+    // 1. Simpan seketika di posisi TERATAS memori dan local storage agar langsung muncul di bank ujian
     const idx = list.findIndex((u) => u.ID === examId);
     if (idx !== -1) {
       list[idx] = payload;
     } else {
       list.unshift(payload);
     }
-    saveLocalUjian(list);
+    const sortedList = sortExamsNewestFirst(list);
+    saveLocalUjian(sortedList);
 
     // Amankan juga salinan cadangan instan khusus recovery
     try {
@@ -1319,7 +1303,7 @@ export const api = {
       localStorage.setItem(`cbt_backup_exam_${examId}`, JSON.stringify(payload));
     } catch {}
 
-    // 2. Simpan ke Firebase (dengan proteksi ganda SDK + REST API)
+    // 2. Simpan ke Firebase di latar belakang / asinkron dengan proteksi ganda SDK + REST API
     if (currentDataSource === 'FIREBASE') {
       try {
         if (ujianData.ID) {
@@ -1375,7 +1359,7 @@ export const api = {
     const updatedQuestions = [...allQuestions];
     updatedQuestions[questionIndex] = question;
 
-    const targetId = examId || 'EXAM-' + Date.now();
+    const targetId = examId || 'UJN-' + Date.now();
 
     // Simpan cepat ke localStorage cache draft
     try {
@@ -1486,78 +1470,104 @@ export const api = {
     timestamp?: string;
   } | null {
     try {
+      type Candidate = {
+        source: string;
+        examMeta?: any;
+        questions: any[];
+        count: number;
+        timestamp?: string;
+      };
+      const candidates: Candidate[] = [];
+
       // 1. Cek draft aktif editor (auto-save)
       const activeDraftStr = localStorage.getItem('cbt_active_editor_draft');
       if (activeDraftStr) {
-        const parsed = JSON.parse(activeDraftStr);
-        if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
-          return {
-            source: 'Auto-Save Editor',
-            examMeta: parsed,
-            questions: parsed.questions,
-            count: parsed.questions.length,
-            timestamp: parsed.timestamp,
-          };
-        }
+        try {
+          const parsed = JSON.parse(activeDraftStr);
+          if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+            candidates.push({
+              source: 'Auto-Save Editor Naskah',
+              examMeta: parsed,
+              questions: parsed.questions,
+              count: parsed.questions.length,
+              timestamp: parsed.timestamp,
+            });
+          }
+        } catch {}
       }
 
       // 2. Cek cbt_last_saved_exam_backup
       const backupStr = localStorage.getItem('cbt_last_saved_exam_backup');
       if (backupStr) {
-        const parsed = JSON.parse(backupStr);
         try {
+          const parsed = JSON.parse(backupStr);
           const rawSoal = JSON.parse(parsed.Soal_JSON || '{}');
-          if (rawSoal.questions && Array.isArray(rawSoal.questions) && rawSoal.questions.length > 0) {
-            return {
-              source: 'Cadangan Terakhir Terbit',
+          const qs = Array.isArray(rawSoal.questions) ? rawSoal.questions : (Array.isArray(rawSoal) ? rawSoal : []);
+          if (qs.length > 0) {
+            candidates.push({
+              source: `Cadangan Terakhir Terbit (${parsed.Judul_Ujian || 'Ujian'})`,
               examMeta: parsed,
-              questions: rawSoal.questions,
-              count: rawSoal.questions.length,
-            };
+              questions: qs,
+              count: qs.length,
+            });
           }
         } catch {}
       }
 
-      // 3. Pindai cbt_draft_q_current atau cbt_draft_q_* di localStorage
-      let bestDraft: any[] | null = null;
-      let bestKey = '';
+      // 3. Pindai seluruh item localStorage (cbt_draft_q_*, cbt_backup_exam_*)
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && k.startsWith('cbt_draft_q_')) {
+        if (!k) continue;
+        if (k.startsWith('cbt_draft_q_')) {
           try {
             const qs = JSON.parse(localStorage.getItem(k) || '[]');
             if (Array.isArray(qs) && qs.length > 0) {
-              if (!bestDraft || qs.length > bestDraft.length) {
-                bestDraft = qs;
-                bestKey = k;
-              }
+              candidates.push({
+                source: `Draft Per Butir (${k})`,
+                questions: qs,
+                count: qs.length,
+              });
+            }
+          } catch {}
+        } else if (k.startsWith('cbt_backup_exam_')) {
+          try {
+            const parsed = JSON.parse(localStorage.getItem(k) || '{}');
+            const rawSoal = JSON.parse(parsed.Soal_JSON || '{}');
+            const qs = Array.isArray(rawSoal.questions) ? rawSoal.questions : (Array.isArray(rawSoal) ? rawSoal : []);
+            if (qs.length > 0) {
+              candidates.push({
+                source: `Cadangan Naskah (${parsed.Judul_Ujian || k})`,
+                examMeta: parsed,
+                questions: qs,
+                count: qs.length,
+              });
             }
           } catch {}
         }
       }
-      if (bestDraft && bestDraft.length > 0) {
-        return {
-          source: `Penyimpanan Per Butir (${bestKey})`,
-          questions: bestDraft,
-          count: bestDraft.length,
-        };
-      }
 
-      // 4. Periksa apakah ada paket di cbt_db_ujian yang memiliki soal banyak
+      // 4. Periksa list ujian lokal jika terdapat paket yang baru dibuat / memiliki banyak soal
       const list = getLocalUjian();
       for (const u of list) {
         try {
           const raw = JSON.parse(u.Soal_JSON || '{}');
-          if (raw.questions && Array.isArray(raw.questions) && raw.questions.length >= 10) {
-            return {
+          const qs = Array.isArray(raw.questions) ? raw.questions : (Array.isArray(raw) ? raw : []);
+          if (qs.length >= 5) {
+            candidates.push({
               source: `Paket Ujian: ${u.Judul_Ujian}`,
               examMeta: u,
-              questions: raw.questions,
-              count: raw.questions.length,
-            };
+              questions: qs,
+              count: qs.length,
+            });
           }
         } catch {}
       }
+
+      if (candidates.length === 0) return null;
+
+      // Pilih kandidat dengan jumlah butir soal terbanyak
+      candidates.sort((a, b) => b.count - a.count);
+      return candidates[0];
     } catch {}
     return null;
   },
