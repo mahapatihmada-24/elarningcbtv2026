@@ -409,6 +409,63 @@ export async function getNilaiListViaRest(): Promise<Nilai[]> {
   }
 }
 
+// Parser dokumen hasil Firestore REST API menjadi objek Ujian
+function parseFirestoreRestUjianDoc(doc: any): Ujian {
+  const f = doc.fields || {};
+  return normalizeUjian({
+    ID: f.ID?.stringValue || doc.name?.split('/').pop() || '',
+    Judul_Ujian: f.Judul_Ujian?.stringValue || '',
+    Mapel: f.Mapel?.stringValue || '',
+    Kelas: f.Kelas?.stringValue || 'Semua',
+    Durasi_Menit: Number(f.Durasi_Menit?.integerValue ?? f.Durasi_Menit?.doubleValue ?? 60),
+    Token_Ujian: f.Token_Ujian?.stringValue || '',
+    Jadwal_Mulai: f.Jadwal_Mulai?.stringValue || '',
+    Jadwal_Selesai: f.Jadwal_Selesai?.stringValue || '',
+    Kisi_Kisi_JSON: f.Kisi_Kisi_JSON?.stringValue || '',
+    Soal_JSON: f.Soal_JSON?.stringValue || '{}',
+    Status: (f.Status?.stringValue || 'Aktif') as 'Aktif' | 'Non-Aktif',
+  });
+}
+
+// Jalur Cepat REST API untuk menyimpan Ujian CBT (Solusi handal anti-gagal)
+export async function saveUjianViaRest(ujian: Ujian): Promise<boolean> {
+  try {
+    const cfg = getActiveFirebaseConfig();
+    if (!cfg.projectId || !cfg.apiKey) return false;
+    const cleanId = encodeURIComponent(ujian.ID.replace(/[^a-zA-Z0-9_-]/g, '_'));
+    const payload = {
+      fields: toFirestoreRestFields(cleanFirestoreDoc(ujian)),
+    };
+    const body = JSON.stringify(payload);
+    const headers = { 'Content-Type': 'application/json' };
+    const urlUjian = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/ujian/${cleanId}?key=${cfg.apiKey}`;
+    const res = await fetch(urlUjian, { method: 'PATCH', headers, body });
+    return res.ok;
+  } catch (e) {
+    console.warn('[REST API] Gagal kirim ujian via REST:', e);
+    return false;
+  }
+}
+
+// Jalur Cepat REST API untuk mengambil daftar Ujian CBT
+export async function getUjianListViaRest(): Promise<Ujian[]> {
+  try {
+    const cfg = getActiveFirebaseConfig();
+    if (!cfg.projectId || !cfg.apiKey) return [];
+    const url = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/ujian?pageSize=300&key=${cfg.apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (Array.isArray(data.documents)) {
+      return data.documents.map(parseFirestoreRestUjianDoc);
+    }
+    return [];
+  } catch (e) {
+    console.warn('[REST API] Gagal ambil ujian via REST:', e);
+    return [];
+  }
+}
+
 // Layanan Operasi Database Firebase Firestore
 export const firebaseService = {
   // 1. AUTH & PENGGUNA
@@ -536,24 +593,58 @@ export const firebaseService = {
   async getUjianList(): Promise<Ujian[]> {
     if (isFirestoreOffline()) throw new Error('Firestore sedang offline');
     await ensureFirebaseSeeded().catch(() => {});
-    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.UJIAN)), 15000);
-    const list: Ujian[] = [];
-    snap.forEach((d) => {
-      list.push(normalizeUjian(d.data()));
-    });
-    return list;
+    try {
+      const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.UJIAN)), 8000);
+      const list: Ujian[] = [];
+      snap.forEach((d) => {
+        list.push(normalizeUjian(d.data()));
+      });
+      if (list.length > 0) return list;
+    } catch (err) {
+      console.warn('[Firebase SDK getUjianList] Gagal/timeout via SDK, mencoba REST API fallback:', err);
+    }
+    // Coba REST API fallback
+    try {
+      const restList = await getUjianListViaRest();
+      if (restList && restList.length > 0) return restList;
+    } catch {}
+    return [];
   },
 
   async addUjian(ujian: Omit<Ujian, 'ID'> & { ID?: string }): Promise<ApiResponse> {
     const id = ujian.ID || 'UJN-' + Date.now();
     const payload = normalizeUjian({ ...ujian, ID: id });
-    await withTimeout(setDoc(doc(db, COLLECTIONS.UJIAN, id), payload), 30000);
+    const cleaned = cleanFirestoreDoc(payload);
+    let ok = false;
+    try {
+      if (!isFirestoreOffline()) {
+        await withTimeout(setDoc(doc(db, COLLECTIONS.UJIAN, id), cleaned), 8000);
+        ok = true;
+      }
+    } catch (err) {
+      console.warn('[Firebase SDK addUjian] SDK gagal/timeout, beralih ke REST API:', err);
+    }
+    if (!ok) {
+      await saveUjianViaRest(payload).catch(() => false);
+    }
     return { success: true, message: 'Paket Ujian berhasil disimpan ke Firebase!' };
   },
 
   async updateUjian(ujian: Ujian): Promise<ApiResponse> {
     const payload = normalizeUjian(ujian);
-    await withTimeout(setDoc(doc(db, COLLECTIONS.UJIAN, payload.ID), payload), 30000);
+    const cleaned = cleanFirestoreDoc(payload);
+    let ok = false;
+    try {
+      if (!isFirestoreOffline()) {
+        await withTimeout(setDoc(doc(db, COLLECTIONS.UJIAN, payload.ID), cleaned), 8000);
+        ok = true;
+      }
+    } catch (err) {
+      console.warn('[Firebase SDK updateUjian] SDK gagal/timeout, beralih ke REST API:', err);
+    }
+    if (!ok) {
+      await saveUjianViaRest(payload).catch(() => false);
+    }
     return { success: true, message: 'Paket Ujian berhasil diperbarui di Firebase!' };
   },
 

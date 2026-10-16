@@ -27,6 +27,7 @@ import {
   FileText,
   Save,
   Loader2,
+  RotateCcw,
 } from 'lucide-react';
 import {
   Ujian,
@@ -122,6 +123,13 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
   const [isGenerateSoalModalOpen, setIsGenerateSoalModalOpen] = useState(false);
   const [exportModalExam, setExportModalExam] = useState<Ujian | null>(null);
   const [reviewModalExam, setReviewModalExam] = useState<Ujian | null>(null);
+  const [recoverableDraft, setRecoverableDraft] = useState<{
+    source: string;
+    examMeta?: any;
+    questions: Question[];
+    count: number;
+    timestamp?: string;
+  } | null>(null);
 
   const generateRandomToken = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -454,11 +462,74 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
     ]);
   };
 
+  // Auto-Save naskah soal aktif secara berkala & otomatis saat guru mengetik/menambah soal
+  useEffect(() => {
+    if (questions.length > 0 && (judul.trim() || questions.some((q) => q.soal?.trim()))) {
+      try {
+        localStorage.setItem(
+          'cbt_active_editor_draft',
+          JSON.stringify({
+            id,
+            judul,
+            mapel,
+            kelas,
+            durasi,
+            sesi,
+            maxAttempts,
+            acakSoal,
+            acakOpsi,
+            jadwalMulai,
+            jadwalSelesai,
+            tokenUjian,
+            currentKisiKisi,
+            questions,
+            timestamp: new Date().toISOString(),
+          })
+        );
+      } catch {}
+    }
+  }, [questions, judul, mapel, kelas, durasi, sesi, maxAttempts, acakSoal, acakOpsi, jadwalMulai, jadwalSelesai, tokenUjian, currentKisiKisi, id]);
+
   useEffect(() => {
     if (questions.length === 0) {
       resetForm();
     }
+    // Periksa apakah ada draf atau cadangan soal yang dapat dipulihkan dari cache peramban lokal
+    try {
+      const found = api.scanAndRescueDraftQuestions();
+      if (found && found.questions && found.questions.length > 0) {
+        setRecoverableDraft(found as any);
+      }
+    } catch {}
   }, []);
+
+  const handleRestoreDraft = () => {
+    if (!recoverableDraft) return;
+    const { questions: rescuedQs, examMeta } = recoverableDraft;
+    setQuestions(rescuedQs);
+    if (examMeta?.judul) setJudul(examMeta.judul);
+    else if (examMeta?.Judul_Ujian) setJudul(examMeta.Judul_Ujian);
+    if (examMeta?.mapel || examMeta?.Mapel) setMapel(examMeta.mapel || examMeta.Mapel);
+    if (examMeta?.kelas || examMeta?.Kelas) setKelas(examMeta.kelas || examMeta.Kelas);
+    if (examMeta?.durasi || examMeta?.Durasi_Menit) setDurasi(Number(examMeta.durasi || examMeta.Durasi_Menit) || 60);
+    if (examMeta?.sesi) setSesi(examMeta.sesi);
+    if (examMeta?.tokenUjian || examMeta?.Token_Ujian) setTokenUjian(examMeta.tokenUjian || examMeta.Token_Ujian);
+    if (examMeta?.currentKisiKisi) setCurrentKisiKisi(examMeta.currentKisiKisi);
+    if (examMeta?.id || examMeta?.ID) setId(examMeta.id || examMeta.ID);
+    setCurrentPerQIdx(0);
+    setRecoverableDraft(null);
+    onShowModal({
+      isOpen: true,
+      title: 'Naskah Soal Berhasil Dipulihkan! 📝',
+      message: `Berhasil mengembalikan ${rescuedQs.length} butir soal dari ${recoverableDraft.source}. Seluruh naskah Anda siap dilanjutkan penyuntingannya atau langsung diterbitkan ke CBT!`,
+      type: 'success',
+      isConfirm: false,
+    });
+  };
+
+  const handleDismissDraft = () => {
+    setRecoverableDraft(null);
+  };
 
   const handleEditUjian = (u: Ujian) => {
     setId(u.ID);
@@ -750,43 +821,80 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
 
     setIsSaving(true);
     const targetExamId = id || undefined;
-    const res = await api.saveUjian({
-      ID: targetExamId,
-      Judul_Ujian: judul.trim(),
-      Mapel: mapel.trim(),
-      Kelas: kelas.trim(),
-      Durasi_Menit: Math.max(1, Number(durasi) || 1),
-      Jadwal_Mulai: jadwalMulai || undefined,
-      Jadwal_Selesai: jadwalSelesai || undefined,
-      Token_Ujian: tokenUjian.trim() || undefined,
-      Kisi_Kisi_JSON: currentKisiKisi ? JSON.stringify(currentKisiKisi) : undefined,
-      soal: payload,
-      Status: 'Aktif', // Otomatisasi Status Aktif (Launching)
-    });
 
-    // Otomatisasi Status Aktif (Launching) pada database/server untuk ID paket ujian
-    const activeExamId = targetExamId || (res as any)?.id;
-    if (activeExamId) {
-      await api.toggleStatusUjian(activeExamId, 'Aktif').catch(() => {});
-    }
-
-    setIsSaving(false);
-
-    if (res.success) {
-      onShowModal({
-        isOpen: true,
-        title: 'Paket Ujian Aktif & Diterbitkan! 🚀',
-        message: `Paket soal "${judul.trim()}" (${questions.length} butir soal) berhasil disimpan dan statusnya otomatis AKTIF / LAUNCHING. Paket soal kini langsung siap diakses dan dikerjakan oleh siswa di Beranda CBT!`,
-        type: 'success',
-        isConfirm: false,
+    try {
+      const res = await api.saveUjian({
+        ID: targetExamId,
+        Judul_Ujian: judul.trim(),
+        Mapel: mapel.trim(),
+        Kelas: kelas.trim(),
+        Durasi_Menit: Math.max(1, Number(durasi) || 1),
+        Jadwal_Mulai: jadwalMulai || undefined,
+        Jadwal_Selesai: jadwalSelesai || undefined,
+        Token_Ujian: tokenUjian.trim() || undefined,
+        Kisi_Kisi_JSON: currentKisiKisi ? JSON.stringify(currentKisiKisi) : undefined,
+        soal: payload,
+        Status: 'Aktif', // Otomatisasi Status Aktif (Launching)
       });
-      resetForm();
-      fetchUjianAndMaster();
-    } else {
+
+      setIsSaving(false);
+
+      if (res.success) {
+        const savedExam: Ujian = (res as any).ujian || {
+          ID: res.id || targetExamId || 'EXAM-' + Date.now(),
+          Judul_Ujian: judul.trim(),
+          Mapel: mapel.trim(),
+          Kelas: kelas.trim(),
+          Durasi_Menit: Math.max(1, Number(durasi) || 1),
+          Token_Ujian: tokenUjian.trim() || undefined,
+          Jadwal_Mulai: jadwalMulai || undefined,
+          Jadwal_Selesai: jadwalSelesai || undefined,
+          Kisi_Kisi_JSON: currentKisiKisi ? JSON.stringify(currentKisiKisi) : undefined,
+          Soal_JSON: JSON.stringify(payload),
+          Status: 'Aktif',
+        };
+
+        // Langsung masukkan ke state ujianList seketika agar langsung tampil di Bank Paket Ujian tanpa jeda
+        setUjianList((prev) => {
+          const exists = prev.some((u) => u.ID === savedExam.ID);
+          if (exists) {
+            return prev.map((u) => (u.ID === savedExam.ID ? savedExam : u));
+          }
+          return [savedExam, ...prev];
+        });
+
+        // Bersihkan draft aktif karena telah sukses disimpan dan diterbitkan
+        try {
+          localStorage.removeItem('cbt_active_editor_draft');
+          localStorage.removeItem(`cbt_draft_q_${targetExamId || 'current'}`);
+        } catch {}
+        setRecoverableDraft(null);
+
+        onShowModal({
+          isOpen: true,
+          title: 'Paket Ujian Aktif & Diterbitkan! 🚀',
+          message: `Paket soal "${judul.trim()}" (${questions.length} butir soal) berhasil disimpan dan diterbitkan ke Bank Paket Ujian dengan status otomatis AKTIF / LAUNCHING! Siswa kini langsung dapat mengaksesnya di Beranda CBT.`,
+          type: 'success',
+          isConfirm: false,
+        });
+
+        resetForm();
+        fetchUjianAndMaster();
+      } else {
+        onShowModal({
+          isOpen: true,
+          title: 'Gagal Menyimpan Ujian',
+          message: res.message || 'Terjadi kesalahan saat menyimpan paket ujian.',
+          type: 'error',
+          isConfirm: false,
+        });
+      }
+    } catch (err: any) {
+      setIsSaving(false);
       onShowModal({
         isOpen: true,
         title: 'Gagal Menyimpan Ujian',
-        message: res.message || 'Terjadi kesalahan saat menyimpan paket ujian.',
+        message: err?.message || 'Terjadi kesalahan saat memproses penyimpanan paket ujian.',
         type: 'error',
         isConfirm: false,
       });
@@ -924,6 +1032,51 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
             )}
           </div>
         </div>
+
+        {/* Banner Pemulihan Naskah Soal Terdeteksi */}
+        {recoverableDraft && (
+          <div className="mb-4 p-4 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 text-amber-900 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-xl bg-amber-200/90 text-amber-900 shrink-0 mt-0.5">
+                <Sparkles className="w-5 h-5 text-amber-700 animate-pulse" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <h4 className="font-extrabold text-xs sm:text-sm text-amber-900">
+                    Ditemukan Naskah Butir Soal Tersimpan ({recoverableDraft.count} Soal)!
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
+                    Auto-Recover
+                  </span>
+                </div>
+                <p className="text-xs text-amber-800">
+                  {recoverableDraft.examMeta?.judul || recoverableDraft.examMeta?.Judul_Ujian
+                    ? `Paket: "${recoverableDraft.examMeta?.judul || recoverableDraft.examMeta?.Judul_Ujian}". `
+                    : ''}
+                  Sistem mendeteksi naskah butir soal sebelumnya di memori/cache peramban ({recoverableDraft.source}). Klik tombol di samping untuk memulihkan {recoverableDraft.count} butir soal Anda seketika.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+              <button
+                type="button"
+                onClick={handleRestoreDraft}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 active:scale-95 text-white font-black text-xs shadow-md transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4 text-white" />
+                <span>Pulihkan {recoverableDraft.count} Soal Sekarang</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDismissDraft}
+                className="px-3 py-2 rounded-xl bg-white/90 hover:bg-white text-slate-600 text-xs font-bold border border-amber-200 transition cursor-pointer"
+                title="Tutup pemberitahuan pemulihan naskah"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSaveUjian} className="space-y-4">
           <div>

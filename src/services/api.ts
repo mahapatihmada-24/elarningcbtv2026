@@ -354,10 +354,10 @@ function saveLocalUjian(ujian: Ujian[]) {
   } catch (err) {
     console.warn('LocalStorage quota exceeded in saveLocalUjian. Applying safe storage prune.', err);
     try {
-      // Clear old ephemeral logs
+      // Clear old ephemeral logs (JANGAN PERNAH hapus cbt_draft_ / naskah soal pengguna)
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && (k.startsWith('cbt_log_') || k.startsWith('cbt_temp_') || k.startsWith('cbt_draft_'))) {
+        if (k && (k.startsWith('cbt_log_') || k.startsWith('cbt_temp_'))) {
           localStorage.removeItem(k);
         }
       }
@@ -1164,11 +1164,44 @@ export const api = {
     if (currentDataSource === 'FIREBASE' && !isFirestoreOffline()) {
       try {
         const allUjian = await firebaseService.getUjianList();
-        if (Array.isArray(allUjian)) {
-          saveLocalUjian(allUjian);
+        if (Array.isArray(allUjian) && allUjian.length > 0) {
+          // Merge cerdas dengan list lokal agar naskah soal lokal tidak terhapus
+          const localList = getLocalUjian();
+          const mergedMap = new Map<string, Ujian>();
+          allUjian.forEach((u) => {
+            if (u && u.ID) mergedMap.set(u.ID, normalizeUjian(u));
+          });
+          localList.forEach((localU) => {
+            if (localU && localU.ID) {
+              const remoteU = mergedMap.get(localU.ID);
+              if (!remoteU) {
+                mergedMap.set(localU.ID, localU);
+              } else {
+                try {
+                  const remoteParsed = JSON.parse(remoteU.Soal_JSON || '{}');
+                  const localParsed = JSON.parse(localU.Soal_JSON || '{}');
+                  const remoteCount = Array.isArray(remoteParsed.questions)
+                    ? remoteParsed.questions.length
+                    : Array.isArray(remoteParsed)
+                    ? remoteParsed.length
+                    : 0;
+                  const localCount = Array.isArray(localParsed.questions)
+                    ? localParsed.questions.length
+                    : Array.isArray(localParsed)
+                    ? localParsed.length
+                    : 0;
+                  if (localCount > remoteCount) {
+                    mergedMap.set(localU.ID, localU);
+                  }
+                } catch {}
+              }
+            }
+          });
+          const merged = Array.from(mergedMap.values());
+          saveLocalUjian(merged);
           if (isPrivileged) {
-            if (isAllClasses) return [...allUjian].reverse();
-            return allUjian
+            if (isAllClasses) return [...merged].reverse();
+            return merged
               .filter(
                 (u) =>
                   u.Kelas === 'Semua' ||
@@ -1176,11 +1209,10 @@ export const api = {
               )
               .reverse();
           }
-          // Murid role: only active tests
           if (isAllClasses) {
-            return allUjian.filter((u) => u.Status === 'Aktif').reverse();
+            return merged.filter((u) => u.Status === 'Aktif').reverse();
           }
-          return allUjian
+          return merged
             .filter(
               (u) =>
                 u.Status === 'Aktif' &&
@@ -1190,7 +1222,7 @@ export const api = {
             .reverse();
         }
       } catch (err) {
-        // Fall back to local
+        console.warn('Firebase getUjianList error, fallback ke penyimpanan lokal:', err);
       }
     }
 
@@ -1247,7 +1279,7 @@ export const api = {
       .reverse();
   },
 
-  async saveUjian(ujianData: Partial<Ujian> & { soal: unknown }): Promise<ApiResponse & { id?: string }> {
+  async saveUjian(ujianData: Partial<Ujian> & { soal: unknown }): Promise<ApiResponse & { id?: string; ujian?: Ujian }> {
     const list = getLocalUjian();
     const soalJsonStr =
       typeof ujianData.soal === 'string' ? ujianData.soal : JSON.stringify(ujianData.soal);
@@ -1257,117 +1289,77 @@ export const api = {
         ? Number(ujianData.Durasi_Menit)
         : 60;
 
+    const examId = ujianData.ID || 'EXAM-' + Date.now();
+    const payload: Ujian = {
+      ID: examId,
+      Judul_Ujian: ujianData.Judul_Ujian || 'Ujian Baru',
+      Mapel: ujianData.Mapel || 'Umum',
+      Kelas: ujianData.Kelas || 'Semua',
+      Durasi_Menit: finalDurasi,
+      Token_Ujian: ujianData.Token_Ujian !== undefined ? ujianData.Token_Ujian : '',
+      Jadwal_Mulai: ujianData.Jadwal_Mulai !== undefined ? ujianData.Jadwal_Mulai : '',
+      Jadwal_Selesai: ujianData.Jadwal_Selesai !== undefined ? ujianData.Jadwal_Selesai : '',
+      Kisi_Kisi_JSON: ujianData.Kisi_Kisi_JSON !== undefined ? ujianData.Kisi_Kisi_JSON : '',
+      Soal_JSON: soalJsonStr,
+      Status: 'Aktif', // Otomatisasi Status Aktif (Launching)
+    };
+
+    // 1. Simpan seketika ke LocalStorage dan memori internal agar tidak akan pernah hilang
+    const idx = list.findIndex((u) => u.ID === examId);
+    if (idx !== -1) {
+      list[idx] = payload;
+    } else {
+      list.unshift(payload);
+    }
+    saveLocalUjian(list);
+
+    // Amankan juga salinan cadangan instan khusus recovery
+    try {
+      localStorage.setItem('cbt_last_saved_exam_backup', JSON.stringify(payload));
+      localStorage.setItem(`cbt_backup_exam_${examId}`, JSON.stringify(payload));
+    } catch {}
+
+    // 2. Simpan ke Firebase (dengan proteksi ganda SDK + REST API)
     if (currentDataSource === 'FIREBASE') {
       try {
         if (ujianData.ID) {
-          const payload: Ujian = {
-            ID: ujianData.ID,
-            Judul_Ujian: ujianData.Judul_Ujian || 'Ujian',
-            Mapel: ujianData.Mapel || 'Umum',
-            Kelas: ujianData.Kelas || 'Semua',
-            Durasi_Menit: finalDurasi,
-            Token_Ujian: ujianData.Token_Ujian || '',
-            Jadwal_Mulai: ujianData.Jadwal_Mulai || '',
-            Jadwal_Selesai: ujianData.Jadwal_Selesai || '',
-            Kisi_Kisi_JSON: ujianData.Kisi_Kisi_JSON || '',
-            Soal_JSON: soalJsonStr,
-            Status: 'Aktif', // Otomatisasi Status Aktif (Launching)
-          };
-          const res = await firebaseService.updateUjian(payload);
-          const idx = list.findIndex((u) => u.ID === ujianData.ID);
-          if (idx !== -1) list[idx] = payload;
-          saveLocalUjian(list);
-          return { ...res, id: payload.ID };
+          await firebaseService.updateUjian(payload);
         } else {
-          const newExamId = 'EXAM-' + Date.now();
-          const payload: Ujian = {
-            ID: newExamId,
-            Judul_Ujian: ujianData.Judul_Ujian || 'Ujian Baru',
-            Mapel: ujianData.Mapel || 'Umum',
-            Kelas: ujianData.Kelas || 'Semua',
-            Durasi_Menit: finalDurasi,
-            Token_Ujian: ujianData.Token_Ujian || '',
-            Jadwal_Mulai: ujianData.Jadwal_Mulai || '',
-            Jadwal_Selesai: ujianData.Jadwal_Selesai || '',
-            Kisi_Kisi_JSON: ujianData.Kisi_Kisi_JSON || '',
-            Soal_JSON: soalJsonStr,
-            Status: 'Aktif', // Otomatisasi Status Aktif (Launching)
-          };
-          const res = await firebaseService.addUjian(payload);
-          try {
-            const allUj = await firebaseService.getUjianList();
-            if (allUj && allUj.length > 0) {
-              saveLocalUjian(allUj);
-            }
-          } catch (fetchErr) {
-            console.warn('Could not refresh exam list from Firebase immediately:', fetchErr);
-          }
-          return { ...res, id: newExamId };
+          await firebaseService.addUjian(payload);
         }
       } catch (err) {
-        console.warn('Firebase saveUjian error:', err);
+        console.warn('Firebase saveUjian error (data telah aman tersimpan di lokal):', err);
       }
     }
 
+    // 3. Simpan ke Google Apps Script jika aktif
     if (currentDataSource === 'GAS') {
       try {
-        const res = await callGasServer<ApiResponse>('saveUjian', [
+        await callGasServer<ApiResponse>('saveUjian', [
           {
-            id: ujianData.ID || '',
-            judul_ujian: ujianData.Judul_Ujian || '',
-            mapel: ujianData.Mapel || '',
-            kelas: ujianData.Kelas || '',
-            durasi: finalDurasi,
-            token_ujian: ujianData.Token_Ujian || '',
-            jadwal_mulai: ujianData.Jadwal_Mulai || '',
-            jadwal_selesai: ujianData.Jadwal_Selesai || '',
+            id: examId,
+            judul_ujian: payload.Judul_Ujian,
+            mapel: payload.Mapel,
+            kelas: payload.Kelas,
+            durasi: payload.Durasi_Menit,
+            token_ujian: payload.Token_Ujian,
+            jadwal_mulai: payload.Jadwal_Mulai,
+            jadwal_selesai: payload.Jadwal_Selesai,
             soal: ujianData.soal,
-            status: 'Aktif', // Otomatisasi Status Aktif (Launching)
+            status: 'Aktif',
           },
         ]);
-        if (res && res.success) return { ...res, id: ujianData.ID };
       } catch (err) {
         console.warn('GAS saveUjian error:', err);
       }
     }
 
-    if (ujianData.ID) {
-      const idx = list.findIndex((u) => u.ID === ujianData.ID);
-      if (idx !== -1) {
-        list[idx] = {
-          ...list[idx],
-          Judul_Ujian: ujianData.Judul_Ujian || list[idx].Judul_Ujian,
-          Mapel: ujianData.Mapel || list[idx].Mapel,
-          Kelas: ujianData.Kelas || list[idx].Kelas,
-          Durasi_Menit: finalDurasi,
-          Token_Ujian: ujianData.Token_Ujian !== undefined ? ujianData.Token_Ujian : list[idx].Token_Ujian,
-          Jadwal_Mulai: ujianData.Jadwal_Mulai !== undefined ? ujianData.Jadwal_Mulai : list[idx].Jadwal_Mulai,
-          Jadwal_Selesai: ujianData.Jadwal_Selesai !== undefined ? ujianData.Jadwal_Selesai : list[idx].Jadwal_Selesai,
-          Kisi_Kisi_JSON: ujianData.Kisi_Kisi_JSON !== undefined ? ujianData.Kisi_Kisi_JSON : list[idx].Kisi_Kisi_JSON,
-          Soal_JSON: soalJsonStr,
-          Status: 'Aktif', // Otomatisasi Status Aktif (Launching)
-        };
-        saveLocalUjian(list);
-        return { success: true, message: 'Ujian CBT berhasil diperbarui dan berstatus Aktif (Launching)!', id: ujianData.ID };
-      }
-    }
-
-    const newUjian: Ujian = {
-      ID: ujianData.ID || 'EXAM-' + Date.now(),
-      Judul_Ujian: ujianData.Judul_Ujian || 'Ujian Baru',
-      Mapel: ujianData.Mapel || 'Matematika',
-      Kelas: ujianData.Kelas || '6A',
-      Durasi_Menit: finalDurasi,
-      Token_Ujian: ujianData.Token_Ujian || '',
-      Jadwal_Mulai: ujianData.Jadwal_Mulai || '',
-      Jadwal_Selesai: ujianData.Jadwal_Selesai || '',
-      Kisi_Kisi_JSON: ujianData.Kisi_Kisi_JSON || '',
-      Soal_JSON: soalJsonStr,
-      Status: 'Aktif', // Otomatisasi Status Aktif (Launching)
+    return {
+      success: true,
+      message: 'Ujian CBT berhasil diterbitkan dan berstatus Aktif (Launching)!',
+      id: examId,
+      ujian: payload,
     };
-    list.push(newUjian);
-    saveLocalUjian(list);
-    return { success: true, message: 'Ujian CBT berhasil diterbitkan dan berstatus Aktif (Launching)!', id: newUjian.ID };
   },
 
   /**
@@ -1380,17 +1372,19 @@ export const api = {
     allQuestions: any[],
     examMeta?: Partial<Ujian>
   ): Promise<{ success: boolean; id?: string; message: string }> {
-    const list = getLocalUjian();
     const updatedQuestions = [...allQuestions];
     updatedQuestions[questionIndex] = question;
 
+    const targetId = examId || 'EXAM-' + Date.now();
+
     // Simpan cepat ke localStorage cache draft
     try {
-      localStorage.setItem(`cbt_draft_q_${examId || 'current'}`, JSON.stringify(updatedQuestions));
+      localStorage.setItem(`cbt_draft_q_${targetId}`, JSON.stringify(updatedQuestions));
+      localStorage.setItem('cbt_draft_q_current', JSON.stringify(updatedQuestions));
       localStorage.setItem(
         'cbt_last_saved_question',
         JSON.stringify({
-          examId,
+          examId: targetId,
           index: questionIndex,
           timestamp: new Date().toISOString(),
           type: question.type,
@@ -1403,42 +1397,41 @@ export const api = {
       questions: updatedQuestions,
     };
 
-    if (examId) {
-      const res = await this.saveUjian({
-        ID: examId,
-        ...(examMeta || {}),
-        soal: payload,
-        Status: 'Aktif',
-      });
-      return { success: true, id: examId, message: `Butir soal No. ${questionIndex + 1} berhasil disimpan ke database!` };
-    } else {
-      const tempId = 'EXAM-' + Date.now();
-      const res = await this.saveUjian({
-        ID: tempId,
-        Judul_Ujian: examMeta?.Judul_Ujian || 'Draft Ujian Baru',
-        Mapel: examMeta?.Mapel || 'Umum',
-        Kelas: examMeta?.Kelas || 'Semua',
-        Durasi_Menit: examMeta?.Durasi_Menit || 60,
-        soal: payload,
-        Status: 'Aktif',
-      });
-      return { success: true, id: tempId, message: `Butir soal No. ${questionIndex + 1} berhasil disimpan ke paket ujian!` };
-    }
+    const res = await this.saveUjian({
+      ID: targetId,
+      Judul_Ujian: examMeta?.Judul_Ujian || 'Draft Ujian Baru',
+      Mapel: examMeta?.Mapel || 'Umum',
+      Kelas: examMeta?.Kelas || 'Semua',
+      Durasi_Menit: examMeta?.Durasi_Menit || 60,
+      Token_Ujian: examMeta?.Token_Ujian,
+      Jadwal_Mulai: examMeta?.Jadwal_Mulai,
+      Jadwal_Selesai: examMeta?.Jadwal_Selesai,
+      Kisi_Kisi_JSON: examMeta?.Kisi_Kisi_JSON,
+      soal: payload,
+      Status: 'Aktif',
+    });
+
+    return {
+      success: true,
+      id: targetId,
+      message: `Butir soal No. ${questionIndex + 1} berhasil disimpan ke paket ujian!`,
+    };
   },
 
   async toggleStatusUjian(id: string, newStatus: 'Aktif' | 'Non-Aktif'): Promise<ApiResponse> {
     const list = getLocalUjian();
     const found = list.find((u) => u.ID === id);
 
+    if (!found) {
+      return { success: false, message: 'Ujian tidak ditemukan!' };
+    }
+
+    found.Status = newStatus;
+    saveLocalUjian(list);
+
     if (currentDataSource === 'FIREBASE') {
       try {
-        if (found) {
-          const updated = { ...found, Status: newStatus };
-          const res = await firebaseService.updateUjian(updated);
-          found.Status = newStatus;
-          saveLocalUjian(list);
-          return res;
-        }
+        await firebaseService.updateUjian(found);
       } catch (err) {
         console.warn('Firebase toggleStatusUjian error:', err);
       }
@@ -1446,25 +1439,13 @@ export const api = {
 
     if (currentDataSource === 'GAS') {
       try {
-        const res = await callGasServer<ApiResponse>('toggleStatusUjian', [id, newStatus]);
-        if (res && res.success) {
-          if (found) {
-            found.Status = newStatus;
-            saveLocalUjian(list);
-          }
-          return res;
-        }
+        await callGasServer<ApiResponse>('toggleStatusUjian', [id, newStatus]);
       } catch (err) {
         console.warn('GAS toggleStatusUjian error:', err);
       }
     }
 
-    if (found) {
-      found.Status = newStatus;
-      saveLocalUjian(list);
-      return { success: true, message: `Status ujian berhasil diubah menjadi ${newStatus}!` };
-    }
-    return { success: false, message: 'Ujian tidak ditemukan!' };
+    return { success: true, message: `Status ujian berhasil diubah menjadi ${newStatus}!` };
   },
 
   async deleteUjian(id: string): Promise<ApiResponse> {
@@ -1492,6 +1473,93 @@ export const api = {
 
     saveLocalUjian(getLocalUjian().filter((u) => u.ID !== id));
     return { success: true, message: 'Ujian berhasil dihapus secara permanen!' };
+  },
+
+  /**
+   * Pindai dan selamatkan draft / naskah butir soal yang ada di cache browser lokal
+   */
+  scanAndRescueDraftQuestions(): {
+    source: string;
+    examMeta?: any;
+    questions: any[];
+    count: number;
+    timestamp?: string;
+  } | null {
+    try {
+      // 1. Cek draft aktif editor (auto-save)
+      const activeDraftStr = localStorage.getItem('cbt_active_editor_draft');
+      if (activeDraftStr) {
+        const parsed = JSON.parse(activeDraftStr);
+        if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+          return {
+            source: 'Auto-Save Editor',
+            examMeta: parsed,
+            questions: parsed.questions,
+            count: parsed.questions.length,
+            timestamp: parsed.timestamp,
+          };
+        }
+      }
+
+      // 2. Cek cbt_last_saved_exam_backup
+      const backupStr = localStorage.getItem('cbt_last_saved_exam_backup');
+      if (backupStr) {
+        const parsed = JSON.parse(backupStr);
+        try {
+          const rawSoal = JSON.parse(parsed.Soal_JSON || '{}');
+          if (rawSoal.questions && Array.isArray(rawSoal.questions) && rawSoal.questions.length > 0) {
+            return {
+              source: 'Cadangan Terakhir Terbit',
+              examMeta: parsed,
+              questions: rawSoal.questions,
+              count: rawSoal.questions.length,
+            };
+          }
+        } catch {}
+      }
+
+      // 3. Pindai cbt_draft_q_current atau cbt_draft_q_* di localStorage
+      let bestDraft: any[] | null = null;
+      let bestKey = '';
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('cbt_draft_q_')) {
+          try {
+            const qs = JSON.parse(localStorage.getItem(k) || '[]');
+            if (Array.isArray(qs) && qs.length > 0) {
+              if (!bestDraft || qs.length > bestDraft.length) {
+                bestDraft = qs;
+                bestKey = k;
+              }
+            }
+          } catch {}
+        }
+      }
+      if (bestDraft && bestDraft.length > 0) {
+        return {
+          source: `Penyimpanan Per Butir (${bestKey})`,
+          questions: bestDraft,
+          count: bestDraft.length,
+        };
+      }
+
+      // 4. Periksa apakah ada paket di cbt_db_ujian yang memiliki soal banyak
+      const list = getLocalUjian();
+      for (const u of list) {
+        try {
+          const raw = JSON.parse(u.Soal_JSON || '{}');
+          if (raw.questions && Array.isArray(raw.questions) && raw.questions.length >= 10) {
+            return {
+              source: `Paket Ujian: ${u.Judul_Ujian}`,
+              examMeta: u,
+              questions: raw.questions,
+              count: raw.questions.length,
+            };
+          }
+        } catch {}
+      }
+    } catch {}
+    return null;
   },
 
   // 5. NILAI & HASIL CBT
