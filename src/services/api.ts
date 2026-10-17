@@ -1462,59 +1462,99 @@ export const api = {
   /**
    * Pindai dan selamatkan draft / naskah butir soal yang ada di cache browser lokal
    */
-  scanAndRescueDraftQuestions(): {
+  /**
+   * Pindai dan selamatkan draft / naskah butir soal yang ada di cache browser lokal
+   * Banner hanya muncul jika:
+   * 1. Belum pernah dipulihkan / ditutup pada sesi saat ini (sessionStorage)
+   * 2. Naskah belum pernah tersimpan / tersinkronkan ke database utama
+   * 3. Jumlah soal aktif di editor saat ini benar-benar kosong atau lebih sedikit dari data draft
+   */
+  scanAndRescueDraftQuestions(currentEditorQuestionCount: number = 0): {
     source: string;
     examMeta?: any;
     questions: any[];
     count: number;
     timestamp?: string;
+    storageKeyToClean?: string;
   } | null {
     try {
+      // Ketentuan 1 & 3: Cek flag status pemulihan / dismiss di sessionStorage
+      if (typeof sessionStorage !== 'undefined') {
+        if (sessionStorage.getItem('cbt_auto_recover_handled') === 'true') {
+          return null;
+        }
+      }
+
+      // Ketentuan 2: Periksa database utama untuk memastikan draft bukan paket yang sudah tersimpan
+      const listInDb = getLocalUjian();
+
+      const isAlreadySavedInDatabase = (examId?: string, examTitle?: string, count: number = 0): boolean => {
+        if (!examId && !examTitle) return false;
+        const cleanId = (examId || '').trim();
+        const cleanTitle = (examTitle || '').trim().toLowerCase();
+
+        return listInDb.some((u) => {
+          const matchId = Boolean(cleanId && cleanId !== 'current' && cleanId !== 'DRAFT' && u.ID === cleanId);
+          const matchTitle = Boolean(
+            cleanTitle &&
+              cleanTitle !== 'draft ujian baru' &&
+              (u.Judul_Ujian || '').trim().toLowerCase() === cleanTitle
+          );
+          if (matchId || matchTitle) {
+            try {
+              const raw = JSON.parse(u.Soal_JSON || '{}');
+              const dbQuestions = Array.isArray(raw.questions) ? raw.questions : (Array.isArray(raw) ? raw : []);
+              // Jika di database sudah tersimpan soal dengan jumlah yang sama atau lebih banyak, maka data sudah aman
+              return dbQuestions.length >= count && dbQuestions.length > 0;
+            } catch {
+              return false;
+            }
+          }
+          return false;
+        });
+      };
+
       type Candidate = {
         source: string;
         examMeta?: any;
         questions: any[];
         count: number;
         timestamp?: string;
+        storageKeyToClean?: string;
       };
       const candidates: Candidate[] = [];
 
-      // 1. Cek draft aktif editor (auto-save)
+      // 1. Cek draft aktif editor (auto-save saat belum sempat disimpan)
       const activeDraftStr = localStorage.getItem('cbt_active_editor_draft');
       if (activeDraftStr) {
         try {
           const parsed = JSON.parse(activeDraftStr);
           if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
-            candidates.push({
-              source: 'Auto-Save Editor Naskah',
-              examMeta: parsed,
-              questions: parsed.questions,
-              count: parsed.questions.length,
-              timestamp: parsed.timestamp,
-            });
+            const hasMeaningfulContent = parsed.questions.some((q: any) =>
+              Boolean((q.soal && q.soal.trim().length > 0) || (q.a && q.a.trim().length > 0))
+            );
+            if (hasMeaningfulContent) {
+              const alreadySaved = isAlreadySavedInDatabase(
+                parsed.id || parsed.ID,
+                parsed.judul || parsed.Judul_Ujian,
+                parsed.questions.length
+              );
+              if (!alreadySaved) {
+                candidates.push({
+                  source: 'Auto-Save Editor Naskah (Belum Tersimpan)',
+                  examMeta: parsed,
+                  questions: parsed.questions,
+                  count: parsed.questions.length,
+                  timestamp: parsed.timestamp,
+                  storageKeyToClean: 'cbt_active_editor_draft',
+                });
+              }
+            }
           }
         } catch {}
       }
 
-      // 2. Cek cbt_last_saved_exam_backup
-      const backupStr = localStorage.getItem('cbt_last_saved_exam_backup');
-      if (backupStr) {
-        try {
-          const parsed = JSON.parse(backupStr);
-          const rawSoal = JSON.parse(parsed.Soal_JSON || '{}');
-          const qs = Array.isArray(rawSoal.questions) ? rawSoal.questions : (Array.isArray(rawSoal) ? rawSoal : []);
-          if (qs.length > 0) {
-            candidates.push({
-              source: `Cadangan Terakhir Terbit (${parsed.Judul_Ujian || 'Ujian'})`,
-              examMeta: parsed,
-              questions: qs,
-              count: qs.length,
-            });
-          }
-        } catch {}
-      }
-
-      // 3. Pindai seluruh item localStorage (cbt_draft_q_*, cbt_backup_exam_*)
+      // 2. Pindai item draft per butir (cbt_draft_q_*)
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
         if (!k) continue;
@@ -1522,54 +1562,55 @@ export const api = {
           try {
             const qs = JSON.parse(localStorage.getItem(k) || '[]');
             if (Array.isArray(qs) && qs.length > 0) {
-              candidates.push({
-                source: `Draft Per Butir (${k})`,
-                questions: qs,
-                count: qs.length,
-              });
-            }
-          } catch {}
-        } else if (k.startsWith('cbt_backup_exam_')) {
-          try {
-            const parsed = JSON.parse(localStorage.getItem(k) || '{}');
-            const rawSoal = JSON.parse(parsed.Soal_JSON || '{}');
-            const qs = Array.isArray(rawSoal.questions) ? rawSoal.questions : (Array.isArray(rawSoal) ? rawSoal : []);
-            if (qs.length > 0) {
-              candidates.push({
-                source: `Cadangan Naskah (${parsed.Judul_Ujian || k})`,
-                examMeta: parsed,
-                questions: qs,
-                count: qs.length,
-              });
+              const hasContent = qs.some((q: any) =>
+                Boolean((q.soal && q.soal.trim().length > 0) || (q.a && q.a.trim().length > 0))
+              );
+              if (hasContent) {
+                const draftExamId = k.replace('cbt_draft_q_', '');
+                const alreadySaved = draftExamId !== 'current' && isAlreadySavedInDatabase(draftExamId, undefined, qs.length);
+                if (!alreadySaved) {
+                  candidates.push({
+                    source: `Draft Per Butir (${k})`,
+                    questions: qs,
+                    count: qs.length,
+                    storageKeyToClean: k,
+                  });
+                }
+              }
             }
           } catch {}
         }
       }
 
-      // 4. Periksa list ujian lokal jika terdapat paket yang baru dibuat / memiliki banyak soal
-      const list = getLocalUjian();
-      for (const u of list) {
-        try {
-          const raw = JSON.parse(u.Soal_JSON || '{}');
-          const qs = Array.isArray(raw.questions) ? raw.questions : (Array.isArray(raw) ? raw : []);
-          if (qs.length >= 5) {
-            candidates.push({
-              source: `Paket Ujian: ${u.Judul_Ujian}`,
-              examMeta: u,
-              questions: qs,
-              count: qs.length,
-            });
-          }
-        } catch {}
-      }
-
       if (candidates.length === 0) return null;
 
+      // Ketentuan 2: Hanya tampilkan jika editor saat ini benar-benar kosong atau jumlah soalnya lebih sedikit dari draft
+      const eligible = candidates.filter((c) => c.count > currentEditorQuestionCount);
+      if (eligible.length === 0) return null;
+
       // Pilih kandidat dengan jumlah butir soal terbanyak
-      candidates.sort((a, b) => b.count - a.count);
-      return candidates[0];
+      eligible.sort((a, b) => b.count - a.count);
+      return eligible[0];
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * Bersihkan data draft setelah pemulihan berhasil atau ditutup oleh pengguna
+   */
+  clearRecoveredDraft(keyToClean?: string): void {
+    try {
+      if (keyToClean) {
+        localStorage.removeItem(keyToClean);
+      }
+      localStorage.removeItem('cbt_active_editor_draft');
+      localStorage.removeItem('cbt_draft_q_current');
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('cbt_auto_recover_handled', 'true');
+      }
+      localStorage.setItem('cbt_draft_has_recovered', 'true');
     } catch {}
-    return null;
   },
 
   // 5. NILAI & HASIL CBT
