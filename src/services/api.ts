@@ -1471,6 +1471,14 @@ export const api = {
     timestamp?: string;
   } | null {
     try {
+      // Jika draft telah dipulihkan atau ditutup pada sesi ini, jangan pernah munculkan lagi
+      if (
+        sessionStorage.getItem('cbt_draft_dismissed') === 'true' ||
+        sessionStorage.getItem('cbt_draft_handled') === 'true'
+      ) {
+        return null;
+      }
+
       type Candidate = {
         source: string;
         examMeta?: any;
@@ -1479,6 +1487,7 @@ export const api = {
         timestamp?: string;
       };
       const candidates: Candidate[] = [];
+      const publishedExams = getLocalUjian();
 
       // 1. Cek draft aktif editor (auto-save)
       const activeDraftStr = localStorage.getItem('cbt_active_editor_draft');
@@ -1486,36 +1495,26 @@ export const api = {
         try {
           const parsed = JSON.parse(activeDraftStr);
           if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
-            candidates.push({
-              source: 'Auto-Save Editor Naskah',
-              examMeta: parsed,
-              questions: parsed.questions,
-              count: parsed.questions.length,
-              timestamp: parsed.timestamp,
-            });
+            // Pastikan naskah ini bukan ujian yang sudah sukses terbit di bank ujian
+            const alreadyPublished = publishedExams.some(
+              (u) =>
+                (parsed.id && u.ID === parsed.id) ||
+                (parsed.judul && u.Judul_Ujian === parsed.judul)
+            );
+            if (!alreadyPublished) {
+              candidates.push({
+                source: 'Auto-Save Editor Naskah',
+                examMeta: parsed,
+                questions: parsed.questions,
+                count: parsed.questions.length,
+                timestamp: parsed.timestamp,
+              });
+            }
           }
         } catch {}
       }
 
-      // 2. Cek cbt_last_saved_exam_backup
-      const backupStr = localStorage.getItem('cbt_last_saved_exam_backup');
-      if (backupStr) {
-        try {
-          const parsed = JSON.parse(backupStr);
-          const rawSoal = JSON.parse(parsed.Soal_JSON || '{}');
-          const qs = Array.isArray(rawSoal.questions) ? rawSoal.questions : (Array.isArray(rawSoal) ? rawSoal : []);
-          if (qs.length > 0) {
-            candidates.push({
-              source: `Cadangan Terakhir Terbit (${parsed.Judul_Ujian || 'Ujian'})`,
-              examMeta: parsed,
-              questions: qs,
-              count: qs.length,
-            });
-          }
-        } catch {}
-      }
-
-      // 3. Pindai seluruh item localStorage (cbt_draft_q_*, cbt_backup_exam_*)
+      // 2. Pindai item draft butir per-soal di localStorage (cbt_draft_q_*)
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
         if (!k) continue;
@@ -1530,38 +1529,7 @@ export const api = {
               });
             }
           } catch {}
-        } else if (k.startsWith('cbt_backup_exam_')) {
-          try {
-            const parsed = JSON.parse(localStorage.getItem(k) || '{}');
-            const rawSoal = JSON.parse(parsed.Soal_JSON || '{}');
-            const qs = Array.isArray(rawSoal.questions) ? rawSoal.questions : (Array.isArray(rawSoal) ? rawSoal : []);
-            if (qs.length > 0) {
-              candidates.push({
-                source: `Cadangan Naskah (${parsed.Judul_Ujian || k})`,
-                examMeta: parsed,
-                questions: qs,
-                count: qs.length,
-              });
-            }
-          } catch {}
         }
-      }
-
-      // 4. Periksa list ujian lokal jika terdapat paket yang baru dibuat / memiliki banyak soal
-      const list = getLocalUjian();
-      for (const u of list) {
-        try {
-          const raw = JSON.parse(u.Soal_JSON || '{}');
-          const qs = Array.isArray(raw.questions) ? raw.questions : (Array.isArray(raw) ? raw : []);
-          if (qs.length >= 5) {
-            candidates.push({
-              source: `Paket Ujian: ${u.Judul_Ujian}`,
-              examMeta: u,
-              questions: qs,
-              count: qs.length,
-            });
-          }
-        } catch {}
       }
 
       if (candidates.length === 0) return null;
@@ -1571,6 +1539,57 @@ export const api = {
       return candidates[0];
     } catch {}
     return null;
+  },
+
+  /**
+   * Bersihkan seluruh naskah draft/cache dari localStorage dan sessionStorage
+   */
+  clearDraftQuestions(): void {
+    try {
+      localStorage.removeItem('cbt_active_editor_draft');
+      localStorage.removeItem('cbt_last_saved_exam_backup');
+      localStorage.removeItem('cbt_draft_q_current');
+      localStorage.removeItem('cbt_last_saved_question');
+
+      const localKeysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (
+          k &&
+          (k.startsWith('cbt_draft_') ||
+            k.startsWith('cbt_backup_exam_') ||
+            k.startsWith('cbt_active_editor_draft'))
+        ) {
+          localKeysToRemove.push(k);
+        }
+      }
+      localKeysToRemove.forEach((k) => {
+        try {
+          localStorage.removeItem(k);
+        } catch {}
+      });
+
+      const sessionKeysToRemove: string[] = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i);
+        if (
+          k &&
+          (k.startsWith('cbt_draft_') ||
+            k.startsWith('cbt_backup_exam_') ||
+            k.startsWith('cbt_active_editor_draft'))
+        ) {
+          sessionKeysToRemove.push(k);
+        }
+      }
+      sessionKeysToRemove.forEach((k) => {
+        try {
+          sessionStorage.removeItem(k);
+        } catch {}
+      });
+
+      sessionStorage.setItem('cbt_draft_dismissed', 'true');
+      sessionStorage.setItem('cbt_draft_handled', 'true');
+    } catch {}
   },
 
   // 5. NILAI & HASIL CBT

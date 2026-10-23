@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FileQuestion,
   Plus,
@@ -123,6 +123,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
   const [isGenerateSoalModalOpen, setIsGenerateSoalModalOpen] = useState(false);
   const [exportModalExam, setExportModalExam] = useState<Ujian | null>(null);
   const [reviewModalExam, setReviewModalExam] = useState<Ujian | null>(null);
+  const [hasSavedDraft, setHasSavedDraft] = useState<boolean>(false);
   const [recoverableDraft, setRecoverableDraft] = useState<{
     source: string;
     examMeta?: any;
@@ -130,6 +131,9 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
     count: number;
     timestamp?: string;
   } | null>(null);
+
+  // Ref guard agar pemanggilan fungsi pengecekan draft hanya berjalan tepat sekali saat mount
+  const hasCheckedDraftRef = useRef(false);
 
   const generateRandomToken = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -470,6 +474,8 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
     setTokenUjian('');
     setCurrentKisiKisi(null);
     setCurrentPerQIdx(0);
+    setHasSavedDraft(false);
+    setRecoverableDraft(null);
     setQuestions([
       {
         type: 'pg',
@@ -513,22 +519,50 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
     }
   }, [questions, judul, mapel, kelas, durasi, sesi, maxAttempts, acakSoal, acakOpsi, jadwalMulai, jadwalSelesai, tokenUjian, currentKisiKisi, id]);
 
-  useEffect(() => {
-    if (questions.length === 0) {
-      resetForm();
+  const checkSavedDraft = () => {
+    // Pastikan pemanggilan fungsi pengecekan draft hanya berjalan sekali saat component mount
+    // dan tidak terpicu ulang secara otomatis saat perpindahan tab, visibilitychange, atau re-render
+    if (hasCheckedDraftRef.current) return;
+    hasCheckedDraftRef.current = true;
+
+    if (
+      sessionStorage.getItem('cbt_draft_dismissed') === 'true' ||
+      sessionStorage.getItem('cbt_draft_handled') === 'true'
+    ) {
+      setHasSavedDraft(false);
+      setRecoverableDraft(null);
+      return;
     }
-    // Periksa apakah ada draf atau cadangan soal yang dapat dipulihkan dari cache peramban lokal
+
     try {
       const found = api.scanAndRescueDraftQuestions();
       if (found && found.questions && found.questions.length > 0) {
         setRecoverableDraft(found as any);
+        setHasSavedDraft(true);
+      } else {
+        setHasSavedDraft(false);
+        setRecoverableDraft(null);
       }
-    } catch {}
+    } catch {
+      setHasSavedDraft(false);
+      setRecoverableDraft(null);
+    }
+  };
+
+  useEffect(() => {
+    if (questions.length === 0) {
+      resetForm();
+    }
+    // Periksa apakah ada draf naskah yang belum tersimpan hanya sekali saat component mount
+    checkSavedDraft();
   }, []);
 
   const handleRestoreDraft = () => {
     if (!recoverableDraft) return;
     const { questions: rescuedQs, examMeta } = recoverableDraft;
+    const count = rescuedQs.length;
+    const source = recoverableDraft.source;
+
     setQuestions(rescuedQs);
     if (examMeta?.judul) setJudul(examMeta.judul);
     else if (examMeta?.Judul_Ujian) setJudul(examMeta.Judul_Ujian);
@@ -540,18 +574,28 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
     if (examMeta?.currentKisiKisi) setCurrentKisiKisi(examMeta.currentKisiKisi);
     if (examMeta?.id || examMeta?.ID) setId(examMeta.id || examMeta.ID);
     setCurrentPerQIdx(0);
+
+    // 1. Kondisi Sinkronisasi State: Ubah status/state hasSavedDraft menjadi false & hapus recoverableDraft
+    setHasSavedDraft(false);
     setRecoverableDraft(null);
+
+    // 2. Pembersihan Cache: Hapus draft/cache soal tersimpan di localStorage / sessionStorage langsung seketika
+    api.clearDraftQuestions();
+
     onShowModal({
       isOpen: true,
       title: 'Naskah Soal Berhasil Dipulihkan! 📝',
-      message: `Berhasil mengembalikan ${rescuedQs.length} butir soal dari ${recoverableDraft.source}. Seluruh naskah Anda siap dilanjutkan penyuntingannya atau langsung diterbitkan ke CBT!`,
+      message: `Berhasil mengembalikan ${count} butir soal dari ${source}. Seluruh naskah Anda siap dilanjutkan penyuntingannya atau langsung diterbitkan ke CBT!`,
       type: 'success',
       isConfirm: false,
     });
   };
 
   const handleDismissDraft = () => {
+    // Saat tombol Tutup diklik, ubah state hasSavedDraft menjadi false dan hapus draft dari localStorage / sessionStorage
+    setHasSavedDraft(false);
     setRecoverableDraft(null);
+    api.clearDraftQuestions();
   };
 
   const handleEditUjian = (u: Ujian) => {
@@ -883,11 +927,10 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
           return [savedExam, ...filtered];
         });
 
-        // Simpan cadangan permanen naskah butir soal agar tidak pernah hilang
-        try {
-          localStorage.setItem(`cbt_backup_exam_${savedExam.ID}`, JSON.stringify(savedExam));
-          localStorage.setItem('cbt_last_saved_exam_backup', JSON.stringify(savedExam));
-        } catch {}
+        // Bersihkan draft / cache setelah naskah resmi tersimpan dan diterbitkan
+        api.clearDraftQuestions();
+        setRecoverableDraft(null);
+        setHasSavedDraft(false);
 
         onShowModal({
           isOpen: true,
@@ -1053,7 +1096,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
         </div>
 
         {/* Banner Pemulihan Naskah Soal Terdeteksi */}
-        {recoverableDraft && (
+        {hasSavedDraft && recoverableDraft && (
           <div className="mb-4 p-4 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 text-amber-900 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-xl bg-amber-200/90 text-amber-900 shrink-0 mt-0.5">
