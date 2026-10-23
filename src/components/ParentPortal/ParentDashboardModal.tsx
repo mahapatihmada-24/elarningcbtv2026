@@ -1222,7 +1222,16 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                                     {idx + 1}
                                   </td>
                                   <td className="py-3 px-3.5 text-slate-500 whitespace-nowrap">
-                                    {n.Waktu_Submit ? n.Waktu_Submit.slice(0, 16) : '-'}
+                                    <div className="flex flex-col text-[11px]">
+                                      {n.Waktu_Mulai && (
+                                        <span className="text-slate-400">
+                                          Mulai: {n.Waktu_Mulai.slice(0, 16)}
+                                        </span>
+                                      )}
+                                      <span className="font-semibold text-slate-700">
+                                        Selesai: {n.Waktu_Submit ? n.Waktu_Submit.slice(0, 16) : '-'}
+                                      </span>
+                                    </div>
                                   </td>
                                   <td className="py-3 px-3.5 font-bold text-slate-900">
                                     {n.Judul_Ujian}
@@ -1246,13 +1255,17 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                                     </span>
                                   </td>
                                   <td className="py-3 px-3.5 text-center whitespace-nowrap">
-                                    {countPelanggaran === 0 ? (
-                                      <span className="text-emerald-700 font-bold text-[11px]">
-                                        ✓ 100% Tertib
+                                    {countPelanggaran >= 3 ? (
+                                      <span className="text-rose-700 font-bold text-[11px] bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                                        🚨 3x Maksimal (Auto-Close)
+                                      </span>
+                                    ) : countPelanggaran > 0 ? (
+                                      <span className="text-amber-700 font-bold text-[11px] bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                        ⚠️ {countPelanggaran}x Pindah
                                       </span>
                                     ) : (
-                                      <span className="text-amber-700 font-bold text-[11px]">
-                                        ⚠️ {countPelanggaran}x Pindah
+                                      <span className="text-emerald-700 font-bold text-[11px]">
+                                        ✓ 100% Tertib
                                       </span>
                                     )}
                                   </td>

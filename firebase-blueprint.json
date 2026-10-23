@@ -54,6 +54,7 @@
         "Nilai": { "type": "number" },
         "Pelanggaran": { "type": "number" },
         "Waktu_Submit": { "type": "string" },
+        "Waktu_Mulai": { "type": "string" },
         "Jawaban_JSON": { "type": "string" }
       },
       "required": ["ID", "ID_Ujian", "Nama_Murid", "Nilai"]

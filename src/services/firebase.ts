@@ -345,6 +345,7 @@ function parseFirestoreRestNilaiDoc(doc: any): Nilai {
     Nilai: Number(f.Nilai?.doubleValue ?? f.Nilai?.integerValue ?? 0),
     Pelanggaran: Number(f.Pelanggaran?.integerValue ?? f.Pelanggaran?.doubleValue ?? 0),
     Waktu_Submit: f.Waktu_Submit?.stringValue || '',
+    Waktu_Mulai: f.Waktu_Mulai?.stringValue || undefined,
     Catatan_Guru: f.Catatan_Guru?.stringValue || undefined,
     Koreksi_Manual: Boolean(f.Koreksi_Manual?.booleanValue),
     No_HP_Ortu: f.No_HP_Ortu?.stringValue || undefined,
@@ -763,6 +764,7 @@ export const firebaseService = {
     kelas: string;
     nilai: number;
     pelanggaran: number;
+    waktu_mulai?: string;
     catatan_guru?: string;
     koreksi_manual?: boolean;
     jawaban_json?: string;
@@ -786,6 +788,7 @@ export const firebaseService = {
       Nilai: Number(Number(payload.nilai || 0).toFixed(2)),
       Pelanggaran: Number(payload.pelanggaran || 0),
       Waktu_Submit: timeStr,
+      Waktu_Mulai: payload.waktu_mulai ? String(payload.waktu_mulai).trim() : undefined,
       Catatan_Guru: payload.catatan_guru ? String(payload.catatan_guru).trim() : undefined,
       Koreksi_Manual: Boolean(payload.koreksi_manual),
       Jawaban_JSON: typeof payload.jawaban_json === 'string' ? payload.jawaban_json : undefined,

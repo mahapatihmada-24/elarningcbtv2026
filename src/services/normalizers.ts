@@ -66,6 +66,7 @@ export function normalizeNilai(n: any): Nilai {
     Nilai: Number(n.Nilai ?? n.nilai ?? 0),
     Pelanggaran: Number(n.Pelanggaran ?? n.pelanggaran ?? 0),
     Waktu_Submit: String(n.Waktu_Submit || n.waktu_submit || ''),
+    Waktu_Mulai: n.Waktu_Mulai || n.waktu_mulai || undefined,
     Catatan_Guru: n.Catatan_Guru || n.catatan_guru || undefined,
     Koreksi_Manual: Boolean(n.Koreksi_Manual || n.koreksi_manual),
     No_HP_Ortu: n.No_HP_Ortu || n.no_hp_ortu || undefined,

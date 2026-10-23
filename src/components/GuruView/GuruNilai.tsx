@@ -14,9 +14,10 @@ import {
   X,
   MessageSquare,
   Check,
+  ShieldAlert,
 } from 'lucide-react';
 import { Nilai, SchoolProfile, User } from '../../types';
-import { api } from '../../services/api';
+import { api, DEFAULT_SCHOOL_PROFILE } from '../../services/api';
 import { ModalState } from '../ConfirmModal';
 import { exportNilaiToExcel } from '../../utils/excelExamHelper';
 import { RekapNilaiPrintModal } from '../RekapNilaiPrintModal';
@@ -40,6 +41,11 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
   const [editScoreInput, setEditScoreInput] = useState<number>(0);
   const [editCatatanInput, setEditCatatanInput] = useState<string>('');
   const [isSavingCorrection, setIsSavingCorrection] = useState(false);
+
+  // Penalty Settings State
+  const [isPenaltyModalOpen, setIsPenaltyModalOpen] = useState(false);
+  const [penaltyInput, setPenaltyInput] = useState<number>(5);
+  const [isSavingPenalty, setIsSavingPenalty] = useState(false);
 
   // WhatsApp modal state
   const [waModalData, setWaModalData] = useState<{
@@ -161,6 +167,45 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
       }
     } finally {
       setIsSavingCorrection(false);
+    }
+  };
+
+  // Save manual penalty configuration
+  const handleSavePenalty = async () => {
+    setIsSavingPenalty(true);
+    try {
+      const updatedProfile: SchoolProfile = {
+        ...(schoolProfile || DEFAULT_SCHOOL_PROFILE),
+        poinPenaltiPelanggaran: Number(penaltyInput),
+      };
+
+      const res = await api.saveSchoolProfile(updatedProfile);
+      if (res.success) {
+        setSchoolProfile(updatedProfile);
+        setIsPenaltyModalOpen(false);
+        onShowModal({
+          isOpen: true,
+          title: 'Pengaturan Penalti Berhasil',
+          message: `Poin penalti pelanggaran anti-contek berhasil diatur menjadi ${penaltyInput} poin per pelanggaran.`,
+          type: 'success',
+        });
+      } else {
+        onShowModal({
+          isOpen: true,
+          title: 'Gagal Menyimpan',
+          message: res.message || 'Gagal menyimpan pengaturan poin penalti.',
+          type: 'danger',
+        });
+      }
+    } catch (err: any) {
+      onShowModal({
+        isOpen: true,
+        title: 'Error Sistem',
+        message: err?.message || 'Terjadi kesalahan saat menyimpan profil sekolah.',
+        type: 'danger',
+      });
+    } finally {
+      setIsSavingPenalty(false);
     }
   };
 
@@ -335,6 +380,17 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
 
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
+            onClick={() => {
+              setPenaltyInput(schoolProfile?.poinPenaltiPelanggaran ?? 5);
+              setIsPenaltyModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold border border-rose-200 transition cursor-pointer"
+            title="Atur Poin Penalti Pelanggaran Anti-Contek CBT"
+          >
+            <ShieldAlert className="w-4 h-4 text-rose-600" />
+            <span>Penalti: {schoolProfile?.poinPenaltiPelanggaran ?? 5} Poin/Pelanggaran</span>
+          </button>
+          <button
             onClick={handleExportExcel}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition"
             title="Ekspor Data Nilai ke Excel (.xlsx)"
@@ -438,7 +494,7 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
         <table className="w-full text-xs sm:text-sm text-left">
           <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
             <tr>
-              <th className="p-3">Waktu Submit</th>
+              <th className="p-3">Waktu Pengerjaan</th>
               <th className="p-3">Nama Murid</th>
               <th className="p-3">Kelas</th>
               <th className="p-3">Judul Ujian CBT</th>
@@ -464,12 +520,32 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
             ) : (
               filteredNilai.map((n) => {
                 const isPassed = Number(n.Nilai || 0) >= kkm;
-                const hasCheated = (n.Pelanggaran || 0) > 0;
+                const penaltyPerViolation = schoolProfile?.poinPenaltiPelanggaran ?? 5;
+                const violations = Number(n.Pelanggaran || 0);
+                const penaltyAmount = violations * penaltyPerViolation;
+                const hasCheated = violations > 0;
 
                 return (
                   <tr key={n.ID} className="hover:bg-slate-50/80 transition">
-                    <td className="p-3 text-xs text-slate-500 whitespace-nowrap">
-                      {n.Waktu_Submit}
+                    <td className="p-3 text-xs text-slate-600 whitespace-nowrap">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">
+                            Mulai
+                          </span>
+                          <span className="font-medium text-slate-700">
+                            {n.Waktu_Mulai || '-'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded">
+                            Selesai
+                          </span>
+                          <span className="font-medium text-slate-700">
+                            {n.Waktu_Submit || '-'}
+                          </span>
+                        </div>
+                      </div>
                     </td>
                     <td className="p-3 font-bold text-slate-800 whitespace-nowrap">
                       {n.Nama_Murid}
@@ -490,11 +566,26 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
                       </span>
                     </td>
                     <td className="p-3 text-center">
-                      {hasCheated ? (
-                        <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 font-bold border border-rose-200">
-                          <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
-                          {n.Pelanggaran}x Pindah Tab (-{n.Pelanggaran * 5} Poin)
-                        </span>
+                      {violations >= 3 ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 font-extrabold border border-rose-300">
+                            <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+                            3x Maksimal (Auto-Close)
+                          </span>
+                          <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                            Penalti: -{penaltyAmount} Poin
+                          </span>
+                        </div>
+                      ) : hasCheated ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 font-bold border border-rose-200">
+                            <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
+                            {violations}x Pindah Tab
+                          </span>
+                          <span className="text-[10px] font-semibold text-rose-600">
+                            Penalti: -{penaltyAmount} Poin
+                          </span>
+                        </div>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold">
                           <CheckCircle2 className="w-3 h-3 text-emerald-500" />
@@ -695,6 +786,71 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>Buka WhatsApp & Kirim</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PENGATURAN POIN PENALTI PELANGGARAN */}
+      {isPenaltyModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-rose-600" />
+                <h4 className="font-black text-slate-800 text-base">Atur Penalti Anti-Contek</h4>
+              </div>
+              <button
+                onClick={() => setIsPenaltyModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Tentukan jumlah poin yang otomatis dipotong dari nilai akhir siswa untuk setiap 1 kali insiden perpindahan tab atau keluar layar pada ujian CBT.
+            </p>
+
+            <div className="p-4 bg-rose-50 rounded-2xl border border-rose-200 space-y-2">
+              <label className="block text-xs font-bold text-rose-900">
+                Poin Pengurangan per Pelanggaran
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  step={1}
+                  value={penaltyInput}
+                  onChange={(e) => setPenaltyInput(Math.max(0, Number(e.target.value)))}
+                  className="w-28 text-center text-xl font-black p-2.5 rounded-xl border border-rose-300 bg-white text-rose-700 focus:ring-2 focus:ring-rose-500"
+                />
+                <span className="text-xs font-bold text-rose-800">
+                  Poin / Pelanggaran
+                </span>
+              </div>
+              <p className="text-[11px] text-rose-700 italic">
+                * Contoh: Jika diset {penaltyInput || 0} poin, maka 1x pelanggaran = -{penaltyInput || 0} poin, dan 3x pelanggaran (maksimal) = -{(penaltyInput || 0) * 3} poin.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsPenaltyModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                disabled={isSavingPenalty}
+                onClick={handleSavePenalty}
+                className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black shadow-md transition disabled:opacity-50"
+              >
+                {isSavingPenalty ? 'Menyimpan...' : 'Simpan Pengaturan'}
               </button>
             </div>
           </div>

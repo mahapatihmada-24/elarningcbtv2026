@@ -884,6 +884,7 @@ export function exportNilaiToExcel(
 
   const headers = [
     'No',
+    'Waktu Mulai',
     'Waktu Selesai',
     'Nama Lengkap Siswa',
     'Kelas',
@@ -899,6 +900,7 @@ export function exportNilaiToExcel(
     const status = numNilai >= kkm ? 'TUNTAS' : 'REMEDIAL';
     return [
       idx + 1,
+      n.Waktu_Mulai || '-',
       n.Waktu_Submit || '-',
       n.Nama_Murid || '-',
       n.Kelas || '-',
@@ -914,7 +916,8 @@ export function exportNilaiToExcel(
 
   ws['!cols'] = [
     { wch: 6 },  // No
-    { wch: 18 }, // Waktu
+    { wch: 20 }, // Waktu Mulai
+    { wch: 20 }, // Waktu Selesai
     { wch: 30 }, // Nama
     { wch: 10 }, // Kelas
     { wch: 25 }, // Judul

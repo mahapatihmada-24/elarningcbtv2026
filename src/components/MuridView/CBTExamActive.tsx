@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Clock,
   AlertTriangle,
@@ -25,7 +25,7 @@ import {
   Smartphone,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Ujian, Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, User, Nilai, getQuestionImages } from '../../types';
+import { Ujian, Question, QuestionPG, QuestionPGKMCMA, QuestionPGKKategori, User, Nilai, SchoolProfile, getQuestionImages } from '../../types';
 import { api, cleanupLocalStorage, safeSetItem } from '../../services/api';
 import { firebaseService } from '../../services/firebase';
 import { MathRenderer } from '../MathRenderer';
@@ -60,6 +60,8 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
   const [timeLeft, setTimeLeft] = useState(exam.Durasi_Menit * 60);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isTerminated, setIsTerminated] = useState(false);
+  const isTerminatedRef = useRef(false);
   const [submitPhase, setSubmitPhase] = useState<'idle' | 'saving_local' | 'connecting' | 'syncing' | 'retrying' | 'error_retry' | 'success'>('idle');
   const [submitRetryCount, setSubmitRetryCount] = useState<number>(0);
   const [submitErrorMessage, setSubmitErrorMessage] = useState<string>('');
@@ -71,6 +73,42 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [submittedNilai, setSubmittedNilai] = useState<Nilai | null>(null);
   const timeUpAlertShownRef = useRef(false);
+  const [schoolProfile, setSchoolProfile] = useState<SchoolProfile | null>(null);
+
+  // Pencatatan Waktu Mulai (Start Time) yang persisten selama sesi pengerjaan ujian
+  const [waktuMulai] = useState<string>(() => {
+    const sessionKey = `cbt_exam_start_${exam.ID}_${currentUser.username || currentUser.nama}`;
+    const saved = localStorage.getItem(sessionKey);
+    if (saved) return saved;
+    const now = new Date();
+    const pad = (n: number) => (n < 10 ? '0' + n : n);
+    const formatted = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    try {
+      localStorage.setItem(sessionKey, formatted);
+    } catch {}
+    return formatted;
+  });
+
+  // Load SchoolProfile untuk pengaturan poin penalti per pelanggaran
+  useEffect(() => {
+    api.getSchoolProfile().then((p) => {
+      if (p) setSchoolProfile(p);
+    });
+  }, []);
+
+  // Resolusi nilai penalti per pelanggaran (Prioritas: Config Soal -> Profil Sekolah -> Default 5)
+  const penaltyPerViolation = useMemo(() => {
+    try {
+      const raw = JSON.parse(exam.Soal_JSON || '{}');
+      if (raw.config && typeof raw.config.poin_penalti === 'number') {
+        return Math.max(0, raw.config.poin_penalti);
+      }
+    } catch {}
+    if (typeof schoolProfile?.poinPenaltiPelanggaran === 'number') {
+      return Math.max(0, schoolProfile.poinPenaltiPelanggaran);
+    }
+    return 5;
+  }, [exam.Soal_JSON, schoolProfile?.poinPenaltiPelanggaran]);
 
   // Student answers state
   // Key: question index => value
@@ -130,43 +168,72 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
   isSubmittingRef.current = isSubmitting;
   const lastCheatTimestampRef = useRef<number>(0);
 
+  // Logika deteksi pelanggaran ketat: batas maksimal 3 kali kesempatan
+  const triggerViolation = useCallback(
+    (reason: string) => {
+      if (isTerminatedRef.current || isSubmittingRef.current || submittedNilai) {
+        return;
+      }
+      const now = Date.now();
+      // Cooldown 1.5 detik untuk mencegah double trigger dari blur & visibilitychange bersamaan
+      if (now - lastCheatTimestampRef.current < 1500) {
+        return;
+      }
+      lastCheatTimestampRef.current = now;
+
+      const currentCount = cheatCountRef.current;
+      if (currentCount >= 3) {
+        return;
+      }
+
+      const nextCount = Math.min(3, currentCount + 1);
+      cheatCountRef.current = nextCount;
+      setCheatCount(nextCount);
+
+      if (nextCount >= 3) {
+        // TEPAT 3 KALI PELANGGARAN:
+        // Hentikan ujian seketika, tandai terminated, matikan kontrol, dan otomatis kumpulkan jawaban
+        isTerminatedRef.current = true;
+        setIsTerminated(true);
+        handleSubmitExam(true);
+      } else {
+        // Pelanggaran ke-1 dan ke-2: Berikan notifikasi modal peringatan
+        const sisaKesempatan = 3 - nextCount;
+        onShowModal({
+          isOpen: true,
+          title: `Peringatan Pelanggaran (${nextCount}/3)!`,
+          message: `Perhatian!\nAnda terdeteksi meninggalkan halaman ujian (${reason}).\n\nIni adalah pelanggaran ke-${nextCount} dari batas maksimal 3 kali. (Sisa kesempatan: ${sisaKesempatan} kali lagi).\n\nSetiap pelanggaran memotong -${penaltyPerViolation} poin dari nilai akhir.\nJika melakukan pelanggaran tepat 3 kali, ujian akan LANGSUNG DITUTUP OTOMATIS dan lembar jawaban Anda segera dikirimkan ke guru.`,
+          type: 'warning',
+          isConfirm: false,
+          okText: 'Saya Mengerti, Kembali Mengerjakan',
+        });
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [submittedNilai, penaltyPerViolation, onShowModal]
+  );
+
   useEffect(() => {
+    if (isTerminated || submittedNilai) return;
+
     const handleVisibilityChange = () => {
-      if (document.hidden && !isSubmittingRef.current) {
-        const now = Date.now();
-        // Cooldown 2.5 detik untuk mencegah double trigger pada perangkat mobile/tab switch
-        if (now - lastCheatTimestampRef.current < 2500) {
-          return;
-        }
-        lastCheatTimestampRef.current = now;
+      if (document.hidden && !isTerminatedRef.current && !isSubmittingRef.current) {
+        triggerViolation('berpindah tab / meminimalkan browser');
+      }
+    };
 
-        const nextCount = cheatCountRef.current + 1;
-        setCheatCount(nextCount);
-        cheatCountRef.current = nextCount;
-
-        if (nextCount >= 3) {
-          // Ketika pelanggaran mencapai batas 3 kali: otomatis keluar dan kumpulkan ujian
-          handleSubmitExam(true);
-        } else {
-          // Pelanggaran ke-1 dan ke-2: JANGAN langsung keluar dari ujian, cukup berikan notifikasi peringatan melanggar
-          const sisaKesempatan = 3 - nextCount;
-          onShowModal({
-            isOpen: true,
-            title: `Peringatan Pelanggaran (${nextCount}/3)!`,
-            message: `Perhatian!\nAnda terdeteksi meninggalkan halaman ujian (berpindah tab, membuka aplikasi lain, atau meminimalkan browser).\n\nIni adalah pelanggaran ke-${nextCount} dari batas maksimal 3 kali. (Sisa kesempatan: ${sisaKesempatan} kali lagi).\n\nJika melakukan pelanggaran hingga 3 kali, ujian akan OTOMATIS keluar dan jawaban Anda langsung dikirimkan ke guru.`,
-            type: 'warning',
-            isConfirm: false,
-            okText: 'Saya Mengerti, Lanjutkan Ujian',
-          });
-        }
+    const handleWindowBlur = () => {
+      if (!isTerminatedRef.current && !isSubmittingRef.current) {
+        triggerViolation('membuka jendela atau aplikasi lain');
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
 
-    // Proteksi Keamanan: Siswa tidak bisa menutup tab atau navigasi keluar sebelum waktu selesai
+    // Proteksi Keamanan: Siswa tidak bisa menutup tab sebelum waktu selesai
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (!isSubmittingRef.current) {
+      if (!isSubmittingRef.current && !isTerminatedRef.current) {
         e.preventDefault();
         e.returnValue = 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.';
         return 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.';
@@ -177,7 +244,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     // Kunci riwayat browser agar tidak bisa tekan tombol 'Back' untuk keluar
     window.history.pushState(null, '', window.location.href);
     const handlePopState = () => {
-      if (!isSubmittingRef.current) {
+      if (!isSubmittingRef.current && !isTerminatedRef.current) {
         window.history.pushState(null, '', window.location.href);
         onShowModal({
           isOpen: true,
@@ -193,10 +260,11 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
       window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('popstate', handlePopState);
     };
-  }, []);
+  }, [isTerminated, submittedNilai, triggerViolation, onShowModal]);
 
   // Monitor status online/offline untuk ketahanan seluler perangkat HP
   useEffect(() => {
@@ -346,7 +414,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     setIsSubmitting(false);
     setSubmitPhase('idle');
 
-    if (payload.nilai >= 75) {
+    if (payload.nilai >= 75 && payload.pelanggaran < 3) {
       try {
         confetti({
           particleCount: 120,
@@ -356,35 +424,59 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
       } catch {}
     }
 
-    const rawScoreVal = payload.nilai + payload.pelanggaran * 5;
-    const penaltyVal = payload.pelanggaran * 5;
+    const penaltyRate = penaltyPerViolation;
+    const finalViolations = Math.min(3, Number(payload.pelanggaran || 0));
+    const penaltyVal = finalViolations * penaltyRate;
+    const rawScoreVal = payload.nilai + penaltyVal;
     const rawScoreStr = Number(rawScoreVal).toFixed(2);
     const penaltyStr = Number(penaltyVal).toFixed(2);
     const finalScoreStr = Number(payload.nilai).toFixed(2);
-    const isViolationLimit = payload.pelanggaran >= 3;
+    const isViolationLimit = finalViolations >= 3;
+
+    // Bersihkan sesi waktu mulai lokal setelah berhasil submit
+    try {
+      localStorage.removeItem(`cbt_exam_start_${exam.ID}_${currentUser.username || currentUser.nama}`);
+    } catch {}
 
     let finishMsg = '';
     if (isViolationLimit) {
-      finishMsg = `Ujian telah dihentikan secara otomatis oleh sistem karena Anda telah mencapai batas maksimal 3 kali pelanggaran (meninggalkan halaman ujian).\n\nLembar jawaban Anda telah tersimpan dan terkirim ke server guru.\n\nNilai Murni: ${rawScoreStr}\nPenalti Pelanggaran (3x): -${penaltyStr}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100.00`;
+      finishMsg = `Ujian telah dihentikan secara otomatis oleh sistem karena Anda telah mencapai batas maksimal 3 kali pelanggaran (meninggalkan halaman ujian / beralih tab).\n\nLembar jawaban Anda telah tersimpan dan terkirim ke server guru.\n\nNilai Murni: ${rawScoreStr}\nPenalti Pelanggaran (3x -${penaltyRate} Poin): -${penaltyStr}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100.00\n\nWaktu Mulai: ${payload.waktu_mulai || waktuMulai}\nWaktu Selesai: ${payload.waktu_submit || 'Tercatat'}`;
     } else {
-      finishMsg = `Lembar jawaban ujian Anda telah berhasil disimpan dan dikirimkan ke server guru.\n\nNilai Murni: ${rawScoreStr}${penaltyVal > 0 ? `\nPenalti Pindah Tab (${payload.pelanggaran}x): -${penaltyStr}` : ''}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100.00`;
+      finishMsg = `Lembar jawaban ujian Anda telah berhasil disimpan dan dikirimkan ke server guru.\n\nNilai Murni: ${rawScoreStr}${penaltyVal > 0 ? `\nPenalti Pindah Tab (${finalViolations}x -${penaltyRate} Poin): -${penaltyStr}` : ''}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100.00\n\nWaktu Mulai: ${payload.waktu_mulai || waktuMulai}\nWaktu Selesai: ${payload.waktu_submit || 'Tercatat'}`;
     }
 
-    onShowModal({
-      isOpen: true,
-      title: isViolationLimit ? 'Ujian Dihentikan (3x Pelanggaran)' : 'Ujian Telah Dikumpulkan!',
-      message: `${finishMsg}\n\nLembar jawaban Anda telah berhasil diverifikasi di server.\nSilakan klik "Lihat Review & Pembahasan" untuk meninjau kunci jawaban dan pembahasan soal.`,
-      type: isViolationLimit ? 'danger' : payload.nilai >= 75 ? 'success' : 'info',
-      isConfirm: true,
-      okText: 'Lihat Review & Pembahasan',
-      cancelText: 'Kembali ke Menu Utama',
-      onConfirm: () => {
-        setIsReviewOpen(true);
-      },
-      onCancel: () => {
-        onFinishExam();
-      },
-    });
+    if (isViolationLimit) {
+      onShowModal({
+        isOpen: true,
+        title: 'Ujian Dihentikan (3x Pelanggaran)',
+        message: `${finishMsg}\n\nUjian Anda telah dikunci secara otomatis. Klik tombol di bawah untuk kembali ke menu utama.`,
+        type: 'danger',
+        isConfirm: false,
+        okText: 'Tutup & Kembali ke Menu Utama',
+        onConfirm: () => {
+          onFinishExam();
+        },
+        onCancel: () => {
+          onFinishExam();
+        },
+      });
+    } else {
+      onShowModal({
+        isOpen: true,
+        title: 'Ujian Telah Dikumpulkan!',
+        message: `${finishMsg}\n\nLembar jawaban Anda telah berhasil diverifikasi di server.\nSilakan klik "Lihat Review & Pembahasan" untuk meninjau kunci jawaban dan pembahasan soal.`,
+        type: payload.nilai >= 75 ? 'success' : 'info',
+        isConfirm: true,
+        okText: 'Lihat Review & Pembahasan',
+        cancelText: 'Kembali ke Menu Utama',
+        onConfirm: () => {
+          setIsReviewOpen(true);
+        },
+        onCancel: () => {
+          onFinishExam();
+        },
+      });
+    }
   };
 
   const sendPayloadWithRetry = async (payload: any) => {
@@ -436,7 +528,8 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
         Kelas: currentUser.kelas || '-',
         Nilai: payload.nilai,
         Pelanggaran: payload.pelanggaran,
-        Waktu_Submit: new Date().toISOString(),
+        Waktu_Submit: payload.waktu_submit || new Date().toISOString(),
+        Waktu_Mulai: payload.waktu_mulai || waktuMulai,
         Jawaban_JSON: payload.jawaban_json,
       };
       setSubmittedNilai(newNilaiRecord);
@@ -459,6 +552,12 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     setSubmitPhase('connecting');
     setSubmitRetryCount(1);
     setSubmitErrorMessage('');
+
+    const now = new Date();
+    const pad = (n: number) => (n < 10 ? '0' + n : n);
+    const submitTimeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(
+      now.getHours()
+    )}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
     let totalEarnedPoints = 0;
     let maxTotalPoints = 0;
@@ -505,8 +604,9 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
       }
     });
 
+    const finalViolations = Math.min(3, Number(cheatCountRef.current || 0));
     const rawScoreVal = maxTotalPoints > 0 ? (totalEarnedPoints / maxTotalPoints) * 100 : 0;
-    const penaltyVal = cheatCountRef.current * 5;
+    const penaltyVal = finalViolations * penaltyPerViolation;
     const finalScoreVal = Math.max(0, rawScoreVal - penaltyVal);
 
     // Format penilaian baku skala 0-100 dengan 2 angka di belakang koma (.toFixed(2))
@@ -537,7 +637,9 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
       nama_murid: (currentUser.nama || '').trim(),
       kelas: (currentUser.kelas || '-').trim(),
       nilai: finalScoreNum,
-      pelanggaran: Number(cheatCountRef.current || 0),
+      pelanggaran: finalViolations,
+      waktu_mulai: waktuMulai,
+      waktu_submit: submitTimeStr,
       jawaban_json: jawabanJsonStr,
     };
 
@@ -577,6 +679,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
   };
 
   const isTimeCritical = timeLeft < 300; // < 5 minutes
+  const isInputDisabled = timeLeft <= 0 || isTerminated || isSubmitting || cheatCount >= 3;
 
   return (
     <div className="space-y-4 max-w-4xl mx-auto pb-12">
@@ -601,6 +704,13 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
             >
               <UserIcon className="w-3 h-3 text-indigo-600 shrink-0" />
               <span className="truncate">{currentUser.nama}</span>
+            </span>
+            <span
+              className="hidden lg:inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md truncate border border-emerald-200 shrink-0"
+              title={`Waktu Mulai: ${waktuMulai}`}
+            >
+              <Clock className="w-3 h-3 text-emerald-600 shrink-0" />
+              <span>Mulai: {waktuMulai.split(' ')[1] || waktuMulai}</span>
             </span>
           </div>
 
@@ -654,20 +764,22 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
 
         {/* Anti-cheat banner if triggered: Slim and neat */}
         {cheatCount > 0 && (
-          <div className="mt-2 py-1 px-2.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 text-xs font-semibold flex items-center justify-between gap-2 animate-in fade-in">
+          <div className={`mt-2 py-1 px-2.5 rounded-lg border text-xs font-semibold flex items-center justify-between gap-2 animate-in fade-in ${
+            cheatCount >= 3 ? 'bg-rose-50 border-rose-300 text-rose-900' : 'bg-amber-50 border-amber-300 text-amber-900'
+          }`}>
             <div className="flex items-center gap-1.5 min-w-0">
-              <ShieldAlert className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <ShieldAlert className={`w-3.5 h-3.5 shrink-0 ${cheatCount >= 3 ? 'text-rose-600' : 'text-amber-600'}`} />
               <span className="truncate">
-                Pelanggaran {cheatCount}/3 (Penalti: -{cheatCount * 5} poin).{' '}
-                {cheatCount < 3 ? `Sisa toleransi: ${3 - cheatCount}x lagi.` : 'Batas maksimal tercapai!'}
+                Pelanggaran {Math.min(3, cheatCount)}/3 (Penalti: -{Math.min(3, cheatCount) * penaltyPerViolation} poin).{' '}
+                {cheatCount < 3 ? `Sisa toleransi: ${3 - cheatCount}x lagi.` : 'Batas maksimal 3x tercapai! Ujian otomatis dihentikan.'}
               </span>
             </div>
             <span
               className={`text-[10px] px-2 py-0.2 rounded-full font-black shrink-0 ${
-                cheatCount >= 2 ? 'bg-rose-600 text-white animate-pulse' : 'bg-amber-600 text-white'
+                cheatCount >= 3 ? 'bg-rose-600 text-white animate-pulse' : cheatCount >= 2 ? 'bg-rose-500 text-white' : 'bg-amber-600 text-white'
               }`}
             >
-              {cheatCount}/3 Pelanggaran
+              {Math.min(3, cheatCount)}/3 Pelanggaran
             </span>
           </div>
         )}
@@ -882,7 +994,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                       <label
                         key={opt}
                         className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border-2 transition ${
-                          timeLeft <= 0 ? 'cursor-not-allowed opacity-90' : 'cursor-pointer active:scale-99'
+                          isInputDisabled ? 'cursor-not-allowed opacity-80' : 'cursor-pointer active:scale-99'
                         } ${
                           isSelected
                             ? 'bg-indigo-50/80 border-indigo-600 text-indigo-950 shadow-sm'
@@ -895,16 +1007,16 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                             name={`q_${idx}`}
                             value={opt.toUpperCase()}
                             checked={isSelected}
-                            disabled={timeLeft <= 0}
+                            disabled={isInputDisabled}
                             onChange={() => {
-                              if (timeLeft <= 0) return;
+                              if (isInputDisabled) return;
                               setAnswers((prev) => ({
                                 ...prev,
                                 [idx]: opt.toUpperCase(),
                               }));
                             }}
                             className={`w-5 h-5 text-indigo-600 focus:ring-indigo-500 shrink-0 ${
-                              timeLeft <= 0 ? 'cursor-not-allowed' : 'cursor-pointer'
+                              isInputDisabled ? 'cursor-not-allowed' : 'cursor-pointer'
                             }`}
                           />
                           <div className="text-sm sm:text-base font-semibold text-slate-800">
@@ -962,7 +1074,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                       <label
                         key={oIdx}
                         className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border-2 transition ${
-                          timeLeft <= 0 ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'
+                          isInputDisabled ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'
                         } ${
                           isChecked
                             ? 'bg-emerald-50/80 border-emerald-600 text-emerald-950 shadow-sm'
@@ -973,9 +1085,9 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                           <input
                             type="checkbox"
                             checked={isChecked}
-                            disabled={timeLeft <= 0}
+                            disabled={isInputDisabled}
                             onChange={(e) => {
-                              if (timeLeft <= 0) return;
+                              if (isInputDisabled) return;
                               const copy = [...checkedArr];
                               copy[oIdx] = e.target.checked;
                               setAnswers((prev) => ({
@@ -984,7 +1096,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                               }));
                             }}
                             className={`w-5 h-5 text-emerald-600 rounded shrink-0 ${
-                              timeLeft <= 0 ? 'cursor-not-allowed' : 'cursor-pointer'
+                              isInputDisabled ? 'cursor-not-allowed' : 'cursor-pointer'
                             }`}
                           />
                           <div className="text-sm sm:text-base font-semibold">
@@ -1086,16 +1198,16 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
 
                               <td className="p-3 text-center border-l border-slate-200">
                                 <label className={`inline-flex items-center justify-center p-2 rounded-lg w-full ${
-                                  timeLeft <= 0 ? 'cursor-not-allowed opacity-90' : 'cursor-pointer hover:bg-indigo-50'
+                                  isInputDisabled ? 'cursor-not-allowed opacity-80' : 'cursor-pointer hover:bg-indigo-50'
                                 }`}>
                                   <input
                                     type="radio"
                                     name={`q_${idx}_row_${rIdx}`}
                                     value="col1"
                                     checked={currentVal === 'col1'}
-                                    disabled={timeLeft <= 0}
+                                    disabled={isInputDisabled}
                                     onChange={() => {
-                                      if (timeLeft <= 0) return;
+                                      if (isInputDisabled) return;
                                       setAnswers((prev) => ({
                                         ...prev,
                                         [idx]: {
@@ -1105,7 +1217,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                                       }));
                                     }}
                                     className={`w-5 h-5 text-indigo-600 ${
-                                      timeLeft <= 0 ? 'cursor-not-allowed' : 'cursor-pointer'
+                                      isInputDisabled ? 'cursor-not-allowed' : 'cursor-pointer'
                                     }`}
                                   />
                                 </label>
@@ -1113,16 +1225,16 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
 
                               <td className="p-3 text-center border-l border-slate-200">
                                 <label className={`inline-flex items-center justify-center p-2 rounded-lg w-full ${
-                                  timeLeft <= 0 ? 'cursor-not-allowed opacity-90' : 'cursor-pointer hover:bg-indigo-50'
+                                  isInputDisabled ? 'cursor-not-allowed opacity-80' : 'cursor-pointer hover:bg-indigo-50'
                                 }`}>
                                   <input
                                     type="radio"
                                     name={`q_${idx}_row_${rIdx}`}
                                     value="col2"
                                     checked={currentVal === 'col2'}
-                                    disabled={timeLeft <= 0}
+                                    disabled={isInputDisabled}
                                     onChange={() => {
-                                      if (timeLeft <= 0) return;
+                                      if (isInputDisabled) return;
                                       setAnswers((prev) => ({
                                         ...prev,
                                         [idx]: {
@@ -1132,7 +1244,7 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                                       }));
                                     }}
                                     className={`w-5 h-5 text-indigo-600 ${
-                                      timeLeft <= 0 ? 'cursor-not-allowed' : 'cursor-pointer'
+                                      isInputDisabled ? 'cursor-not-allowed' : 'cursor-pointer'
                                     }`}
                                   />
                                 </label>
@@ -1541,6 +1653,51 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
           userRole="murid"
           isTeacher={false}
         />
+      )}
+
+      {/* Fullscreen Violation Lock Overlay when strictly terminated (3x violations) */}
+      {isTerminated && (
+        <div className="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-center border-2 border-rose-500 animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-rose-200">
+              <ShieldAlert className="w-9 h-9" />
+            </div>
+            <h3 className="text-xl font-extrabold text-slate-900 mb-2">
+              Ujian Dihentikan Secara Otomatis
+            </h3>
+            <div className="inline-block px-3 py-1 bg-rose-100 text-rose-800 rounded-full font-bold text-xs mb-3">
+              Batas Maksimal 3x Pelanggaran Terpenuhi
+            </div>
+            <p className="text-sm text-slate-600 mb-5 leading-relaxed">
+              Anda telah meninggalkan layar ujian sebanyak <strong>3 kali</strong>. Sesuai ketentuan sistem anti-contek, lembar jawaban Anda telah dibekukan dan dikirim ke server. Anda tidak diperkenankan melanjutkan ujian ini.
+            </p>
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-5 text-xs text-slate-700 text-left space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Waktu Mulai:</span>
+                <span className="font-semibold text-slate-800">{waktuMulai}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Pelanggaran Terdeteksi:</span>
+                <span className="font-semibold text-rose-600">3 dari 3 Kesempatan</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Penalti Nilai:</span>
+                <span className="font-semibold text-rose-600">-{3 * penaltyPerViolation} Poin</span>
+              </div>
+              <div className="flex justify-between pt-1 border-t border-slate-200">
+                <span className="text-slate-500">Status Database:</span>
+                <span className="font-bold text-emerald-600">Jawaban Tersimpan & Terkunci</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onFinishExam}
+              className="w-full py-3 px-4 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-lg transition active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Kembali ke Menu Utama</span>
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

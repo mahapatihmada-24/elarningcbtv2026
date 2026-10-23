@@ -62,6 +62,8 @@ export function generateRekapNilaiHtml(params: RekapNilaiPrintParams): string {
   const disiplinCount = nilaiList.filter((n) => (n.Pelanggaran || 0) === 0).length;
   const disiplinPct = total > 0 ? Math.round((disiplinCount / total) * 100) : 100;
 
+  const penaltyPerViolation = schoolProfile?.poinPenaltiPelanggaran ?? 5;
+
   const rowsHtml = nilaiList
     .map((n, idx) => {
       const numNilai = Number(n.Nilai || 0);
@@ -83,23 +85,24 @@ export function generateRekapNilaiHtml(params: RekapNilaiPrintParams): string {
             <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#f59e0b; margin-right:4px;"></span>
             ⚠️ ${countPelanggaran}x Pindah Layar / Tab
           </div>
-          <div style="font-size: 10px; color: #dc2626;">Pengurangan Skor: -${countPelanggaran * 5} Poin</div>
+          <div style="font-size: 10px; color: #dc2626;">Pengurangan Skor: -${countPelanggaran * penaltyPerViolation} Poin</div>
         `;
       } else {
         antiContekBadge = `
           <div style="color: #b91c1c; font-weight: bold; font-size: 11px;">
             <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#ef4444; margin-right:4px;"></span>
-            🚨 ${countPelanggaran}x Pelanggaran Berulang
+            🚨 3x Maksimal (Auto-Close)
           </div>
-          <div style="font-size: 10px; color: #b91c1c; font-weight:600;">Penalti -${countPelanggaran * 5} Poin (Perlu Verifikasi)</div>
+          <div style="font-size: 10px; color: #b91c1c; font-weight:600;">Penalti -${countPelanggaran * penaltyPerViolation} Poin (Ujian Dihentikan)</div>
         `;
       }
 
       return `
         <tr style="background-color: ${idx % 2 === 1 ? '#f8fafc' : '#ffffff'};">
           <td style="text-align: center; font-weight: bold; padding: 6px 4px; vertical-align: top;">${idx + 1}</td>
-          <td style="padding: 6px 8px; vertical-align: top; white-space: nowrap; font-size: 10.5px; color: #475569;">
-            ${n.Waktu_Submit || '-'}
+          <td style="padding: 6px 8px; vertical-align: top; white-space: nowrap; font-size: 10px; color: #475569;">
+            <div><strong style="color: #4338ca;">Mulai:</strong> ${n.Waktu_Mulai || '-'}</div>
+            <div style="margin-top: 2px;"><strong style="color: #15803d;">Selesai:</strong> ${n.Waktu_Submit || '-'}</div>
           </td>
           <td style="padding: 6px 8px; vertical-align: top;">
             <strong style="color: #0f172a; font-size: 12px;">${n.Nama_Murid || '-'}</strong>
@@ -413,9 +416,9 @@ export function generateRekapNilaiHtml(params: RekapNilaiPrintParams): string {
     <thead>
       <tr>
         <th style="width: 3%;">No</th>
-        <th style="width: 11%;">Waktu Selesai</th>
-        <th style="width: 17%;">Nama Lengkap Siswa</th>
-        <th style="width: 7%;">Kelas</th>
+        <th style="width: 13%;">Waktu Pengerjaan</th>
+        <th style="width: 16%;">Nama Lengkap Siswa</th>
+        <th style="width: 6%;">Kelas</th>
         <th style="width: 15%;">Judul Ujian CBT</th>
         <th style="width: 9%;">Nilai Akhir</th>
         <th style="width: 9%;">Kelulusan</th>

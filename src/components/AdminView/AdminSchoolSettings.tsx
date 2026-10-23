@@ -13,6 +13,7 @@ import {
   Percent,
   Eye,
   EyeOff,
+  ShieldAlert,
 } from 'lucide-react';
 import { SchoolProfile } from '../../types';
 import { api, DEFAULT_SCHOOL_PROFILE } from '../../services/api';
@@ -234,7 +235,37 @@ export const AdminSchoolSettings: React.FC<AdminSchoolSettingsProps> = ({ onShow
           <div className="space-y-4">
             <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
               <Shield className="w-4 h-4 text-emerald-600" />
-              <h4 className="font-extrabold text-sm text-slate-800">Keamanan & Sesi Pengguna</h4>
+              <h4 className="font-extrabold text-sm text-slate-800">Keamanan, Sesi & Pengawasan Anti-Contek CBT</h4>
+            </div>
+
+            {/* Poin Penalti Pelanggaran CBT */}
+            <div className="p-4 rounded-xl bg-rose-50/70 border border-rose-200 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-rose-900 flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-rose-600" />
+                  Poin Penalti Pelanggaran Anti-Contek CBT
+                </span>
+                <span className="text-xs font-black text-rose-700 bg-white px-2 py-0.5 rounded-md border border-rose-200">
+                  {profile.poinPenaltiPelanggaran ?? 5} Poin / Insiden
+                </span>
+              </div>
+              <p className="text-[11px] text-rose-700 leading-relaxed">
+                Jumlah pengurangan nilai otomatis untuk setiap insiden siswa berpindah tab atau keluar layar (maksimal 3x kesempatan sebelum ujian otomatis dikunci).
+              </p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  step={1}
+                  value={profile.poinPenaltiPelanggaran ?? 5}
+                  onChange={(e) => handleChange('poinPenaltiPelanggaran', Math.max(0, Number(e.target.value)))}
+                  className="w-24 text-center text-sm font-black p-2 rounded-xl border border-rose-300 bg-white text-rose-700 focus:outline-rose-600 shadow-sm"
+                />
+                <span className="text-xs font-semibold text-rose-800">
+                  Poin per pelanggaran (Default: 5 Poin)
+                </span>
+              </div>
             </div>
 
             {/* Session Timeout */}

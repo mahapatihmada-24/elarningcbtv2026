@@ -45,6 +45,7 @@ export const DEFAULT_SCHOOL_PROFILE: SchoolProfile = {
   enableMFAAdmin: true,
   adminOTPSecret: '240101',
   sessionTimeoutMinutes: 30,
+  poinPenaltiPelanggaran: 5,
 };
 
 export const DEFAULT_MASTER_KELAS: string[] = [
@@ -1635,6 +1636,7 @@ export const api = {
     kelas: string;
     nilai: number;
     pelanggaran: number;
+    waktu_mulai?: string;
     catatan_guru?: string;
     koreksi_manual?: boolean;
     jawaban_json?: string;
@@ -1658,6 +1660,7 @@ export const api = {
       Nilai: payload.nilai,
       Pelanggaran: payload.pelanggaran,
       Waktu_Submit: timeStr,
+      Waktu_Mulai: payload.waktu_mulai ? String(payload.waktu_mulai).trim() : undefined,
       Catatan_Guru: payload.catatan_guru,
       Koreksi_Manual: Boolean(payload.koreksi_manual),
       Jawaban_JSON: payload.jawaban_json,
