@@ -652,23 +652,30 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
   };
 
   const confirmSubmit = () => {
-    // Kunci Fitur Selesai Ujian Sebelum Waktu Habis:
-    // Tombol 'Selesai Ujian' atau 'Kumpulkan' milik siswa harus di-nonaktifkan (disabled) atau disembunyikan selama timer durasi ujian masih berjalan.
-    // Siswa tidak diperbolehkan keluar secara mandiri atau menyelesaikan ujian lebih awal sebelum waktu habis, meskipun seluruh soal sudah diisi.
-    // Tampilkan pesan peringatan jika siswa mencoba keluar: 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.'
-    if (timeLeft > 0) {
-      onShowModal({
-        isOpen: true,
-        title: 'Ujian Tidak Dapat Diakhiri',
-        message: 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Silakan periksa kembali jawaban Anda.',
-        type: 'warning',
-        isConfirm: false,
-        okText: 'Saya Mengerti, Periksa Kembali',
-      });
-      return;
+    if (isSubmitting || submittedNilai) return;
+
+    const total = activeQuestions.length;
+    const unanswered = total - answeredCount;
+
+    let warningText = '';
+    if (unanswered > 0) {
+      warningText = `Perhatian: Anda baru menjawab ${answeredCount} dari ${total} butir soal (masih ada ${unanswered} soal yang belum dijawab).\n\nApakah Anda yakin ingin mengakhiri dan mengirimkan lembar ujian sekarang? Jawaban yang sudah dikirim tidak dapat diubah kembali.`;
+    } else {
+      warningText = `Seluruh butir soal (${answeredCount} dari ${total} butir) telah Anda jawab.\n\nApakah Anda yakin ingin mengakhiri ujian dan mengirimkan lembar jawaban Anda sekarang? Jawaban yang sudah dikirim tidak dapat diubah kembali.`;
     }
 
-    handleSubmitExam(true);
+    onShowModal({
+      isOpen: true,
+      title: 'Konfirmasi Selesai Ujian',
+      message: warningText,
+      type: unanswered > 0 ? 'warning' : 'question',
+      isConfirm: true,
+      okText: 'Ya, Kirim Sekarang',
+      cancelText: 'Periksa Kembali',
+      onConfirm: () => {
+        handleSubmitExam(true);
+      },
+    });
   };
 
   // Format MM:SS
@@ -1291,32 +1298,15 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
                       <span>Daftar Soal ({answeredCount}/{activeQuestions.length})</span>
                     </button>
 
-                    {/* HANYA 1 TOMBOL UTAMA "Simpan & Kirim Jawaban" DI BAGIAN BAWAH */}
+                    {/* TOMBOL UTAMA "Kirim / Selesai Ujian" - DAPAT DIKLIK KAPAN SAJA */}
                     <button
                       onClick={confirmSubmit}
-                      disabled={isSubmitting || timeLeft > 0}
-                      className={`px-4 sm:px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition ${
-                        timeLeft > 0
-                          ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed opacity-80'
-                          : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md active:scale-95 animate-pulse cursor-pointer'
-                      }`}
-                      title={
-                        timeLeft > 0
-                          ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis (00:00:00). Silakan periksa kembali jawaban Anda.'
-                          : 'Simpan & Kirim Jawaban'
-                      }
+                      disabled={isSubmitting}
+                      className="px-4 sm:px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition bg-emerald-600 hover:bg-emerald-700 text-white shadow-md active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Selesaikan dan Kirimkan Jawaban Ujian"
                     >
-                      {timeLeft > 0 ? (
-                        <>
-                          <Lock className="w-4 h-4 text-slate-400" />
-                          <span>Simpan & Kirim (Terkunci)</span>
-                        </>
-                      ) : (
-                        <>
-                          <Send className="w-4 h-4" />
-                          <span>Simpan & Kirim Jawaban</span>
-                        </>
-                      )}
+                      <Send className="w-4 h-4" />
+                      <span>{isSubmitting ? 'Mengirim...' : 'Kirim / Selesai Ujian'}</span>
                     </button>
                   </div>
                 </div>
@@ -1334,48 +1324,34 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
               <span className="font-bold text-slate-800 text-sm">
                 Status Pengerjaan: {answeredCount} dari {activeQuestions.length} Soal Dijawab
               </span>
-              {timeLeft > 0 ? (
-                <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold flex items-center gap-1">
-                  <Lock className="w-3 h-3 text-amber-700" /> Pengakhiran Mandiri Terkunci
-                </span>
-              ) : (
-                <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center gap-1">
-                  <CheckCircle className="w-3 h-3 text-emerald-600" /> Waktu Habis - Siap Kirim
-                </span>
-              )}
+              <span
+                className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 ${
+                  answeredCount === activeQuestions.length
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-amber-100 text-amber-800'
+                }`}
+              >
+                <CheckCircle className="w-3 h-3 text-emerald-600" />
+                {answeredCount === activeQuestions.length
+                  ? 'Semua Soal Terjawab'
+                  : `${activeQuestions.length - answeredCount} Belum Dijawab`}
+              </span>
             </div>
             <span className="text-xs text-slate-500 block mt-0.5">
-              {timeLeft > 0
-                ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis. Tombol Simpan & Kirim Jawaban akan aktif otomatis saat timer 00:00.'
-                : 'Waktu ujian telah habis. Seluruh pilihan jawaban telah dikunci. Silakan klik tombol Simpan & Kirim Jawaban.'}
+              {answeredCount === activeQuestions.length
+                ? 'Seluruh butir soal telah dijawab. Anda dapat menyelesaikan ujian dan mengirimkan jawaban kapan saja.'
+                : 'Anda dapat mengakhiri dan mengirimkan ujian kapan saja atau memeriksa kembali jawaban Anda.'}
             </span>
           </div>
 
           <button
             onClick={confirmSubmit}
-            disabled={isSubmitting || timeLeft > 0}
-            className={`w-full sm:w-auto px-6 py-3 rounded-xl font-extrabold text-sm shadow-sm transition flex items-center justify-center gap-2 ${
-              timeLeft > 0
-                ? 'bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-300 cursor-not-allowed opacity-80'
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 shadow-md animate-pulse cursor-pointer'
-            }`}
-            title={
-              timeLeft > 0
-                ? 'Ujian tidak dapat diakhiri sebelum batas waktu habis (00:00:00). Silakan periksa kembali jawaban Anda.'
-                : 'Simpan & Kirim Jawaban'
-            }
+            disabled={isSubmitting}
+            className="w-full sm:w-auto px-6 py-3 rounded-xl font-extrabold text-sm shadow-md transition flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Selesaikan dan Kirimkan Jawaban Ujian"
           >
-            {timeLeft > 0 ? (
-              <>
-                <Lock className="w-4 h-4 text-slate-400" />
-                <span>Simpan & Kirim (Terkunci)</span>
-              </>
-            ) : (
-              <>
-                <Send className="w-4 h-4" />
-                <span>Simpan & Kirim Jawaban</span>
-              </>
-            )}
+            <Send className="w-4 h-4" />
+            <span>{isSubmitting ? 'Mengirim...' : 'Kirim / Selesai Ujian'}</span>
           </button>
         </div>
       )}
@@ -1475,16 +1451,30 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
             </div>
 
             {/* Footer */}
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
               <span className="text-xs text-slate-500">
                 Klik nomor untuk langsung menuju soal
               </span>
-              <button
-                onClick={() => setIsDaftarSoalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
-              >
-                Tutup
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsDaftarSoalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
+                >
+                  Tutup
+                </button>
+                <button
+                  onClick={() => {
+                    setIsDaftarSoalOpen(false);
+                    confirmSubmit();
+                  }}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer disabled:opacity-50"
+                  title="Selesaikan Ujian Sekarang"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Kirim / Selesai</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
