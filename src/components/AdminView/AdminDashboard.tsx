@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { User, Ujian, Nilai, Materi, Announcement, SchoolProfile } from '../../types';
 import { api, getDataSource } from '../../services/api';
+import { formatScore } from '../../utils/formatHelper';
 
 interface AdminDashboardProps {
   currentUser: User;
@@ -332,7 +333,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
           </div>
           <div className="text-2xl font-black text-indigo-700">
-            {isLoading ? '...' : stats.avgNilai.toFixed(2)}
+            {isLoading ? '...' : formatScore(stats.avgNilai)}
           </div>
           <p className="text-[11px] text-slate-400 mt-1">KKM: {schoolProfile?.kkmDefault || 75}</p>
         </div>

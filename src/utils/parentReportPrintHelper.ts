@@ -1,4 +1,5 @@
 import { Nilai, SchoolProfile, User } from '../types';
+import { formatScore } from './formatHelper';
 
 const DEFAULT_SCHOOL_NAME = 'SD NEGERI HARJOSARI KIDUL 01';
 const DEFAULT_SCHOOL_SUBTITLE = 'DINAS PENDIDIKAN DAN KEBUDAYAAN KABUPATEN TEGAL';
@@ -68,10 +69,10 @@ export function generateParentReportHtml({
   const numericNilai = nilaiList.map((n) => Number(n.Nilai || 0));
   const avg =
     total > 0
-      ? (numericNilai.reduce((a, b) => a + b, 0) / total).toFixed(2)
-      : '0.00';
-  const maxNilai = total > 0 ? Math.max(...numericNilai).toFixed(2) : '0.00';
-  const minNilai = total > 0 ? Math.min(...numericNilai).toFixed(2) : '0.00';
+      ? formatScore(numericNilai.reduce((a, b) => a + b, 0) / total)
+      : '0,00';
+  const maxNilai = total > 0 ? formatScore(Math.max(...numericNilai)) : '0,00';
+  const minNilai = total > 0 ? formatScore(Math.min(...numericNilai)) : '0,00';
   const tuntasCount = nilaiList.filter((n) => Number(n.Nilai || 0) >= kkm).length;
   const tuntasPct = total > 0 ? Math.round((tuntasCount / total) * 100) : 0;
   const totalPelanggaran = nilaiList.reduce((acc, curr) => acc + (curr.Pelanggaran || 0), 0);
@@ -100,8 +101,9 @@ export function generateParentReportHtml({
 
   const mapelRowsHtml = Array.from(mapelMap.entries())
     .map(([mapel, data], idx) => {
-      const avgM = (data.sum / data.count).toFixed(2);
-      const numAvg = parseFloat(avgM);
+      const avgNum = data.sum / data.count;
+      const avgM = formatScore(avgNum);
+      const numAvg = avgNum;
       let predikat = 'C';
       if (numAvg >= 90) predikat = 'A (Sangat Baik)';
       else if (numAvg >= 80) predikat = 'B (Baik)';
@@ -140,7 +142,7 @@ export function generateParentReportHtml({
           <td style="padding: 6px 8px; text-align: center; font-weight: bold; font-size: 12px; color: ${
             isTuntas ? '#15803d' : '#b91c1c'
           }; background: ${isTuntas ? '#f0fdf4' : '#fef2f2'};">
-            ${numNilai.toFixed(2)}
+            ${formatScore(numNilai)}
           </td>
           <td style="padding: 6px 8px; text-align: center; font-weight: bold; color: ${
             isTuntas ? '#15803d' : '#b91c1c'

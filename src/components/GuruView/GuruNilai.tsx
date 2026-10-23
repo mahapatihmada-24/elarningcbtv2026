@@ -22,6 +22,7 @@ import { api, DEFAULT_SCHOOL_PROFILE } from '../../services/api';
 import { ModalState } from '../ConfirmModal';
 import { exportNilaiToExcel } from '../../utils/excelExamHelper';
 import { RekapNilaiPrintModal } from '../RekapNilaiPrintModal';
+import { formatScore } from '../../utils/formatHelper';
 
 interface GuruNilaiProps {
   onShowModal: (modal: Partial<ModalState>) => void;
@@ -156,7 +157,7 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
         onShowModal({
           isOpen: true,
           title: 'Koreksi Nilai Berhasil',
-          message: `Nilai murid ${editingNilai.Nama_Murid} berhasil diperbarui menjadi ${editScoreInput}.`,
+          message: `Nilai murid ${editingNilai.Nama_Murid} berhasil diperbarui menjadi ${formatScore(editScoreInput)}.`,
           type: 'success',
         });
         setEditingNilai(null);
@@ -216,7 +217,7 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
   // WhatsApp Notification
   const handleOpenWAModal = (n: Nilai) => {
     const schoolName = schoolProfile?.namaSekolah || 'SDN Harjosari Kidul 01';
-    const defaultMsg = `Yth. Bapak/Ibu Orang Tua/Wali dari ${n.Nama_Murid},\n\nKami menginformasikan bahwa ananda telah menyelesaikan asesmen CBT:\n📚 Ujian: ${n.Judul_Ujian}\n🎯 Nilai Akhir: ${Number(n.Nilai || 0).toFixed(2)}\n📅 Waktu: ${n.Waktu_Submit}\n${
+    const defaultMsg = `Yth. Bapak/Ibu Orang Tua/Wali dari ${n.Nama_Murid},\n\nKami menginformasikan bahwa ananda telah menyelesaikan asesmen CBT:\n📚 Ujian: ${n.Judul_Ujian}\n🎯 Nilai Akhir: ${formatScore(n.Nilai)}\n📅 Waktu: ${n.Waktu_Submit}\n${
       n.Catatan_Guru ? `📝 Catatan Guru: ${n.Catatan_Guru}\n` : ''
     }\nTerima kasih atas perhatian dan bimbingannya.\n- ${schoolName}`;
 
@@ -310,11 +311,11 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
     total: filteredNilai.length,
     rataRata:
       filteredNilai.length > 0
-        ? (
+        ? formatScore(
             filteredNilai.reduce((acc, curr) => acc + Number(curr.Nilai || 0), 0) /
-            filteredNilai.length
-          ).toFixed(2)
-        : '0.00',
+              filteredNilai.length
+          )
+        : '0,00',
     tuntas: filteredNilai.filter((n) => Number(n.Nilai || 0) >= kkm).length,
     pelanggaranTotal: filteredNilai.reduce((acc, curr) => acc + (curr.Pelanggaran || 0), 0),
   };
@@ -569,7 +570,7 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
                             : 'bg-rose-100 text-rose-800 border border-rose-200'
                         }`}
                       >
-                        {Number(n.Nilai || 0).toFixed(1)}
+                        {formatScore(n.Nilai)}
                       </span>
                     </td>
                     <td className="px-2 py-2 text-center whitespace-nowrap">
@@ -823,9 +824,9 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
                 <span className="text-[11px] font-semibold text-slate-500 block">Nilai Akhir Siswa</span>
                 <div className="flex items-baseline gap-2 mt-1">
                   <span className={`text-2xl font-black ${Number(detailNilai.Nilai || 0) >= kkm ? 'text-emerald-700' : 'text-rose-700'}`}>
-                    {Number(detailNilai.Nilai || 0).toFixed(2)}
+                    {formatScore(detailNilai.Nilai)}
                   </span>
-                  <span className="text-xs text-slate-400">/ 100</span>
+                  <span className="text-xs text-slate-400">/ 100,00</span>
                 </div>
                 <span className={`inline-block mt-1 text-[10px] font-extrabold px-2 py-0.5 rounded-md ${Number(detailNilai.Nilai || 0) >= kkm ? 'bg-emerald-200/80 text-emerald-800' : 'bg-rose-200/80 text-rose-800'}`}>
                   {Number(detailNilai.Nilai || 0) >= kkm ? `TUNTAS (≥ KKM ${kkm})` : `REMEDIAL (< KKM ${kkm})`}

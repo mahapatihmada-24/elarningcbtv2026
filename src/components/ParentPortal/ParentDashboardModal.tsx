@@ -32,6 +32,7 @@ import { INITIAL_UJIAN } from '../../services/seedData';
 import { MathRenderer } from '../MathRenderer';
 import { printParentReportDocument } from '../../utils/parentReportPrintHelper';
 import { printExamDocument, downloadExamWord } from '../../utils/documentExport';
+import { formatScore } from '../../utils/formatHelper';
 
 function extractQuestionsFromSoalJson(rawInput: any): Question[] {
   if (!rawInput) return [];
@@ -181,10 +182,10 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
   const numericNilai = nilaiList.map((n) => Number(n.Nilai || 0));
   const avgScore =
     totalExams > 0
-      ? (numericNilai.reduce((a, b) => a + b, 0) / totalExams).toFixed(2)
-      : '0.00';
-  const highestScore = totalExams > 0 ? Math.max(...numericNilai).toFixed(2) : '0.00';
-  const lowestScore = totalExams > 0 ? Math.min(...numericNilai).toFixed(2) : '0.00';
+      ? formatScore(numericNilai.reduce((a, b) => a + b, 0) / totalExams)
+      : '0,00';
+  const highestScore = totalExams > 0 ? formatScore(Math.max(...numericNilai)) : '0,00';
+  const lowestScore = totalExams > 0 ? formatScore(Math.min(...numericNilai)) : '0,00';
   const tuntasCount = nilaiList.filter((n) => Number(n.Nilai || 0) >= kkm).length;
   const remedialCount = totalExams - tuntasCount;
   const tuntasPercentage = totalExams > 0 ? Math.round((tuntasCount / totalExams) * 100) : 0;
@@ -1126,7 +1127,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                                       fill="#ffffff"
                                       fontWeight="bold"
                                     >
-                                      {p.nilai.toFixed(2)}
+                                      {formatScore(p.nilai)}
                                     </text>
 
                                     {/* X Label (Exam Name / Index) */}
@@ -1242,7 +1243,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                                         ? 'bg-emerald-100 text-emerald-800'
                                         : 'bg-rose-100 text-rose-800'
                                     }`}>
-                                      {numNilai.toFixed(2)}
+                                      {formatScore(numNilai)}
                                     </span>
                                   </td>
                                   <td className="py-3 px-3.5 text-center">
@@ -1329,7 +1330,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                       >
                         {nilaiList.map((n) => (
                           <option key={n.ID} value={n.ID}>
-                            {n.Judul_Ujian} (Nilai: {Number(n.Nilai || 0).toFixed(2)})
+                            {n.Judul_Ujian} (Nilai: {formatScore(n.Nilai)})
                           </option>
                         ))}
                       </select>
@@ -1369,7 +1370,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : 'bg-rose-100 text-rose-800'
                             }`}>
-                              Nilai: {Number(selectedNilai?.Nilai || 0).toFixed(2)}
+                              Nilai: {formatScore(selectedNilai?.Nilai)}
                             </span>
                           </div>
                           <p className="text-xs text-slate-500">
@@ -1866,7 +1867,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                               : reviewFilterMode === 'correct' && totalQuestions > 0
                               ? 'Belum ada butir soal yang dijawab benar pada filter ini.'
                               : totalQuestions === 0
-                              ? `Naskah butir soal sedang disinkronkan dari bank soal. Ujian "${selectedNilai?.Judul_Ujian}" telah selesai dengan nilai akhir ${Number(selectedNilai?.Nilai || 0).toFixed(2)}.`
+                              ? `Naskah butir soal sedang disinkronkan dari bank soal. Ujian "${selectedNilai?.Judul_Ujian}" telah selesai dengan nilai akhir ${formatScore(selectedNilai?.Nilai)}.`
                               : 'Tidak ada butir soal yang sesuai dengan filter yang dipilih.'}
                           </p>
                           {reviewFilterMode !== 'all' && totalQuestions > 0 && (
@@ -1929,8 +1930,9 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                         if (examsForMapel.length === 0) return null;
 
                         const sum = examsForMapel.reduce((a, b) => a + Number(b.Nilai || 0), 0);
-                        const mAvg = (sum / examsForMapel.length).toFixed(2);
-                        const numM = parseFloat(mAvg);
+                        const avgNum = sum / examsForMapel.length;
+                        const mAvg = formatScore(avgNum);
+                        const numM = avgNum;
                         const isTuntas = numM >= kkm;
 
                         return (

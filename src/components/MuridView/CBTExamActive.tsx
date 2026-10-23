@@ -31,6 +31,7 @@ import { firebaseService } from '../../services/firebase';
 import { MathRenderer } from '../MathRenderer';
 import { ModalState } from '../ConfirmModal';
 import { ExamReviewModal } from '../ExamReviewModal';
+import { formatScore } from '../../utils/formatHelper';
 
 interface CBTExamActiveProps {
   exam: Ujian;
@@ -428,9 +429,9 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
     const finalViolations = Math.min(3, Number(payload.pelanggaran || 0));
     const penaltyVal = finalViolations * penaltyRate;
     const rawScoreVal = payload.nilai + penaltyVal;
-    const rawScoreStr = Number(rawScoreVal).toFixed(2);
-    const penaltyStr = Number(penaltyVal).toFixed(2);
-    const finalScoreStr = Number(payload.nilai).toFixed(2);
+    const rawScoreStr = formatScore(rawScoreVal);
+    const penaltyStr = formatScore(penaltyVal);
+    const finalScoreStr = formatScore(payload.nilai);
     const isViolationLimit = finalViolations >= 3;
 
     // Bersihkan sesi waktu mulai lokal setelah berhasil submit
@@ -440,9 +441,9 @@ export const CBTExamActive: React.FC<CBTExamActiveProps> = ({
 
     let finishMsg = '';
     if (isViolationLimit) {
-      finishMsg = `Ujian telah dihentikan secara otomatis oleh sistem karena Anda telah mencapai batas maksimal 3 kali pelanggaran (meninggalkan halaman ujian / beralih tab).\n\nLembar jawaban Anda telah tersimpan dan terkirim ke server guru.\n\nNilai Murni: ${rawScoreStr}\nPenalti Pelanggaran (3x -${penaltyRate} Poin): -${penaltyStr}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100.00\n\nWaktu Mulai: ${payload.waktu_mulai || waktuMulai}\nWaktu Selesai: ${payload.waktu_submit || 'Tercatat'}`;
+      finishMsg = `Ujian telah dihentikan secara otomatis oleh sistem karena Anda telah mencapai batas maksimal 3 kali pelanggaran (meninggalkan halaman ujian / beralih tab).\n\nLembar jawaban Anda telah tersimpan dan terkirim ke server guru.\n\nNilai Murni: ${rawScoreStr}\nPenalti Pelanggaran (3x -${penaltyRate} Poin): -${penaltyStr}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100,00\n\nWaktu Mulai: ${payload.waktu_mulai || waktuMulai}\nWaktu Selesai: ${payload.waktu_submit || 'Tercatat'}`;
     } else {
-      finishMsg = `Lembar jawaban ujian Anda telah berhasil disimpan dan dikirimkan ke server guru.\n\nNilai Murni: ${rawScoreStr}${penaltyVal > 0 ? `\nPenalti Pindah Tab (${finalViolations}x -${penaltyRate} Poin): -${penaltyStr}` : ''}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100.00\n\nWaktu Mulai: ${payload.waktu_mulai || waktuMulai}\nWaktu Selesai: ${payload.waktu_submit || 'Tercatat'}`;
+      finishMsg = `Lembar jawaban ujian Anda telah berhasil disimpan dan dikirimkan ke server guru.\n\nNilai Murni: ${rawScoreStr}${penaltyVal > 0 ? `\nPenalti Pindah Tab (${finalViolations}x -${penaltyRate} Poin): -${penaltyStr}` : ''}\n━━━━━━━━━━━━━━━━━━\nNilai Akhir: ${finalScoreStr} / 100,00\n\nWaktu Mulai: ${payload.waktu_mulai || waktuMulai}\nWaktu Selesai: ${payload.waktu_submit || 'Tercatat'}`;
     }
 
     if (isViolationLimit) {

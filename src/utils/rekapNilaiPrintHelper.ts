@@ -1,4 +1,5 @@
 import { Nilai, SchoolProfile } from '../types';
+import { formatScore } from './formatHelper';
 
 const DEFAULT_SCHOOL_NAME = 'SD NEGERI HARJOSARI KIDUL 01';
 const DEFAULT_SCHOOL_SUBTITLE = 'DINAS PENDIDIKAN DAN KEBUDAYAAN KABUPATEN TEGAL';
@@ -50,10 +51,10 @@ export function generateRekapNilaiHtml(params: RekapNilaiPrintParams): string {
   const numericNilai = nilaiList.map((n) => Number(n.Nilai || 0));
   const avg =
     total > 0
-      ? (numericNilai.reduce((a, b) => a + b, 0) / total).toFixed(2)
-      : '0.00';
-  const maxNilai = total > 0 ? Math.max(...numericNilai).toFixed(2) : '0.00';
-  const minNilai = total > 0 ? Math.min(...numericNilai).toFixed(2) : '0.00';
+      ? formatScore(numericNilai.reduce((a, b) => a + b, 0) / total)
+      : '0,00';
+  const maxNilai = total > 0 ? formatScore(Math.max(...numericNilai)) : '0,00';
+  const minNilai = total > 0 ? formatScore(Math.min(...numericNilai)) : '0,00';
   const tuntasCount = nilaiList.filter((n) => Number(n.Nilai || 0) >= kkm).length;
   const tuntasPct = total > 0 ? Math.round((tuntasCount / total) * 100) : 0;
   const remedialCount = total - tuntasCount;
@@ -115,7 +116,7 @@ export function generateRekapNilaiHtml(params: RekapNilaiPrintParams): string {
           </td>
           <td style="padding: 6px 6px; text-align: center; vertical-align: top;">
             <div style="font-size: 13px; font-weight: 800; color: ${isTuntas ? '#15803d' : '#dc2626'};">
-              ${numNilai.toFixed(2)}
+              ${formatScore(numNilai)}
             </div>
             <div style="font-size: 9.5px; color: #64748b;">KKM: ${kkm}</div>
           </td>

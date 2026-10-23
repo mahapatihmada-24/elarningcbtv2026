@@ -25,6 +25,7 @@ import { downloadExamWord, printExamDocument } from '../../utils/documentExport'
 import { KisiKisiModal } from '../KisiKisiModal';
 import { ExamReviewModal } from '../ExamReviewModal';
 import { ExportExamModal } from '../ExportExamModal';
+import { formatScore } from '../../utils/formatHelper';
 
 interface MuridCBTListProps {
   currentUser: User;
@@ -384,7 +385,7 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
                             : 'bg-rose-100 text-rose-800'
                         }`}
                       >
-                        {Number(latestScore).toFixed(2)} / 100.00
+                        {formatScore(latestScore)} / 100,00
                       </span>
                     </div>
                   )}
