@@ -13,6 +13,7 @@ import {
   Percent,
   Eye,
   EyeOff,
+  ShieldAlert,
 } from 'lucide-react';
 import { SchoolProfile } from '../../types';
 import { api, DEFAULT_SCHOOL_PROFILE } from '../../services/api';
@@ -265,6 +266,34 @@ export const AdminSchoolSettings: React.FC<AdminSchoolSettingsProps> = ({ onShow
                 <span>10 Menit</span>
                 <span>30 Menit (Ideal)</span>
                 <span>60 Menit</span>
+              </div>
+            </div>
+
+            {/* Poin Penalti Pelanggaran CBT */}
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-amber-600" />
+                  Pengurangan Nilai Anti-Contek CBT (Poin Penalti)
+                </span>
+                <span className="text-xs font-black text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md">
+                  {profile.poinPenaltiPelanggaran ?? 5} Poin / Kejadian
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Jumlah poin yang otomatis dikurangi dari nilai akhir murid per kejadian berpindah tab / keluar layar. Maksimal toleransi pelanggaran dibatasi tepat 3 kali sebelum ujian dihentikan.
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  step={1}
+                  value={profile.poinPenaltiPelanggaran ?? 5}
+                  onChange={(e) => handleChange('poinPenaltiPelanggaran', Math.max(0, Number(e.target.value) || 0))}
+                  className="w-28 text-xs font-extrabold text-indigo-700 p-2 rounded-xl border border-slate-300 bg-white focus:outline-indigo-600 shadow-sm"
+                />
+                <span className="text-xs text-slate-500 font-medium">Poin pengurangan per insiden</span>
               </div>
             </div>
 

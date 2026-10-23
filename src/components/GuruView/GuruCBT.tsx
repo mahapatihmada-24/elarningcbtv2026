@@ -103,6 +103,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
   const [jadwalMulai, setJadwalMulai] = useState('');
   const [jadwalSelesai, setJadwalSelesai] = useState('');
   const [tokenUjian, setTokenUjian] = useState('');
+  const [poinPenalti, setPoinPenalti] = useState<number>(5);
 
   // Edit Mode: 'per_soal' (default, requirement 3) vs 'semua'
   const [editMode, setEditMode] = useState<'per_soal' | 'semua'>('per_soal');
@@ -471,6 +472,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
     setJadwalMulai('');
     setJadwalSelesai('');
     setTokenUjian('');
+    setPoinPenalti(5);
     setCurrentKisiKisi(null);
     setCurrentPerQIdx(0);
     setQuestions([
@@ -507,6 +509,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
             jadwalMulai,
             jadwalSelesai,
             tokenUjian,
+            poinPenalti,
             currentKisiKisi,
             questions,
             timestamp: new Date().toISOString(),
@@ -514,7 +517,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
         );
       } catch {}
     }
-  }, [questions, judul, mapel, kelas, durasi, sesi, maxAttempts, acakSoal, acakOpsi, jadwalMulai, jadwalSelesai, tokenUjian, currentKisiKisi, id]);
+  }, [questions, judul, mapel, kelas, durasi, sesi, maxAttempts, acakSoal, acakOpsi, jadwalMulai, jadwalSelesai, tokenUjian, poinPenalti, currentKisiKisi, id]);
 
   useEffect(() => {
     if (questions.length === 0) {

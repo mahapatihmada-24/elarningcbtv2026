@@ -50,6 +50,12 @@ export function normalizeUjian(u: any): Ujian {
     Jadwal_Mulai: u.Jadwal_Mulai || u.jadwal_mulai || '',
     Jadwal_Selesai: u.Jadwal_Selesai || u.jadwal_selesai || '',
     Kisi_Kisi_JSON: u.Kisi_Kisi_JSON || u.kisi_kisi_json || '',
+    Poin_Penalti_Pelanggaran:
+      u.Poin_Penalti_Pelanggaran !== undefined && u.Poin_Penalti_Pelanggaran !== null && !isNaN(Number(u.Poin_Penalti_Pelanggaran))
+        ? Number(u.Poin_Penalti_Pelanggaran)
+        : u.poin_penalti_pelanggaran !== undefined && u.poin_penalti_pelanggaran !== null && !isNaN(Number(u.poin_penalti_pelanggaran))
+        ? Number(u.poin_penalti_pelanggaran)
+        : undefined,
     Soal_JSON: soalJson,
     Status: (u.Status || u.status || 'Aktif') as 'Aktif' | 'Non-Aktif',
   };
@@ -65,7 +71,9 @@ export function normalizeNilai(n: any): Nilai {
     Kelas: String(n.Kelas || n.kelas || ''),
     Nilai: Number(n.Nilai ?? n.nilai ?? 0),
     Pelanggaran: Number(n.Pelanggaran ?? n.pelanggaran ?? 0),
-    Waktu_Submit: String(n.Waktu_Submit || n.waktu_submit || ''),
+    Waktu_Submit: String(n.Waktu_Submit || n.waktu_submit || n.Waktu_Selesai || n.waktu_selesai || ''),
+    Waktu_Mulai: String(n.Waktu_Mulai || n.waktu_mulai || ''),
+    Waktu_Selesai: String(n.Waktu_Selesai || n.waktu_selesai || n.Waktu_Submit || n.waktu_submit || ''),
     Catatan_Guru: n.Catatan_Guru || n.catatan_guru || undefined,
     Koreksi_Manual: Boolean(n.Koreksi_Manual || n.koreksi_manual),
     No_HP_Ortu: n.No_HP_Ortu || n.no_hp_ortu || undefined,

@@ -1,0 +1,4 @@
+[install]
+backend = "copyfile"
+networkConcurrency = 4
+concurrentScripts = 1
