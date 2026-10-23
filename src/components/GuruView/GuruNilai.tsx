@@ -15,6 +15,7 @@ import {
   MessageSquare,
   Check,
   ShieldAlert,
+  Eye,
 } from 'lucide-react';
 import { Nilai, SchoolProfile, User } from '../../types';
 import { api, DEFAULT_SCHOOL_PROFILE } from '../../services/api';
@@ -56,6 +57,9 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
 
   // Print PDF Preview Modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  // Detail Nilai Modal State
+  const [detailNilai, setDetailNilai] = useState<Nilai | null>(null);
 
   const fetchNilaiAndProfile = useCallback(async (silent?: boolean | unknown) => {
     if (silent !== true) setIsLoading(true);
@@ -489,19 +493,32 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
         </div>
       </div>
 
-      {/* Table Rekap */}
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
-        <table className="w-full text-xs sm:text-sm text-left">
-          <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
+      {/* Table Rekap Header Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-slate-500">
+        <div className="flex items-center gap-2">
+          <span>
+            Menampilkan <strong className="text-slate-800">{filteredNilai.length}</strong> catatan hasil ujian
+          </span>
+        </div>
+        <div className="text-[11px] text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg flex items-center gap-1.5 font-medium">
+          <span className="text-indigo-600 font-bold">↔</span>
+          <span>Tabel dapat digeser ke samping untuk melihat seluruh catatan &amp; tombol aksi</span>
+        </div>
+      </div>
+
+      {/* Table Rekap Container */}
+      <div className="w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-xs">
+        <table className="w-full min-w-[1150px] text-xs sm:text-sm text-left border-collapse">
+          <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 select-none">
             <tr>
-              <th className="p-3">Waktu Pengerjaan</th>
-              <th className="p-3">Nama Murid</th>
-              <th className="p-3">Kelas</th>
-              <th className="p-3">Judul Ujian CBT</th>
-              <th className="p-3 text-center">Nilai Akhir</th>
-              <th className="p-3 text-center">Deteksi Anti-Contek</th>
-              <th className="p-3 text-center">Catatan / Koreksi</th>
-              <th className="p-3 text-center">Aksi Guru</th>
+              <th className="p-3.5 w-44 min-w-[160px] whitespace-nowrap">Waktu Pengerjaan</th>
+              <th className="p-3.5 min-w-[150px] whitespace-nowrap">Nama Murid</th>
+              <th className="p-3.5 w-20 min-w-[80px] text-center whitespace-nowrap">Kelas</th>
+              <th className="p-3.5 min-w-[200px]">Judul Ujian CBT</th>
+              <th className="p-3.5 w-28 min-w-[100px] text-center whitespace-nowrap">Nilai Akhir</th>
+              <th className="p-3.5 min-w-[210px] text-center whitespace-nowrap">Deteksi Anti-Contek</th>
+              <th className="p-3.5 min-w-[180px] text-center whitespace-nowrap">Catatan / Koreksi</th>
+              <th className="p-3.5 min-w-[160px] text-center whitespace-nowrap">Aksi Guru</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -526,8 +543,8 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
                 const hasCheated = violations > 0;
 
                 return (
-                  <tr key={n.ID} className="hover:bg-slate-50/80 transition">
-                    <td className="p-3 text-xs text-slate-600 whitespace-nowrap">
+                  <tr key={n.ID} className="hover:bg-slate-50/80 transition group">
+                    <td className="p-3.5 text-xs text-slate-600 whitespace-nowrap">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">
@@ -547,25 +564,29 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
                         </div>
                       </div>
                     </td>
-                    <td className="p-3 font-bold text-slate-800 whitespace-nowrap">
+                    <td className="p-3.5 font-bold text-slate-800 whitespace-nowrap">
                       {n.Nama_Murid}
                     </td>
-                    <td className="p-3 text-slate-600 whitespace-nowrap">{n.Kelas}</td>
-                    <td className="p-3 font-medium text-slate-700 max-w-xs truncate">
-                      {n.Judul_Ujian}
+                    <td className="p-3.5 text-slate-600 whitespace-nowrap text-center font-semibold">
+                      {n.Kelas}
                     </td>
-                    <td className="p-3 text-center">
+                    <td className="p-3.5 font-medium text-slate-700 max-w-xs">
+                      <div className="font-semibold text-slate-800 leading-snug line-clamp-2" title={n.Judul_Ujian}>
+                        {n.Judul_Ujian}
+                      </div>
+                    </td>
+                    <td className="p-3.5 text-center whitespace-nowrap">
                       <span
                         className={`inline-block px-3 py-1 rounded-full font-black text-xs ${
                           isPassed
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-rose-100 text-rose-800'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            : 'bg-rose-100 text-rose-800 border border-rose-200'
                         }`}
                       >
                         {Number(n.Nilai || 0).toFixed(2)}
                       </span>
                     </td>
-                    <td className="p-3 text-center">
+                    <td className="p-3.5 text-center whitespace-nowrap">
                       {violations >= 3 ? (
                         <div className="flex flex-col items-center gap-1">
                           <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 font-extrabold border border-rose-300">
@@ -587,40 +608,85 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
                           </span>
                         </div>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                        <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                           Disiplin (0x)
                         </span>
                       )}
                     </td>
-                    <td className="p-3 text-center">
+
+                    {/* Kolom Catatan / Koreksi */}
+                    <td className="p-3.5 text-center">
                       {n.Catatan_Guru ? (
-                        <span className="text-xs text-indigo-700 font-semibold italic truncate max-w-xs block">
-                          "{n.Catatan_Guru}"
-                        </span>
+                        <div className="flex flex-col items-center gap-1 max-w-[220px] mx-auto">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCorrection(n)}
+                            className="text-xs text-indigo-800 bg-indigo-50/90 hover:bg-indigo-100 border border-indigo-200 rounded-lg px-2.5 py-1 font-medium italic transition text-left w-full line-clamp-2 cursor-pointer"
+                            title="Klik untuk mengubah catatan guru"
+                          >
+                            "{n.Catatan_Guru}"
+                          </button>
+                          {n.Koreksi_Manual && (
+                            <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                              Koreksi Manual
+                            </span>
+                          )}
+                        </div>
                       ) : n.Koreksi_Manual ? (
-                        <span className="text-[11px] text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                          Dikoreksi Manual
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-[11px] text-amber-700 font-bold bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                            Dikoreksi Manual
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCorrection(n)}
+                            className="text-[10px] text-indigo-600 hover:underline flex items-center gap-1 font-medium cursor-pointer"
+                          >
+                            <Edit3 className="w-2.5 h-2.5" /> + Tambah Catatan
+                          </button>
+                        </div>
                       ) : (
-                        <span className="text-slate-400 text-xs">-</span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCorrection(n)}
+                          className="text-[11px] text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 px-2.5 py-1 rounded-lg border border-dashed border-slate-200 hover:border-indigo-300 transition flex items-center gap-1 mx-auto cursor-pointer"
+                          title="Beri catatan atau koreksi nilai manual"
+                        >
+                          <Edit3 className="w-3 h-3 text-slate-400 group-hover:text-indigo-500" />
+                          <span>+ Catatan</span>
+                        </button>
                       )}
                     </td>
-                    <td className="p-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
+
+                    {/* Kolom Aksi Guru */}
+                    <td className="p-3.5 text-center whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-1.5">
+                        {/* Detail Tambahan Button */}
+                        <button
+                          type="button"
+                          onClick={() => setDetailNilai(n)}
+                          className="p-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 transition active:scale-95 cursor-pointer"
+                          title="Lihat Detail Tambahan Hasil Ujian"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+
                         {/* Koreksi Nilai Manual Button */}
                         <button
+                          type="button"
                           onClick={() => handleOpenCorrection(n)}
-                          className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition"
-                          title="Koreksi Nilai Manual & Catatan Guru"
+                          className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition active:scale-95 cursor-pointer"
+                          title="Koreksi Nilai Manual &amp; Catatan Guru"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
 
                         {/* WhatsApp Parent Notification Button */}
                         <button
+                          type="button"
                           onClick={() => handleOpenWAModal(n)}
-                          className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition"
+                          className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition active:scale-95 cursor-pointer"
                           title="Kirim Laporan Nilai ke WhatsApp Orang Tua"
                         >
                           <Send className="w-3.5 h-3.5" />
@@ -628,8 +694,9 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
 
                         {/* Reset Ujian Ulang Button */}
                         <button
+                          type="button"
                           onClick={() => handleResetNilai(n)}
-                          className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition"
+                          className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition active:scale-95 cursor-pointer"
                           title="Hapus nilai dan izinkan murid ujian lagi"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
@@ -720,6 +787,177 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
               >
                 {isSavingCorrection ? 'Menyimpan...' : 'Simpan Koreksi Nilai'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DETAIL TAMBAHAN HASIL UJIAN */}
+      {detailNilai && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center">
+                  <Eye className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-black text-slate-800 text-base">Detail Tambahan Hasil Ujian</h4>
+                  <p className="text-[11px] text-slate-500">Rincian nilai, integritas pengerjaan, dan catatan guru</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailNilai(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Identitas Siswa */}
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2 text-xs">
+              <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                <span className="text-slate-500 font-medium">Nama Murid:</span>
+                <span className="font-bold text-slate-800 text-sm">{detailNilai.Nama_Murid}</span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                <span className="text-slate-500 font-medium">Kelas:</span>
+                <span className="font-semibold text-slate-700">Kelas {detailNilai.Kelas}</span>
+              </div>
+              <div className="flex justify-between items-start py-1 border-b border-slate-200/60 gap-3">
+                <span className="text-slate-500 font-medium whitespace-nowrap">Judul Ujian:</span>
+                <span className="font-semibold text-indigo-700 text-right">{detailNilai.Judul_Ujian}</span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-200/60">
+                <span className="text-slate-500 font-medium">Waktu Mulai:</span>
+                <span className="font-medium text-slate-700">{detailNilai.Waktu_Mulai || '-'}</span>
+              </div>
+              <div className="flex justify-between items-center py-1">
+                <span className="text-slate-500 font-medium">Waktu Selesai:</span>
+                <span className="font-medium text-slate-700">{detailNilai.Waktu_Submit || '-'}</span>
+              </div>
+            </div>
+
+            {/* Nilai & Status Kelulusan */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className={`p-3.5 rounded-2xl border ${Number(detailNilai.Nilai || 0) >= kkm ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
+                <span className="text-[11px] font-semibold text-slate-500 block">Nilai Akhir Siswa</span>
+                <div className="flex items-baseline gap-2 mt-1">
+                  <span className={`text-2xl font-black ${Number(detailNilai.Nilai || 0) >= kkm ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {Number(detailNilai.Nilai || 0).toFixed(2)}
+                  </span>
+                  <span className="text-xs text-slate-400">/ 100</span>
+                </div>
+                <span className={`inline-block mt-1 text-[10px] font-extrabold px-2 py-0.5 rounded-md ${Number(detailNilai.Nilai || 0) >= kkm ? 'bg-emerald-200/80 text-emerald-800' : 'bg-rose-200/80 text-rose-800'}`}>
+                  {Number(detailNilai.Nilai || 0) >= kkm ? `TUNTAS (≥ KKM ${kkm})` : `REMEDIAL (< KKM ${kkm})`}
+                </span>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+                <span className="text-[11px] font-semibold text-slate-500 block">Status Pengoreksian</span>
+                <span className="text-sm font-bold text-slate-800 mt-1 block">
+                  {detailNilai.Koreksi_Manual ? 'Koreksi Manual Guru' : 'Otomatis Sistem CBT'}
+                </span>
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  {detailNilai.Koreksi_Manual ? 'Nilai disesuaikan langsung oleh pengampu' : 'Dihitung dari butir soal pilihan ganda'}
+                </span>
+              </div>
+            </div>
+
+            {/* Log Deteksi Anti-Contek */}
+            <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-rose-600" />
+                  Log Deteksi Anti-Contek CBT
+                </span>
+                <span className={`text-xs font-black px-2.5 py-0.5 rounded-full ${
+                  Number(detailNilai.Pelanggaran || 0) === 0
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-rose-100 text-rose-800'
+                }`}>
+                  {Number(detailNilai.Pelanggaran || 0)}x Insiden
+                </span>
+              </div>
+
+              <div className="text-xs text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200 space-y-1">
+                {Number(detailNilai.Pelanggaran || 0) >= 3 ? (
+                  <p className="text-rose-700 font-semibold">
+                    🚨 <strong>Sanksi Maksimal (Auto-Close):</strong> Siswa berpindah aplikasi atau tab sebanyak 3 kali sehingga ujian otomatis dihentikan paksa oleh sistem.
+                  </p>
+                ) : Number(detailNilai.Pelanggaran || 0) > 0 ? (
+                  <p className="text-amber-800 font-medium">
+                    ⚠️ <strong>Peringatan Pindah Tab:</strong> Siswa tercatat berpindah tab/jendela {detailNilai.Pelanggaran} kali dengan pengurangan skor {Number(detailNilai.Pelanggaran || 0) * (schoolProfile?.poinPenaltiPelanggaran ?? 5)} poin penalti.
+                  </p>
+                ) : (
+                  <p className="text-emerald-700 font-medium flex items-center gap-1">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <strong>Disiplin Penuh (100% Integritas):</strong> Siswa fokus mengerjakan di lembar ujian tanpa berpindah layar.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Catatan Guru */}
+            <div className="p-3.5 rounded-2xl border border-indigo-100 bg-indigo-50/50 space-y-1.5">
+              <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+                <Edit3 className="w-3.5 h-3.5 text-indigo-600" />
+                Catatan / Evaluasi Guru
+              </span>
+              <p className="text-xs text-slate-700 italic bg-white p-2.5 rounded-xl border border-indigo-100">
+                {detailNilai.Catatan_Guru ? `"${detailNilai.Catatan_Guru}"` : 'Belum ada catatan tertulis dari guru.'}
+              </p>
+            </div>
+
+            {/* Action Buttons inside Detail Modal */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDetailNilai(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
+              >
+                Tutup
+              </button>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = detailNilai;
+                    setDetailNilai(null);
+                    handleOpenCorrection(target);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Koreksi Nilai &amp; Catatan</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = detailNilai;
+                    setDetailNilai(null);
+                    handleOpenWAModal(target);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Kirim WA</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = detailNilai;
+                    setDetailNilai(null);
+                    handleResetNilai(target);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Ujian Ulang</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
