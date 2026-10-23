@@ -14,27 +14,12 @@ import {
   X,
   MessageSquare,
   Check,
-  ShieldAlert,
-  Clock,
-  Settings,
 } from 'lucide-react';
 import { Nilai, SchoolProfile, User } from '../../types';
 import { api } from '../../services/api';
 import { ModalState } from '../ConfirmModal';
 import { exportNilaiToExcel } from '../../utils/excelExamHelper';
 import { RekapNilaiPrintModal } from '../RekapNilaiPrintModal';
-
-const formatDateTimeShort = (val?: string): string => {
-  if (!val || val === '-') return '-';
-  try {
-    const d = new Date(val);
-    if (!isNaN(d.getTime())) {
-      const pad = (num: number) => (num < 10 ? '0' + num : num);
-      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    }
-  } catch {}
-  return val;
-};
 
 interface GuruNilaiProps {
   onShowModal: (modal: Partial<ModalState>) => void;
@@ -65,11 +50,6 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
 
   // Print PDF Preview Modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-
-  // Manual Penalty Settings Modal State
-  const [isPenaltyModalOpen, setIsPenaltyModalOpen] = useState(false);
-  const [penaltyInput, setPenaltyInput] = useState<number>(5);
-  const [isSavingPenalty, setIsSavingPenalty] = useState(false);
 
   const fetchNilaiAndProfile = useCallback(async (silent?: boolean | unknown) => {
     if (silent !== true) setIsLoading(true);
@@ -355,17 +335,6 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
 
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <button
-            onClick={() => {
-              setPenaltyInput(schoolProfile?.poinPenaltiPelanggaran ?? 5);
-              setIsPenaltyModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold border border-amber-300 shadow-xs transition cursor-pointer"
-            title="Atur Pengurangan Nilai Manual per Pelanggaran Anti-Contek"
-          >
-            <ShieldAlert className="w-4 h-4 text-amber-600" />
-            <span>Atur Penalti ({schoolProfile?.poinPenaltiPelanggaran ?? 5} Poin)</span>
-          </button>
-          <button
             onClick={handleExportExcel}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition"
             title="Ekspor Data Nilai ke Excel (.xlsx)"
@@ -469,7 +438,7 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
         <table className="w-full text-xs sm:text-sm text-left">
           <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
             <tr>
-              <th className="p-3">Waktu Mulai & Selesai</th>
+              <th className="p-3">Waktu Submit</th>
               <th className="p-3">Nama Murid</th>
               <th className="p-3">Kelas</th>
               <th className="p-3">Judul Ujian CBT</th>
@@ -496,26 +465,11 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
               filteredNilai.map((n) => {
                 const isPassed = Number(n.Nilai || 0) >= kkm;
                 const hasCheated = (n.Pelanggaran || 0) > 0;
-                const penaltyRate = schoolProfile?.poinPenaltiPelanggaran ?? 5;
-                const penaltyTotal = (n.Pelanggaran || 0) * penaltyRate;
 
                 return (
                   <tr key={n.ID} className="hover:bg-slate-50/80 transition">
                     <td className="p-3 text-xs text-slate-500 whitespace-nowrap">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1.5 text-[11px]">
-                          <span className="font-bold text-slate-400 w-12 text-[10px] uppercase">Mulai:</span>
-                          <span className="font-mono text-slate-700 font-semibold">
-                            {formatDateTimeShort(n.Waktu_Mulai || '-')}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-[11px]">
-                          <span className="font-bold text-slate-400 w-12 text-[10px] uppercase">Selesai:</span>
-                          <span className="font-mono text-slate-700 font-semibold">
-                            {formatDateTimeShort(n.Waktu_Selesai || n.Waktu_Submit || '-')}
-                          </span>
-                        </div>
-                      </div>
+                      {n.Waktu_Submit}
                     </td>
                     <td className="p-3 font-bold text-slate-800 whitespace-nowrap">
                       {n.Nama_Murid}
@@ -539,7 +493,7 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
                       {hasCheated ? (
                         <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 font-bold border border-rose-200">
                           <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
-                          {n.Pelanggaran}x Pindah Tab (-{penaltyTotal} Poin)
+                          {n.Pelanggaran}x Pindah Tab (-{n.Pelanggaran * 5} Poin)
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold">
@@ -741,102 +695,6 @@ export const GuruNilai: React.FC<GuruNilaiProps> = ({ onShowModal, currentUser }
               >
                 <Send className="w-3.5 h-3.5" />
                 <span>Buka WhatsApp & Kirim</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Pengaturan Poin Penalti Pelanggaran Manual */}
-      {isPenaltyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
-                  <ShieldAlert className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-base text-slate-800">
-                    Pengaturan Penalti Anti-Contek
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Tentukan jumlah pengurangan nilai per insiden pelanggaran
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsPenaltyModalOpen(false)}
-                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              <label className="block text-xs font-bold text-slate-700">
-                Poin Pengurangan Nilai per Pelanggaran
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="0"
-                  max="50"
-                  step="1"
-                  value={penaltyInput}
-                  onChange={(e) => setPenaltyInput(Math.max(0, Number(e.target.value) || 0))}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 font-extrabold text-lg text-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                />
-                <span className="font-bold text-sm text-slate-600 whitespace-nowrap">Poin / Kejadian</span>
-              </div>
-              <p className="text-xs text-slate-500 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-200">
-                Setiap kali peserta terdeteksi meninggalkan halaman ujian (pindah tab atau aplikasi), nilai murni peserta akan dikurangi sebesar <strong>{penaltyInput} poin</strong> secara otomatis. Sistem membatasi maksimal 3 kali pelanggaran sebelum ujian dihentikan permanen.
-              </p>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setIsPenaltyModalOpen(false)}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                disabled={isSavingPenalty}
-                onClick={async () => {
-                  setIsSavingPenalty(true);
-                  try {
-                    const currentProf = schoolProfile || (await api.getSchoolProfile());
-                    const updated = {
-                      ...currentProf,
-                      poinPenaltiPelanggaran: Number(penaltyInput),
-                    };
-                    await api.saveSchoolProfile(updated);
-                    setSchoolProfile(updated);
-                    setIsPenaltyModalOpen(false);
-                    onShowModal({
-                      isOpen: true,
-                      title: 'Pengaturan Disimpan',
-                      message: `Poin penalti berhasil diatur menjadi ${penaltyInput} poin per pelanggaran.`,
-                      type: 'success',
-                    });
-                  } catch {
-                    onShowModal({
-                      isOpen: true,
-                      title: 'Gagal Menyimpan',
-                      message: 'Gagal memperbarui pengaturan penalti.',
-                      type: 'danger',
-                    });
-                  } finally {
-                    setIsSavingPenalty(false);
-                  }
-                }}
-                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs shadow-md flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                <Check className="w-4 h-4" />
-                <span>{isSavingPenalty ? 'Menyimpan...' : 'Terapkan Penalti'}</span>
               </button>
             </div>
           </div>

@@ -763,8 +763,6 @@ export const firebaseService = {
     kelas: string;
     nilai: number;
     pelanggaran: number;
-    waktu_mulai?: string;
-    waktu_selesai?: string;
     catatan_guru?: string;
     koreksi_manual?: boolean;
     jawaban_json?: string;
@@ -779,9 +777,6 @@ export const firebaseService = {
     const rawId = payload.id_nilai || ('NILAI-' + Date.now());
     const safeId = rawId.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 90);
 
-    const finishTime = payload.waktu_selesai || timeStr;
-    const startTime = payload.waktu_mulai || timeStr;
-
     const newNilai: Nilai = {
       ID: safeId,
       ID_Ujian: String(payload.id_ujian || '').trim(),
@@ -790,9 +785,7 @@ export const firebaseService = {
       Kelas: String(payload.kelas || '-').trim(),
       Nilai: Number(Number(payload.nilai || 0).toFixed(2)),
       Pelanggaran: Number(payload.pelanggaran || 0),
-      Waktu_Submit: finishTime,
-      Waktu_Mulai: startTime,
-      Waktu_Selesai: finishTime,
+      Waktu_Submit: timeStr,
       Catatan_Guru: payload.catatan_guru ? String(payload.catatan_guru).trim() : undefined,
       Koreksi_Manual: Boolean(payload.koreksi_manual),
       Jawaban_JSON: typeof payload.jawaban_json === 'string' ? payload.jawaban_json : undefined,

@@ -134,7 +134,6 @@ export interface ExamConfig {
   token?: string;
   jadwal_mulai?: string;
   jadwal_selesai?: string;
-  poin_penalti_pelanggaran?: number;
 }
 
 export interface ExamPayload {
@@ -155,7 +154,6 @@ export interface Ujian {
   Jadwal_Mulai?: string;
   Jadwal_Selesai?: string;
   Kisi_Kisi_JSON?: string;
-  Poin_Penalti_Pelanggaran?: number;
 }
 
 export interface Nilai {
@@ -167,8 +165,6 @@ export interface Nilai {
   Nilai: number;
   Pelanggaran: number;
   Waktu_Submit: string;
-  Waktu_Mulai?: string;
-  Waktu_Selesai?: string;
   Catatan_Guru?: string;
   Koreksi_Manual?: boolean;
   No_HP_Ortu?: string;
@@ -198,7 +194,6 @@ export interface SchoolProfile {
   enableMFAAdmin: boolean;
   adminOTPSecret: string;
   sessionTimeoutMinutes: number;
-  poinPenaltiPelanggaran?: number;
 }
 
 export interface Announcement {

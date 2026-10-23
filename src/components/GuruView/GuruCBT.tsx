@@ -66,9 +66,6 @@ import {
   parseQuestionsFromWord,
 } from '../../utils/wordExamHelper';
 
-// Penanda sesi pencegahan auto-recover berulang saat pengguna berpindah-pindah tab
-let hasCheckedAutoRecoverInCurrentSession = false;
-
 interface GuruCBTProps {
   onShowModal: (modal: Partial<ModalState>) => void;
   onViewImage: (url: string, title?: string) => void;
@@ -103,7 +100,6 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
   const [jadwalMulai, setJadwalMulai] = useState('');
   const [jadwalSelesai, setJadwalSelesai] = useState('');
   const [tokenUjian, setTokenUjian] = useState('');
-  const [poinPenalti, setPoinPenalti] = useState<number>(5);
 
   // Edit Mode: 'per_soal' (default, requirement 3) vs 'semua'
   const [editMode, setEditMode] = useState<'per_soal' | 'semua'>('per_soal');
@@ -472,7 +468,6 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
     setJadwalMulai('');
     setJadwalSelesai('');
     setTokenUjian('');
-    setPoinPenalti(5);
     setCurrentKisiKisi(null);
     setCurrentPerQIdx(0);
     setQuestions([
@@ -509,7 +504,6 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
             jadwalMulai,
             jadwalSelesai,
             tokenUjian,
-            poinPenalti,
             currentKisiKisi,
             questions,
             timestamp: new Date().toISOString(),
@@ -517,30 +511,16 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
         );
       } catch {}
     }
-  }, [questions, judul, mapel, kelas, durasi, sesi, maxAttempts, acakSoal, acakOpsi, jadwalMulai, jadwalSelesai, tokenUjian, poinPenalti, currentKisiKisi, id]);
+  }, [questions, judul, mapel, kelas, durasi, sesi, maxAttempts, acakSoal, acakOpsi, jadwalMulai, jadwalSelesai, tokenUjian, currentKisiKisi, id]);
 
   useEffect(() => {
     if (questions.length === 0) {
       resetForm();
     }
-
-    // Ketentuan 3: Hindari re-trigger pemindaian Auto-Recover saat bernavigasi antar tab
-    if (hasCheckedAutoRecoverInCurrentSession) return;
+    // Periksa apakah ada draf atau cadangan soal yang dapat dipulihkan dari cache peramban lokal
     try {
-      if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('cbt_auto_recover_handled') === 'true') {
-        hasCheckedAutoRecoverInCurrentSession = true;
-        return;
-      }
-    } catch {}
-
-    // Ketentuan 2: Periksa apakah editor aktif saat ini benar-benar kosong/lebih sedikit dari draft
-    const hasActiveContent = questions.some((q) => Boolean(q.soal && q.soal.trim().length > 0));
-    const activeQCount = hasActiveContent ? questions.length : 0;
-
-    try {
-      const found = api.scanAndRescueDraftQuestions(activeQCount);
-      hasCheckedAutoRecoverInCurrentSession = true;
-      if (found && found.questions && found.questions.length > activeQCount) {
+      const found = api.scanAndRescueDraftQuestions();
+      if (found && found.questions && found.questions.length > 0) {
         setRecoverableDraft(found as any);
       }
     } catch {}
@@ -548,7 +528,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
 
   const handleRestoreDraft = () => {
     if (!recoverableDraft) return;
-    const { questions: rescuedQs, examMeta, storageKeyToClean } = recoverableDraft as any;
+    const { questions: rescuedQs, examMeta } = recoverableDraft;
     setQuestions(rescuedQs);
     if (examMeta?.judul) setJudul(examMeta.judul);
     else if (examMeta?.Judul_Ujian) setJudul(examMeta.Judul_Ujian);
@@ -560,19 +540,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
     if (examMeta?.currentKisiKisi) setCurrentKisiKisi(examMeta.currentKisiKisi);
     if (examMeta?.id || examMeta?.ID) setId(examMeta.id || examMeta.ID);
     setCurrentPerQIdx(0);
-
-    // Ketentuan 1: Hapus data cadangan di penyimpanan lokal dan setel flag status pemulihan
-    try {
-      api.clearRecoveredDraft(storageKeyToClean);
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem('cbt_auto_recover_handled', 'true');
-      }
-      localStorage.setItem('cbt_draft_has_recovered', 'true');
-    } catch {}
-
-    hasCheckedAutoRecoverInCurrentSession = true;
     setRecoverableDraft(null);
-
     onShowModal({
       isOpen: true,
       title: 'Naskah Soal Berhasil Dipulihkan! 📝',
@@ -583,20 +551,10 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
   };
 
   const handleDismissDraft = () => {
-    try {
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem('cbt_auto_recover_handled', 'true');
-      }
-      if (recoverableDraft) {
-        api.clearRecoveredDraft((recoverableDraft as any).storageKeyToClean);
-      }
-    } catch {}
-    hasCheckedAutoRecoverInCurrentSession = true;
     setRecoverableDraft(null);
   };
 
   const handleEditUjian = (u: Ujian) => {
-    setRecoverableDraft(null);
     setId(u.ID);
     setJudul(u.Judul_Ujian);
     setMapel(u.Mapel);
@@ -930,16 +888,6 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
           localStorage.setItem(`cbt_backup_exam_${savedExam.ID}`, JSON.stringify(savedExam));
           localStorage.setItem('cbt_last_saved_exam_backup', JSON.stringify(savedExam));
         } catch {}
-
-        // Bersihkan draft aktif karena telah sukses disimpan dan diterbitkan ke database
-        try {
-          api.clearRecoveredDraft(`cbt_draft_q_${targetExamId || 'current'}`);
-          if (typeof sessionStorage !== 'undefined') {
-            sessionStorage.setItem('cbt_auto_recover_handled', 'true');
-          }
-        } catch {}
-        hasCheckedAutoRecoverInCurrentSession = true;
-        setRecoverableDraft(null);
 
         onShowModal({
           isOpen: true,
