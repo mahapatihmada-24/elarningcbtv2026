@@ -135,16 +135,17 @@ export function getActiveFirebaseConfig(): FirebaseAppConfig {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.projectId && parsed.apiKey) {
-          if (parsed.projectId === firebaseConfigFile.projectId) {
-            return parsed as FirebaseAppConfig;
-          }
+          return parsed as FirebaseAppConfig;
         }
       }
     }
   } catch {}
 
   // 3. Gunakan konfigurasi default bawaan (elearningcbt-sebayuloka)
-  return firebaseConfigFile as FirebaseAppConfig;
+  if (firebaseConfigFile && firebaseConfigFile.projectId && firebaseConfigFile.projectId !== 'gen-lang-client-0719730823') {
+    return firebaseConfigFile as FirebaseAppConfig;
+  }
+  return PRESET_CONFIGS.sebayuloka.config;
 }
 
 export function setActiveFirebaseConfig(cfg: FirebaseAppConfig): void {
@@ -410,6 +411,39 @@ export async function getNilaiListViaRest(): Promise<Nilai[]> {
   }
 }
 
+// Jalur Cepat REST API untuk mengambil daftar Pengguna
+export async function getUsersViaRest(): Promise<User[]> {
+  try {
+    const cfg = getActiveFirebaseConfig();
+    if (!cfg.projectId || !cfg.apiKey) return [];
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const url = `https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/users?pageSize=300&key=${cfg.apiKey}`;
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (Array.isArray(data.documents)) {
+      return data.documents.map((d: any) => {
+        const f = d.fields || {};
+        return normalizeUser({
+          nama: f.nama?.stringValue || f.Nama?.stringValue || '',
+          username: f.username?.stringValue || f.Username?.stringValue || d.name?.split('/').pop() || '',
+          password: f.password?.stringValue || f.Password?.stringValue || '12345',
+          role: f.role?.stringValue || f.Role?.stringValue || 'murid',
+          kelas: f.kelas?.stringValue || f.Kelas?.stringValue || '-',
+          parentPin: f.parentPin?.stringValue || f.ParentPin?.stringValue,
+          nip: f.nip?.stringValue || f.NIP?.stringValue,
+        });
+      });
+    }
+    return [];
+  } catch (e) {
+    console.warn('[REST API] Gagal ambil users via REST:', e);
+    return [];
+  }
+}
+
 // Parser dokumen hasil Firestore REST API menjadi objek Ujian
 function parseFirestoreRestUjianDoc(doc: any): Ujian {
   const f = doc.fields || {};
@@ -531,14 +565,30 @@ export const firebaseService = {
   },
 
   async getUsers(): Promise<User[]> {
-    if (isFirestoreOffline()) throw new Error('Firestore sedang offline');
+    if (isFirestoreOffline()) {
+      try {
+        const restUsers = await getUsersViaRest();
+        if (restUsers.length > 0) return restUsers;
+      } catch {}
+      throw new Error('Firestore sedang offline');
+    }
     await ensureFirebaseSeeded().catch(() => {});
-    const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.USERS)), 7000);
-    const list: User[] = [];
-    snap.forEach((d) => {
-      list.push(normalizeUser(d.data()));
-    });
-    return list;
+    try {
+      const snap = await withTimeout(getDocs(collection(db, COLLECTIONS.USERS)), 7000);
+      const list: User[] = [];
+      snap.forEach((d) => {
+        list.push(normalizeUser(d.data()));
+      });
+      if (list.length > 0) return list;
+    } catch (err) {
+      console.warn('[Firebase SDK getUsers] Gagal/timeout via SDK, mencoba REST API fallback:', err);
+    }
+    // Coba REST API fallback
+    try {
+      const restList = await getUsersViaRest();
+      if (restList && restList.length > 0) return restList;
+    } catch {}
+    return [];
   },
 
   async addUser(user: User): Promise<ApiResponse> {

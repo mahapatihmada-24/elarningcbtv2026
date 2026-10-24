@@ -11,6 +11,8 @@ import {
   PRESET_CONFIGS,
   isFirestoreOffline,
   saveNilaiViaRest,
+  getUsersViaRest,
+  getUjianListViaRest,
 } from './firebase';
 import {
   normalizeUser,
@@ -30,6 +32,8 @@ export {
   resetActiveFirebaseConfig,
   PRESET_CONFIGS,
   isFirestoreOffline,
+  getUsersViaRest,
+  getUjianListViaRest,
 };
 export type { FirebaseConnectionDiagnostic, FirebaseAppConfig };
 
@@ -207,17 +211,23 @@ function ensureLocalDbInitialized() {
     try {
       const existingUsers = JSON.parse(localStorage.getItem(STORAGE_KEY_USERS) || '[]');
       if (Array.isArray(existingUsers)) {
-        let changed = false;
+        // Gabungkan pengguna lokal dengan INITIAL_USERS agar 47 peserta dipulihkan
+        const userMap = new Map<string, any>();
+        INITIAL_USERS.forEach((u) => userMap.set(u.username.toLowerCase(), u));
         existingUsers.forEach((u: any) => {
+          if (u && u.username) {
+            const key = u.username.toLowerCase();
+            userMap.set(key, { ...userMap.get(key), ...u });
+          }
+        });
+        const mergedUsers = Array.from(userMap.values());
+        mergedUsers.forEach((u: any) => {
           if (u.username === 'guru' && !u.nip) {
             u.nip = '199208152019031008';
             if (!u.kelas || u.kelas === '-') u.kelas = '6A';
-            changed = true;
           }
         });
-        if (changed) {
-          safeSetItem(STORAGE_KEY_USERS, JSON.stringify(existingUsers));
-        }
+        safeSetItem(STORAGE_KEY_USERS, JSON.stringify(mergedUsers));
       }
     } catch {}
   }
@@ -226,6 +236,21 @@ function ensureLocalDbInitialized() {
   }
   if (!localStorage.getItem(STORAGE_KEY_UJIAN)) {
     safeSetItem(STORAGE_KEY_UJIAN, JSON.stringify(INITIAL_UJIAN));
+  } else {
+    try {
+      const existingUjian = JSON.parse(localStorage.getItem(STORAGE_KEY_UJIAN) || '[]');
+      if (Array.isArray(existingUjian)) {
+        // Gabungkan paket ujian lokal dengan INITIAL_UJIAN agar bank soal dipulihkan
+        const examMap = new Map<string, any>();
+        INITIAL_UJIAN.forEach((e) => examMap.set(e.ID, e));
+        existingUjian.forEach((e: any) => {
+          if (e && e.ID) {
+            examMap.set(e.ID, { ...examMap.get(e.ID), ...e });
+          }
+        });
+        safeSetItem(STORAGE_KEY_UJIAN, JSON.stringify(Array.from(examMap.values())));
+      }
+    } catch {}
   }
   if (!localStorage.getItem(STORAGE_KEY_SCHOOL_PROFILE)) {
     safeSetItem(STORAGE_KEY_SCHOOL_PROFILE, JSON.stringify(DEFAULT_SCHOOL_PROFILE));
