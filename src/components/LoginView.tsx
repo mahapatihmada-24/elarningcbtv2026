@@ -5,7 +5,6 @@ import {
   User,
   Eye,
   EyeOff,
-  Settings,
   ArrowRight,
   ShieldCheck,
   KeyRound,
@@ -19,8 +18,8 @@ import { User as UserType, SchoolProfile } from '../types';
 
 interface LoginViewProps {
   onLoginSuccess: (user: UserType) => void;
-  dataSource: DataSource;
-  onOpenSettings: () => void;
+  dataSource?: DataSource;
+  onOpenSettings?: () => void;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
@@ -144,19 +143,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
         inputRefs.current[0]?.focus();
       }
     }, 150);
-  };
-
-  const handleUseDefaultPin = () => {
-    const defaultPin = '240101';
-    setPinDigits(['2', '4', '0', '1', '0', '1']);
-    setPinError('');
-    validateAndSubmitPin(defaultPin);
-  };
-
-  const handleDirectBypass = () => {
-    if (pendingAdminUser) {
-      onLoginSuccess(pendingAdminUser);
-    }
   };
 
   const handlePinSubmit = (e?: React.FormEvent) => {
@@ -554,42 +540,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
         </svg>
       </div>
 
-      {/* Top status bar */}
-      <div className="relative z-10 max-w-md w-full mx-auto flex justify-between items-center py-2 px-1">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700">
-            <GraduationCap className="w-4 h-4" />
-          </div>
-          <span className="text-slate-700 font-bold text-xs sm:text-sm tracking-wide">
-            {schoolProfile?.namaSekolah || 'SDN Harjosari Kidul 01'}
-          </span>
-        </div>
-
-        <button
-          onClick={onOpenSettings}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/90 hover:bg-white text-slate-700 text-[11px] font-semibold border border-slate-200 shadow-2xs transition backdrop-blur-xs"
-          title="Pengaturan Koneksi Database Cloud (Firebase / GAS)"
-        >
-          <span
-            className={`w-2 h-2 rounded-full ${
-              dataSource === 'FIREBASE'
-                ? 'bg-emerald-500'
-                : dataSource === 'GAS'
-                ? 'bg-sky-500'
-                : 'bg-amber-500'
-            }`}
-          />
-          <span>
-            {dataSource === 'FIREBASE'
-              ? 'Firebase Cloud'
-              : dataSource === 'GAS'
-              ? 'Cloud GAS'
-              : 'Mode Lokal'}
-          </span>
-          <Settings className="w-3 h-3 text-slate-400" />
-        </button>
-      </div>
-
       {/* STEP 1: CREDENTIALS VIEW */}
       {step === 'credentials' && (
         <div className="relative z-10 w-full max-w-md mx-auto bg-white rounded-3xl p-6 sm:p-8 shadow-xl shadow-indigo-950/5 border border-slate-100 my-auto animate-in fade-in zoom-in-95 duration-200">
@@ -767,36 +717,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
               </div>
             )}
 
-            {/* Default PIN Helper Box */}
-            <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200 text-xs text-amber-900 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 font-bold">
-                  <KeyRound className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>PIN Default Administrator:</span>
-                </div>
-                <span className="font-mono font-black text-xs sm:text-sm px-2.5 py-0.5 rounded-lg bg-amber-200/80 text-amber-950 tracking-widest">
-                  240101
-                </span>
-              </div>
-              <p className="text-[11px] text-amber-800/90 leading-relaxed">
-                Secara default sistem menggunakan kode PIN <strong className="font-mono text-amber-950">240101</strong> untuk mengonfirmasi akses administrator. Anda dapat mengetik PIN atau klik tombol di bawah untuk membuka langsung.
-              </p>
-              <button
-                type="button"
-                onClick={handleUseDefaultPin}
-                disabled={isVerifyingPin}
-                className="w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-[0.98] text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Gunakan PIN Default (240101) & Buka Dashboard</span>
-              </button>
-            </div>
-
             {/* Submit button */}
             <button
               type="submit"
               disabled={isVerifyingPin || pinDigits.join('').trim().length < 6}
-              className="w-full py-3 sm:py-3.5 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-bold text-sm sm:text-base shadow-md shadow-indigo-200 transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3 sm:py-3.5 px-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-bold text-sm sm:text-base shadow-md shadow-indigo-200 transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer mt-2"
             >
               {isVerifyingPin ? (
                 <span>Memverifikasi PIN...</span>
@@ -806,16 +731,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   <span>Verifikasi & Masuk Dashboard</span>
                 </>
               )}
-            </button>
-
-            {/* Direct Access Bypass */}
-            <button
-              type="button"
-              onClick={handleDirectBypass}
-              className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-[0.98] text-slate-700 font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-slate-500" />
-              <span>Buka Langsung Sebagai Administrator</span>
             </button>
 
             {/* Back button */}

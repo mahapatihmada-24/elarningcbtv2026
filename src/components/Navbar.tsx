@@ -49,8 +49,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center flex-wrap sm:flex-nowrap justify-end gap-2 sm:gap-3">
           {/* Action Tools Group (Settings, Bell, Parent Portal) */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Data source badge / GAS Settings button - dikhususkan hanya tampil untuk akun dengan peran Admin dan Guru */}
-            {(user.role === 'admin' || user.role === 'guru') && (
+            {/* Data source badge / GAS Settings button - dikhususkan hanya tampil untuk akun dengan peran Admin */}
+            {user.role === 'admin' && (
               <button
                 onClick={onOpenSettings}
                 title="Klik untuk Pengaturan Koneksi Database Cloud / Firebase"
@@ -67,7 +67,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 />
                 <span className="hidden md:inline text-indigo-100 font-medium">
                   {dataSource === 'FIREBASE'
-                    ? 'Firebase'
+                    ? 'Firebase Cloud'
                     : dataSource === 'GAS'
                     ? 'Cloud GAS'
                     : 'Lokal'}
