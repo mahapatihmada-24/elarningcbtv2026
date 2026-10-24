@@ -258,9 +258,304 @@ export const LoginView: React.FC<LoginViewProps> = ({
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-slate-50 via-white to-indigo-50/30 p-4 sm:p-6 text-slate-800">
+    <div className="relative min-h-screen flex flex-col justify-between overflow-hidden bg-gradient-to-br from-[#9ec9fc] via-[#f2f7fe] to-[#dad5fc] p-4 sm:p-6 text-slate-800">
+      {/* BACKGROUND ORNAMENTS & EDUCATIONAL TECHNOLOGY PASTEL AESTHETIC (Mirrored from reference) */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none select-none z-0" aria-hidden="true">
+        {/* Ambient Pastel Glows */}
+        <div className="absolute -top-20 -left-20 w-[32rem] h-[32rem] rounded-full bg-gradient-to-br from-sky-300/50 via-blue-200/35 to-transparent blur-3xl pointer-events-none" />
+        <div className="absolute top-1/4 -right-24 w-[28rem] h-[28rem] rounded-full bg-gradient-to-bl from-purple-200/45 via-indigo-100/30 to-transparent blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -left-16 w-[34rem] h-[34rem] rounded-full bg-gradient-to-tr from-violet-300/50 via-indigo-100/40 to-transparent blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-20 -right-20 w-[30rem] h-[30rem] rounded-full bg-gradient-to-tl from-sky-200/50 via-purple-200/30 to-transparent blur-3xl pointer-events-none" />
+
+        {/* Master Scalable Vector Background with Exact Reference Visual Elements */}
+        <svg
+          viewBox="0 0 1600 900"
+          preserveAspectRatio="xMidYMid slice"
+          className="absolute inset-0 w-full h-full"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <defs>
+            {/* Filters for specular glows & sparkles */}
+            <filter id="soft-glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+            <radialGradient id="sparkle-aura" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
+              <stop offset="35%" stopColor="#bae6fd" stopOpacity="0.5" />
+              <stop offset="70%" stopColor="#818cf8" stopOpacity="0.15" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+            </radialGradient>
+            <linearGradient id="glass-sweep-left" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.45" />
+              <stop offset="45%" stopColor="#dbeafe" stopOpacity="0.18" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0.04" />
+            </linearGradient>
+            <linearGradient id="glass-sweep-right" x1="100%" y1="100%" x2="0%" y2="0%">
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0.4" />
+              <stop offset="55%" stopColor="#ede9fe" stopOpacity="0.16" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0.03" />
+            </linearGradient>
+          </defs>
+
+          {/* SISI KIRI: Sweeping Curved Glass Ribbon 1 (Top Left Ambient Arc) */}
+          <path
+            d="M -50 0 C 180 80 260 220 180 400 C 120 520 -20 600 -50 620 Z"
+            fill="url(#glass-sweep-left)"
+          />
+          <path
+            d="M -50 0 C 180 80 260 220 180 400 C 120 520 -20 600 -50 620"
+            fill="none"
+            stroke="white"
+            strokeWidth="2"
+            strokeOpacity="0.75"
+            filter="url(#soft-glow)"
+          />
+
+          {/* SISI KIRI: The Grand Sweeping Glass Wave Ribbon 2 */}
+          <path
+            d="M 320 0 C 120 180 -40 360 0 520 C 60 700 280 750 370 780 C 420 800 440 850 420 900 L -20 900 L -20 0 Z"
+            fill="url(#glass-sweep-left)"
+          />
+          <path
+            d="M 320 -10 C 120 170 -40 350 0 510 C 70 690 300 740 390 770 C 440 790 460 840 440 910"
+            fill="none"
+            stroke="white"
+            strokeWidth="2.5"
+            strokeOpacity="0.85"
+            filter="url(#soft-glow)"
+          />
+
+          {/* SISI KIRI: Sparkling Lens Flare 1 pada Titik Lengkung (Middle-Left) */}
+          <g transform="translate(370, 535)">
+            <circle cx="0" cy="0" r="30" fill="url(#sparkle-aura)" />
+            <ellipse cx="0" cy="0" rx="60" ry="2" fill="#ffffff" opacity="0.95" transform="rotate(-15)" />
+            <ellipse cx="0" cy="0" rx="30" ry="1.2" fill="#ffffff" opacity="0.8" transform="rotate(75)" />
+            <polygon points="0,-30 3,-3 30,0 3,3 0,30 -3,3 -30,0 -3,-3" fill="#ffffff" />
+            <circle cx="0" cy="0" r="4.5" fill="#ffffff" />
+          </g>
+
+          {/* SISI KIRI: Sparkling Lens Flare 2 pada Lengkungan Bawah */}
+          <g transform="translate(215, 770)">
+            <circle cx="0" cy="0" r="22" fill="url(#sparkle-aura)" />
+            <ellipse cx="0" cy="0" rx="42" ry="1.6" fill="#ffffff" opacity="0.85" transform="rotate(-10)" />
+            <polygon points="0,-20 2,-2 20,0 2,2 0,20 -2,2 -20,0 -2,-2" fill="#ffffff" />
+            <circle cx="0" cy="0" r="3.5" fill="#ffffff" />
+          </g>
+
+          {/* SISI KIRI: Ornamen Buku Terbuka & Topi Toga (Pendidikan CBT Watermark) */}
+          <g id="edu-watermark-emblem">
+            {/* Topi Toga (Graduation Cap) */}
+            <polygon
+              points="185,505 248,534 185,563 122,534"
+              fill="white"
+              fillOpacity="0.45"
+              stroke="white"
+              strokeWidth="2.5"
+            />
+            <path
+              d="M 148 546 L 148 566 C 148 578 222 578 222 566 L 222 546 Z"
+              fill="white"
+              fillOpacity="0.4"
+            />
+            <circle cx="185" cy="534" r="3" fill="white" />
+            <path
+              d="M 185 534 Q 230 538 238 560 L 238 578"
+              fill="none"
+              stroke="white"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+            />
+            <circle cx="238" cy="580" r="2.5" fill="white" />
+
+            {/* Buku Terbuka (Open Book) */}
+            {/* Sayap Kiri Buku */}
+            <path
+              d="M 176 592 C 142 580 96 590 56 606 L 56 690 C 96 674 142 664 176 676 Z"
+              fill="white"
+              fillOpacity="0.4"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M 76 626 C 104 616 134 612 158 618"
+              fill="none"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeOpacity="0.6"
+              strokeLinecap="round"
+            />
+            <path
+              d="M 76 650 C 104 640 134 636 158 642"
+              fill="none"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeOpacity="0.6"
+              strokeLinecap="round"
+            />
+
+            {/* Sayap Kanan Buku */}
+            <path
+              d="M 194 592 C 228 580 274 590 314 606 L 314 690 C 274 674 228 664 194 676 Z"
+              fill="white"
+              fillOpacity="0.4"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M 294 626 C 266 616 236 612 212 618"
+              fill="none"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeOpacity="0.6"
+              strokeLinecap="round"
+            />
+            <path
+              d="M 294 650 C 266 640 236 636 212 642"
+              fill="none"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeOpacity="0.6"
+              strokeLinecap="round"
+            />
+
+            {/* Garis Tengah Buku */}
+            <line
+              x1="185"
+              y1="592"
+              x2="185"
+              y2="680"
+              stroke="white"
+              strokeWidth="3"
+              strokeOpacity="0.6"
+            />
+            {/* Lekukan Bawah Buku */}
+            <path
+              d="M 56 690 C 96 706 142 716 185 704 C 228 716 274 706 314 690"
+              fill="none"
+              stroke="white"
+              strokeWidth="2.5"
+              strokeOpacity="0.65"
+            />
+          </g>
+
+          {/* SISI KIRI: Hexagon Transparan (Hexagon Atas & Bawah) */}
+          {/* Hexagon solid halus di atas kiri */}
+          <polygon
+            points="290,172 310,183 310,207 290,218 270,207 270,183"
+            fill="white"
+            fillOpacity="0.45"
+            stroke="white"
+            strokeWidth="2"
+            strokeOpacity="0.8"
+          />
+          {/* Hexagon garis di atas kiri */}
+          <polygon
+            points="220,238 252,256 252,294 220,312 188,294 188,256"
+            fill="none"
+            stroke="white"
+            strokeWidth="3.5"
+            strokeOpacity="0.75"
+          />
+          {/* Hexagon garis di bawah kiri (dekat buku) */}
+          <polygon
+            points="365,732 389,746 389,774 365,788 341,774 341,746"
+            fill="none"
+            stroke="white"
+            strokeWidth="3"
+            strokeOpacity="0.7"
+          />
+
+          {/* SISI KANAN: Rounded Frosted Glass Square (Kanan Atas) */}
+          <rect
+            x="1362"
+            y="102"
+            width="56"
+            height="56"
+            rx="16"
+            fill="white"
+            fillOpacity="0.4"
+            stroke="white"
+            strokeWidth="2.5"
+            strokeOpacity="0.8"
+            filter="url(#soft-glow)"
+          />
+
+          {/* SISI KANAN: Dot Matrix Pattern (5 Kolom x 4 Baris) */}
+          <g id="right-dot-matrix">
+            <circle cx="1395" cy="260" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1420" cy="260" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1445" cy="260" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1470" cy="260" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1495" cy="260" r="3.2" fill="white" fillOpacity="0.75" />
+
+            <circle cx="1395" cy="285" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1420" cy="285" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1445" cy="285" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1470" cy="285" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1495" cy="285" r="3.2" fill="white" fillOpacity="0.75" />
+
+            <circle cx="1395" cy="310" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1420" cy="310" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1445" cy="310" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1470" cy="310" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1495" cy="310" r="3.2" fill="white" fillOpacity="0.75" />
+
+            <circle cx="1395" cy="335" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1420" cy="335" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1445" cy="335" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1470" cy="335" r="3.2" fill="white" fillOpacity="0.75" />
+            <circle cx="1495" cy="335" r="3.2" fill="white" fillOpacity="0.75" />
+          </g>
+
+          {/* SISI KANAN: Hexagon Transparan (Kanan Tengah) */}
+          <polygon
+            points="1275,326 1309,346 1309,384 1275,404 1241,384 1241,346"
+            fill="none"
+            stroke="white"
+            strokeWidth="3.5"
+            strokeOpacity="0.75"
+          />
+
+          {/* SISI KANAN: Sweeping Curved Glass Wave Ribbon (Kanan Bawah ke Atas) */}
+          <path
+            d="M 960 900 C 1260 840 1440 680 1480 500 C 1510 380 1560 300 1620 280 L 1620 900 Z"
+            fill="url(#glass-sweep-right)"
+          />
+          <path
+            d="M 960 900 C 1260 840 1440 680 1480 500 C 1510 380 1560 300 1620 280"
+            fill="none"
+            stroke="white"
+            strokeWidth="2.5"
+            strokeOpacity="0.85"
+            filter="url(#soft-glow)"
+          />
+
+          {/* SISI KANAN: Sparkling Lens Flare pada Lengkungan Kanan */}
+          <g transform="translate(1465, 530)">
+            <circle cx="0" cy="0" r="30" fill="url(#sparkle-aura)" />
+            <ellipse cx="0" cy="0" rx="60" ry="2" fill="#ffffff" opacity="0.95" transform="rotate(-22)" />
+            <ellipse cx="0" cy="0" rx="30" ry="1.2" fill="#ffffff" opacity="0.8" transform="rotate(68)" />
+            <polygon points="0,-30 3,-3 30,0 3,3 0,30 -3,3 -30,0 -3,-3" fill="#ffffff" />
+            <circle cx="0" cy="0" r="4.5" fill="#ffffff" />
+          </g>
+
+          {/* SISI KANAN: Secondary Inner Sweeping Curve (Kanan Bawah) */}
+          <path
+            d="M 1120 900 C 1360 860 1520 740 1620 630"
+            fill="none"
+            stroke="white"
+            strokeWidth="2"
+            strokeOpacity="0.7"
+            filter="url(#soft-glow)"
+          />
+        </svg>
+      </div>
+
       {/* Top status bar */}
-      <div className="max-w-md w-full mx-auto flex justify-between items-center py-2 px-1">
+      <div className="relative z-10 max-w-md w-full mx-auto flex justify-between items-center py-2 px-1">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700">
             <GraduationCap className="w-4 h-4" />
@@ -272,7 +567,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
         <button
           onClick={onOpenSettings}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-semibold border border-slate-200 shadow-2xs transition"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/90 hover:bg-white text-slate-700 text-[11px] font-semibold border border-slate-200 shadow-2xs transition backdrop-blur-xs"
           title="Pengaturan Koneksi Database Cloud (Firebase / GAS)"
         >
           <span
@@ -297,7 +592,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
       {/* STEP 1: CREDENTIALS VIEW */}
       {step === 'credentials' && (
-        <div className="w-full max-w-md mx-auto bg-white rounded-3xl p-6 sm:p-8 shadow-xl shadow-slate-200/60 border border-slate-100 my-auto animate-in fade-in zoom-in-95 duration-200">
+        <div className="relative z-10 w-full max-w-md mx-auto bg-white rounded-3xl p-6 sm:p-8 shadow-xl shadow-indigo-950/5 border border-slate-100 my-auto animate-in fade-in zoom-in-95 duration-200">
           <div className="text-center mb-6">
             <div className="w-16 h-16 rounded-2xl bg-indigo-50/90 border border-indigo-100/80 flex items-center justify-center text-indigo-600 mx-auto mb-4 shadow-xs">
               <GraduationCap className="w-9 h-9 text-indigo-600 stroke-[2.2]" />
@@ -387,7 +682,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
       {/* STEP 2: 2-STEP VERIFICATION (OTP / PIN ADMIN) */}
       {step === '2fa' && pendingAdminUser && (
-        <div className="w-full max-w-md mx-auto bg-white rounded-3xl p-6 sm:p-8 shadow-xl shadow-slate-200/60 border border-slate-100 my-auto animate-in fade-in zoom-in-95 duration-200">
+        <div className="relative z-10 w-full max-w-md mx-auto bg-white rounded-3xl p-6 sm:p-8 shadow-xl shadow-slate-200/60 border border-slate-100 my-auto animate-in fade-in zoom-in-95 duration-200">
           <div className="text-center mb-6">
             <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mx-auto mb-3 shadow-xs">
               <KeyRound className="w-8 h-8 text-amber-600 stroke-[2.2]" />
