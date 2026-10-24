@@ -74,6 +74,8 @@ export const STANDARD_JENIS_UJIAN = [
   'Aspek Sumatif',
   'Sumatif Tengah Semester (STS)',
   'Sumatif Akhir Semester (SAS)',
+  'TKA',
+  'TKAD',
   'Ujian Sekolah',
   'Try Out CBT',
   'Asesmen Formatif',
