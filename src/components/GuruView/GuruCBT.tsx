@@ -69,6 +69,17 @@ import {
   parseQuestionsFromWord,
 } from '../../utils/wordExamHelper';
 
+export const STANDARD_JENIS_UJIAN = [
+  'Penilaian Harian',
+  'Aspek Sumatif',
+  'Sumatif Tengah Semester (STS)',
+  'Sumatif Akhir Semester (SAS)',
+  'Ujian Sekolah',
+  'Try Out CBT',
+  'Asesmen Formatif',
+  'Remedial & Pengayaan',
+];
+
 interface GuruCBTProps {
   onShowModal: (modal: Partial<ModalState>) => void;
   onViewImage: (url: string, title?: string) => void;
@@ -93,6 +104,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
   const [searchQuery, setSearchQuery] = useState('');
   const [filterClass, setFilterClass] = useState('Semua');
   const [filterStatus, setFilterStatus] = useState('Semua');
+  const [filterJenis, setFilterJenis] = useState('ALL');
   const [rekapExamIds, setRekapExamIds] = useState<Set<string>>(new Set());
 
   // Form states
@@ -1126,18 +1138,29 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
 
   const filteredUjianList = ujianList.filter((u) => {
     const q = searchQuery.toLowerCase().trim();
+    let examJenis = u.Jenis_Ujian || '';
+    if (!examJenis) {
+      try {
+        const raw = JSON.parse(u.Soal_JSON || '{}');
+        if (raw?.config?.jenis) examJenis = raw.config.jenis;
+      } catch {}
+    }
+    const resolvedJenis = examJenis || 'Penilaian Harian';
+
     const matchesSearch =
       !q ||
       u.Judul_Ujian.toLowerCase().includes(q) ||
       u.Mapel.toLowerCase().includes(q) ||
       u.Kelas.toLowerCase().includes(q) ||
+      resolvedJenis.toLowerCase().includes(q) ||
       (u.Token_Ujian && u.Token_Ujian.toLowerCase().includes(q));
     const matchesClass = filterClass === 'ALL' || u.Kelas.includes(filterClass);
     const matchesStatus =
       filterStatus === 'ALL' ||
       (filterStatus === 'Aktif' && u.Status === 'Aktif') ||
       (filterStatus === 'NonAktif' && u.Status !== 'Aktif');
-    return matchesSearch && matchesClass && matchesStatus;
+    const matchesJenis = filterJenis === 'ALL' || resolvedJenis === filterJenis;
+    return matchesSearch && matchesClass && matchesStatus && matchesJenis;
   });
 
   return (
@@ -1315,7 +1338,29 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Jenis Asesmen / Ujian <span className="text-rose-500">*</span>
+              </label>
+              <select
+                value={jenisUjian}
+                onChange={(e) => setJenisUjian(e.target.value)}
+                className="w-full text-xs sm:text-sm p-2.5 rounded-xl border border-slate-300 bg-white font-semibold focus:ring-2 focus:ring-indigo-500"
+              >
+                {STANDARD_JENIS_UJIAN.map((j) => (
+                  <option key={j} value={j}>
+                    {j}
+                  </option>
+                ))}
+                {!STANDARD_JENIS_UJIAN.includes(jenisUjian) && jenisUjian && (
+                  <option value={jenisUjian}>{jenisUjian}</option>
+                )}
+              </select>
+              <span className="text-[10px] text-slate-500 block mt-1">
+                Kategori ujian / penilaian kurikulum.
+              </span>
+            </div>
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">Mata Pelajaran</label>
               <select
@@ -1825,12 +1870,27 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Cari mata pelajaran, judul ujian, kelas, token..."
+                  placeholder="Cari mata pelajaran, judul ujian, kelas, jenis, token..."
                   className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
                 />
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                <div className="relative">
+                  <select
+                    value={filterJenis}
+                    onChange={(e) => setFilterJenis(e.target.value)}
+                    className="py-2 pl-3 pr-8 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
+                  >
+                    <option value="ALL">Semua Jenis Ujian</option>
+                    {STANDARD_JENIS_UJIAN.map((j) => (
+                      <option key={j} value={j}>
+                        {j}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="relative">
                   <select
                     value={filterClass}
@@ -1858,13 +1918,14 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                   </select>
                 </div>
 
-                {(searchQuery || filterClass !== 'ALL' || filterStatus !== 'ALL') && (
+                {(searchQuery || filterClass !== 'ALL' || filterStatus !== 'ALL' || filterJenis !== 'ALL') && (
                   <button
                     type="button"
                     onClick={() => {
                       setSearchQuery('');
                       setFilterClass('ALL');
                       setFilterStatus('ALL');
+                      setFilterJenis('ALL');
                     }}
                     className="px-2.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition whitespace-nowrap"
                   >
@@ -1932,6 +1993,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                 let isAcakSoal = u.Acak_Soal ?? true;
                 let isAcakOpsi = u.Acak_Opsi ?? true;
                 let isTampilNilai = u.Tampilkan_Nilai ?? true;
+                let examJenis = u.Jenis_Ujian || '';
 
                 try {
                   const raw = JSON.parse(u.Soal_JSON || '{}');
@@ -1941,6 +2003,7 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                     if (raw.config.acak_soal !== undefined) isAcakSoal = raw.config.acak_soal;
                     if (raw.config.acak_opsi !== undefined) isAcakOpsi = raw.config.acak_opsi;
                     if (raw.config.tampilkan_nilai !== undefined) isTampilNilai = raw.config.tampilkan_nilai;
+                    if (raw.config.jenis && !examJenis) examJenis = raw.config.jenis;
                   }
                 } catch {}
 
@@ -1974,7 +2037,9 @@ export const GuruCBT: React.FC<GuruCBTProps> = ({ onShowModal, onViewImage }) =>
                       {/* Baris 1: Jenis */}
                       <div className="flex items-center justify-between px-3.5 py-1.5 bg-[#f8f9fa]">
                         <span className="text-slate-500">Jenis</span>
-                        <span className="font-bold text-slate-800">UMBK</span>
+                        <span className="font-bold text-slate-800" title={examJenis || 'Penilaian Harian'}>
+                          {examJenis || 'Penilaian Harian'}
+                        </span>
                       </div>
 
                       {/* Baris 2: Mulai */}

@@ -152,6 +152,7 @@ export interface Ujian {
   Durasi_Menit: number;
   Soal_JSON: string; // stringified ExamPayload or Question[]
   Status: 'Aktif' | 'Non-Aktif';
+  Jenis_Ujian?: string;
   Token_Ujian?: string;
   Jadwal_Mulai?: string;
   Jadwal_Selesai?: string;

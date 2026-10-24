@@ -321,10 +321,17 @@ export const MuridCBTList: React.FC<MuridCBTListProps> = ({ currentUser, onStart
                 className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:border-indigo-300 transition flex flex-col justify-between space-y-4"
               >
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs">
-                      {u.Mapel}
-                    </span>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs">
+                        {u.Mapel}
+                      </span>
+                      {u.Jenis_Ujian && (
+                        <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold text-[11px] border border-slate-200">
+                          {u.Jenis_Ujian}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-xs text-slate-500 flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5 text-slate-400" />
                       {u.Durasi_Menit} Menit

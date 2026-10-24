@@ -50,7 +50,16 @@ export function normalizeUjian(u: any): Ujian {
     Jadwal_Mulai: u.Jadwal_Mulai || u.jadwal_mulai || '',
     Jadwal_Selesai: u.Jadwal_Selesai || u.jadwal_selesai || '',
     Kisi_Kisi_JSON: u.Kisi_Kisi_JSON || u.kisi_kisi_json || '',
-    Jenis_Ujian: String(u.Jenis_Ujian || u.jenis_ujian || u.jenis || ''),
+    Jenis_Ujian: (() => {
+      let j = String(u.Jenis_Ujian || u.jenis_ujian || u.jenis || '').trim();
+      if (!j && soalJson && soalJson !== '{}') {
+        try {
+          const parsed = JSON.parse(soalJson);
+          if (parsed?.config?.jenis) j = String(parsed.config.jenis).trim();
+        } catch {}
+      }
+      return j || 'Penilaian Harian';
+    })(),
     Soal_JSON: soalJson,
     Status: (u.Status || u.status || 'Aktif') as 'Aktif' | 'Non-Aktif',
   };

@@ -1331,6 +1331,7 @@ export const api = {
             token_ujian: payload.Token_Ujian,
             jadwal_mulai: payload.Jadwal_Mulai,
             jadwal_selesai: payload.Jadwal_Selesai,
+            jenis_ujian: payload.Jenis_Ujian,
             soal: ujianData.soal,
             status: 'Aktif',
           },
@@ -1379,13 +1380,20 @@ export const api = {
     } catch {}
 
     const payload = {
-      config: { sesi: 'Semua', max_attempts: 1, acak_soal: true, acak_opsi: true },
+      config: {
+        sesi: 'Semua',
+        max_attempts: 1,
+        acak_soal: true,
+        acak_opsi: true,
+        jenis: examMeta?.Jenis_Ujian || 'Penilaian Harian',
+      },
       questions: updatedQuestions,
     };
 
     const res = await this.saveUjian({
       ID: targetId,
       Judul_Ujian: examMeta?.Judul_Ujian || 'Draft Ujian Baru',
+      Jenis_Ujian: examMeta?.Jenis_Ujian || 'Penilaian Harian',
       Mapel: examMeta?.Mapel || 'Umum',
       Kelas: examMeta?.Kelas || 'Semua',
       Durasi_Menit: examMeta?.Durasi_Menit || 60,

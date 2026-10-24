@@ -956,6 +956,7 @@ export function exportAllExamsSummaryToExcel(
     'No',
     'Kode Ujian',
     'Judul Ujian',
+    'Jenis Ujian',
     'Mata Pelajaran',
     'Rombel / Kelas',
     'Durasi (Menit)',
@@ -972,6 +973,7 @@ export function exportAllExamsSummaryToExcel(
     let questionCount = 0;
     let sesi = 'Semua';
     let maxAttempts = '1';
+    let jenisUjian = u.Jenis_Ujian || '';
     try {
       const raw = JSON.parse(u.Soal_JSON || '{}');
       if (raw.questions && Array.isArray(raw.questions)) {
@@ -982,6 +984,7 @@ export function exportAllExamsSummaryToExcel(
       if (raw.config) {
         sesi = raw.config.sesi || 'Semua';
         maxAttempts = String(raw.config.max_attempts ?? 1);
+        if (raw.config.jenis && !jenisUjian) jenisUjian = raw.config.jenis;
       }
     } catch {}
 
@@ -989,6 +992,7 @@ export function exportAllExamsSummaryToExcel(
       idx + 1,
       u.ID || '-',
       u.Judul_Ujian || '-',
+      jenisUjian || 'Penilaian Harian',
       u.Mapel || '-',
       u.Kelas || '-',
       u.Durasi_Menit || 60,
@@ -1008,16 +1012,17 @@ export function exportAllExamsSummaryToExcel(
     { wch: 6 },  // No
     { wch: 15 }, // Kode
     { wch: 35 }, // Judul
+    { wch: 22 }, // Jenis
     { wch: 20 }, // Mapel
-    { wch: 14 }, // Kelas
+    { wch: 15 }, // Kelas
     { wch: 15 }, // Durasi
-    { wch: 18 }, // Jumlah Soal
-    { wch: 14 }, // Token
+    { wch: 18 }, // Soal
+    { wch: 15 }, // Token
     { wch: 14 }, // Status
     { wch: 14 }, // Sesi
-    { wch: 16 }, // Maks Percobaan
-    { wch: 20 }, // Jadwal Mulai
-    { wch: 20 }, // Jadwal Selesai
+    { wch: 15 }, // Percobaan
+    { wch: 20 }, // Mulai
+    { wch: 20 }, // Selesai
   ];
 
   XLSX.utils.book_append_sheet(wb, ws, 'KATALOG_UJIAN_CBT');
