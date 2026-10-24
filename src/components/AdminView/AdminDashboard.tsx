@@ -17,6 +17,7 @@ import {
   Database,
   ArrowRight,
   Eye,
+  HardDrive,
 } from 'lucide-react';
 import { User, Ujian, Nilai, Materi, Announcement, SchoolProfile } from '../../types';
 import { api, getDataSource } from '../../services/api';
@@ -413,6 +414,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   Rekap Nilai & Koreksi
                 </h4>
                 <p className="text-xs text-slate-500">Filter bank soal, koreksi, WA wali murid</p>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-1 transition" />
+          </button>
+
+          <button
+            onClick={() => onNavigateTab('admin_backup')}
+            className="p-4 rounded-2xl bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-300 text-left transition flex items-center justify-between group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center font-bold">
+                <HardDrive className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-slate-800 group-hover:text-indigo-600">
+                  Jadwal Backup Berkala
+                </h4>
+                <p className="text-xs text-slate-500">Dual output: Download lokal & Google Drive</p>
               </div>
             </div>
             <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-1 transition" />

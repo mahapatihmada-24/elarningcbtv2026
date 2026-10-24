@@ -135,6 +135,7 @@ export interface ExamConfig {
   jadwal_mulai?: string;
   jadwal_selesai?: string;
   poin_penalti?: number;
+  jenis?: string;
 }
 
 export interface ExamPayload {
@@ -154,6 +155,12 @@ export interface Ujian {
   Token_Ujian?: string;
   Jadwal_Mulai?: string;
   Jadwal_Selesai?: string;
+  Waktu_Mulai?: string;
+  Waktu_Selesai?: string;
+  Acak_Soal?: boolean;
+  Acak_Opsi?: boolean;
+  Tampilkan_Nilai?: boolean;
+  Sudah_Rekap?: boolean;
   Kisi_Kisi_JSON?: string;
 }
 

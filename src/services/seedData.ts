@@ -77,6 +77,7 @@ export const INITIAL_UJIAN: Ujian[] = [
   {
     ID: 'EXAM-1710002001',
     Judul_Ujian: 'Asesmen Sumatif Bab 1: Matematika & Sains',
+    Jenis_Ujian: 'Aspek Sumatif',
     Mapel: 'Matematika',
     Kelas: '6A',
     Durasi_Menit: 30,
@@ -87,6 +88,7 @@ export const INITIAL_UJIAN: Ujian[] = [
         max_attempts: 2,
         acak_soal: true,
         acak_opsi: true,
+        jenis: 'Aspek Sumatif',
       },
       questions: [
         {

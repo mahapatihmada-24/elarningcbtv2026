@@ -1284,6 +1284,7 @@ export const api = {
       Jadwal_Mulai: ujianData.Jadwal_Mulai !== undefined ? ujianData.Jadwal_Mulai : '',
       Jadwal_Selesai: ujianData.Jadwal_Selesai !== undefined ? ujianData.Jadwal_Selesai : '',
       Kisi_Kisi_JSON: ujianData.Kisi_Kisi_JSON !== undefined ? ujianData.Kisi_Kisi_JSON : '',
+      Jenis_Ujian: ujianData.Jenis_Ujian !== undefined ? ujianData.Jenis_Ujian : 'Penilaian Harian',
       Soal_JSON: soalJsonStr,
       Status: 'Aktif', // Otomatisasi Status Aktif (Launching)
     };

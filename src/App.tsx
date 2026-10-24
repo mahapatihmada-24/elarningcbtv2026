@@ -16,6 +16,7 @@ import {
   Layers,
   Megaphone,
   Bell,
+  HardDrive,
 } from 'lucide-react';
 import { User, Ujian, SchoolProfile, Announcement } from './types';
 import { api, DataSource, subscribeDataSource, normalizeUser, cleanupLocalStorage } from './services/api';
@@ -25,6 +26,7 @@ import { AdminView } from './components/AdminView';
 import { AdminDashboard } from './components/AdminView/AdminDashboard';
 import { AdminMasterData } from './components/AdminView/AdminMasterData';
 import { AdminSchoolSettings } from './components/AdminView/AdminSchoolSettings';
+import { AdminBackupSchedule } from './components/AdminView/AdminBackupSchedule';
 import { GuruMateri } from './components/GuruView/GuruMateri';
 import { GuruCBT } from './components/GuruView/GuruCBT';
 import { GuruNilai } from './components/GuruView/GuruNilai';
@@ -322,6 +324,11 @@ export default function App() {
       case 'admin_pengumuman':
       case 'admin-pengumuman':
         return 'admin_announcements';
+      case 'admin_backup':
+      case 'admin-backup':
+      case 'backup':
+      case 'jadwal_backup':
+        return 'admin_backup';
       default:
         return rawTab;
     }
@@ -460,6 +467,18 @@ export default function App() {
                       </button>
 
                       <button
+                        onClick={() => handleSwitchTab('admin_backup')}
+                        className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${
+                          activeTab === 'admin_backup'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        <HardDrive className="w-3.5 h-3.5" />
+                        <span>Jadwal Backup</span>
+                      </button>
+
+                      <button
                         onClick={() => handleSwitchTab('admin_announcements')}
                         className={`px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 ${
                           activeTab === 'admin_announcements'
@@ -570,6 +589,10 @@ export default function App() {
 
                 {activeTab === 'admin_settings' && (
                   <AdminSchoolSettings onShowModal={handleShowModal} />
+                )}
+
+                {activeTab === 'admin_backup' && (
+                  <AdminBackupSchedule onShowModal={handleShowModal} />
                 )}
 
                 {activeTab === 'admin_announcements' && (
